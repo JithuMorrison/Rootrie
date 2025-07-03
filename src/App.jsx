@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Plus, Download, Upload, ZoomIn, ZoomOut, Trash2, X } from 'lucide-react';
+import { Plus, Download, Upload, ZoomIn, ZoomOut, Trash2, X, Link } from 'lucide-react';
 
 const EvolutionChartMaker = () => {
   // Constants
@@ -19,6 +19,7 @@ const EvolutionChartMaker = () => {
   const [nodes, setNodes] = useState(loadFromStorage()?.nodes || []);
   const [connections, setConnections] = useState(loadFromStorage()?.connections || []);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedConnection, setSelectedConnection] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [showNodeEditor, setShowNodeEditor] = useState(false);
@@ -35,9 +36,9 @@ const EvolutionChartMaker = () => {
 
   // Save to localStorage
   useEffect(() => {
-    const data = { projects, currentProject, nodes, connections };
+    const data = { projects, currentProject, nodes, connections, zoom, pan };
     localStorage.setItem('evolutionChartData', JSON.stringify(data));
-  }, [projects, currentProject, nodes, connections]);
+  }, [projects, currentProject, nodes, connections, zoom, pan]);
 
   // Create new project
   const createProject = (name, start, end) => {
@@ -56,6 +57,16 @@ const EvolutionChartMaker = () => {
     setShowProjectDialog(false);
     setZoom(1);
     setPan({ x: 0, y: 0 });
+  };
+
+  // Delete project
+  const deleteProject = (projectId) => {
+    setProjects(projects.filter(p => p.id !== projectId));
+    if (currentProject?.id === projectId) {
+      setCurrentProject(null);
+      setNodes([]);
+      setConnections([]);
+    }
   };
 
   // Load project
@@ -99,6 +110,19 @@ const EvolutionChartMaker = () => {
     return currentProject.timelineStart - (position * range);
   }, [currentProject]);
 
+  // Format timeline marker based on zoom level
+  const formatTimelineMarker = (value) => {
+    if (value >= 1000000) {
+      return `${(value / 1000000).toFixed(1)} BYA`;
+    } else if (value >= 1000) {
+      return `${(value / 1000).toFixed(1)} MYA`;
+    } else if (value >= 1) {
+      return `${value} KYA`;
+    } else {
+      return `${(value * 1000).toFixed(0)} LYA`;
+    }
+  };
+
   const getVisibleTimelineMarkers = useCallback(() => {
     if (!currentProject) return [];
     
@@ -108,8 +132,17 @@ const EvolutionChartMaker = () => {
     
     // Determine step size based on zoom level
     let step;
-    if (visibleRange > 2000) step = 1000;
-    else if (visibleRange > 1000) step = 500;
+    if (visibleRange > 2000000) step = 1000000;
+    else if (visibleRange > 1000000) step = 500000;
+    else if (visibleRange > 500000) step = 100000;
+    else if (visibleRange > 200000) step = 50000;
+    else if (visibleRange > 100000) step = 25000;
+    else if (visibleRange > 50000) step = 10000;
+    else if (visibleRange > 20000) step = 5000;
+    else if (visibleRange > 10000) step = 2500;
+    else if (visibleRange > 5000) step = 1000;
+    else if (visibleRange > 2000) step = 500;
+    else if (visibleRange > 1000) step = 250;
     else if (visibleRange > 500) step = 100;
     else if (visibleRange > 200) step = 50;
     else if (visibleRange > 100) step = 25;
@@ -118,8 +151,6 @@ const EvolutionChartMaker = () => {
     else step = 1;
     
     const markers = [];
-    
-    // Calculate visible timeline range based on pan and zoom
     const leftTime = getTimelineFromX(-pan.x / zoom);
     const rightTime = getTimelineFromX((canvasWidth - pan.x) / zoom);
     
@@ -172,6 +203,12 @@ const EvolutionChartMaker = () => {
     setSelectedNode(null);
   };
 
+  // Connection management
+  const deleteConnection = (connectionId) => {
+    setConnections(connections.filter(conn => conn.id !== connectionId));
+    setSelectedConnection(null);
+  };
+
   // Dragging functionality
   const handleMouseDown = (e, node) => {
     if (connectionMode) return;
@@ -186,6 +223,7 @@ const EvolutionChartMaker = () => {
       y: e.clientY - rect.top
     });
     setSelectedNode(node);
+    setSelectedConnection(null);
   };
 
   const handleMouseMove = useCallback((e) => {
@@ -244,6 +282,7 @@ const EvolutionChartMaker = () => {
       }
     } else if (!isDragging) {
       setSelectedNode(node);
+      setSelectedConnection(null);
     }
   };
 
@@ -260,6 +299,19 @@ const EvolutionChartMaker = () => {
             C ${fromX} ${fromY + controlOffset},
               ${toX} ${toY - controlOffset},
               ${toX} ${toY}`;
+  };
+
+  // Get midpoint of connection for delete button
+  const getConnectionMidpoint = (fromNode, toNode) => {
+    const fromX = (getTimelinePosition(fromNode.timeline) + pan.x) * zoom + (NODE_WIDTH * zoom) / 2;
+    const fromY = (fromNode.y + pan.y) * zoom + TIMELINE_HEIGHT + (NODE_HEIGHT * zoom) / 2;
+    const toX = (getTimelinePosition(toNode.timeline) + pan.x) * zoom + (NODE_WIDTH * zoom) / 2;
+    const toY = (toNode.y + pan.y) * zoom + TIMELINE_HEIGHT + (NODE_HEIGHT * zoom) / 2;
+    
+    return {
+      x: (fromX + toX) / 2,
+      y: (fromY + toY) / 2
+    };
   };
 
   // Export/Import functionality
@@ -312,6 +364,7 @@ const EvolutionChartMaker = () => {
       createNode(e.clientX, e.clientY);
     } else {
       setSelectedNode(null);
+      setSelectedConnection(null);
       if (connectionMode) {
         setConnectionMode(false);
         setConnectionStart(null);
@@ -340,7 +393,14 @@ const EvolutionChartMaker = () => {
 
   const handleWheel = (e) => {
     e.preventDefault();
-    if (e.ctrlKey) {
+    
+    if (e.shiftKey) {
+      // Smooth horizontal scrolling with Shift
+      setPan({
+        x: pan.x - e.deltaY * 0.8,
+        y: pan.y
+      });
+    } else if (e.ctrlKey) {
       // Zoom centered on mouse position
       const rect = canvasRef.current.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
@@ -348,7 +408,7 @@ const EvolutionChartMaker = () => {
       
       handleZoom(-e.deltaY * 0.001, mouseX, mouseY);
     } else {
-      // Pan
+      // Regular panning
       setPan({
         x: pan.x - e.deltaX * 0.5,
         y: pan.y - e.deltaY * 0.5
@@ -562,7 +622,7 @@ const EvolutionChartMaker = () => {
                 color: '#2d3748',
                 whiteSpace: 'nowrap'
               }}>
-                {marker >= 1000 ? `${(marker/1000).toFixed(1)} BYA` : `${marker} MYA`}
+                {formatTimelineMarker(marker)}
               </span>
             </div>
           ))}
@@ -603,15 +663,33 @@ const EvolutionChartMaker = () => {
               const toNode = nodes.find(n => n.id === conn.to);
               if (!fromNode || !toNode) return null;
               
+              const midpoint = getConnectionMidpoint(fromNode, toNode);
+              const isSelected = selectedConnection === conn.id || 
+                                (selectedNode && (selectedNode.id === fromNode.id || selectedNode.id === toNode.id));
+              
               return (
-                <path
-                  key={conn.id}
-                  d={getConnectionPath(fromNode, toNode)}
-                  stroke="#ffffff"
-                  strokeWidth="2"
-                  fill="none"
-                  opacity="0.8"
-                />
+                <g key={conn.id}>
+                  <path
+                    d={getConnectionPath(fromNode, toNode)}
+                    stroke={isSelected ? '#ffeb3b' : '#ffffff'}
+                    strokeWidth={isSelected ? '3' : '2'}
+                    fill="none"
+                    opacity="0.8"
+                  />
+                  {isSelected && (
+                    <circle
+                      cx={midpoint.x}
+                      cy={midpoint.y}
+                      r={8 * zoom}
+                      fill="#e53e3e"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteConnection(conn.id);
+                      }}
+                      style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+                    />
+                  )}
+                </g>
               );
             })}
           </svg>
@@ -680,9 +758,7 @@ const EvolutionChartMaker = () => {
                 textAlign: 'center',
                 fontWeight: '500'
               }}>
-                {node.timeline >= 1000 ?
-                  `${(node.timeline/1000).toFixed(1)} BYA` :
-                  `${node.timeline} MYA`}
+                {formatTimelineMarker(node.timeline)}
               </div>
 
               {selectedNode?.id === node.id && (
@@ -748,9 +824,10 @@ const EvolutionChartMaker = () => {
           }}>
             <div>💡 <strong>Ctrl+Click:</strong> Create new node</div>
             <div>🔗 <strong>Connect Mode:</strong> Click two nodes to link them</div>
+            <div>❌ <strong>Click connection midpoint:</strong> Delete connection</div>
             <div>📍 <strong>Drag:</strong> Move nodes vertically (timeline fixed)</div>
             <div>✏️ <strong>Double-click:</strong> Edit node details</div>
-            <div>🔍 <strong>Ctrl+Scroll:</strong> Zoom | <strong>Scroll:</strong> Pan</div>
+            <div>🔍 <strong>Ctrl+Scroll:</strong> Zoom | <strong>Shift+Scroll:</strong> Horizontal Pan</div>
           </div>
         </div>
       ) : (
@@ -903,22 +980,43 @@ const EvolutionChartMaker = () => {
                 {projects.map(project => (
                   <div
                     key={project.id}
-                    onClick={() => loadProject(project)}
                     style={{
                       padding: '12px',
                       border: '2px solid #e2e8f0',
                       borderRadius: '8px',
                       marginBottom: '8px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
                     }}
-                    onMouseEnter={(e) => e.target.style.borderColor = '#4299e1'}
-                    onMouseLeave={(e) => e.target.style.borderColor = '#e2e8f0'}
+                    onMouseEnter={(e) => e.currentTarget.style.borderColor = '#4299e1'}
+                    onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}
                   >
-                    <div style={{ fontWeight: '600', color: '#2d3748' }}>{project.name}</div>
-                    <div style={{ fontSize: '12px', color: '#718096' }}>
-                      Timeline: {project.timelineStart} - {project.timelineEnd} MYA
+                    <div 
+                      onClick={() => loadProject(project)}
+                      style={{ flex: 1, cursor: 'pointer' }}
+                    >
+                      <div style={{ fontWeight: '600', color: '#2d3748' }}>{project.name}</div>
+                      <div style={{ fontSize: '12px', color: '#718096' }}>
+                        Timeline: {project.timelineStart} - {project.timelineEnd} MYA
+                      </div>
                     </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteProject(project.id);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        color: '#e53e3e'
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 ))}
               </div>
