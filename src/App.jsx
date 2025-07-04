@@ -1,27 +1,37 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Plus, Download, Upload, ZoomIn, ZoomOut, Trash2, X, Link } from 'lucide-react';
+import { Plus, Download, Upload, ZoomIn, ZoomOut, Trash2, X, Link, ChevronDown } from 'lucide-react';
+
+const TIME_UNITS = [
+  { value: 'bya', label: 'Billion Years Ago (BYA)', multiplier: 1000000000 },
+  { value: 'mya', label: 'Million Years Ago (MYA)', multiplier: 1000000 },
+  { value: 'kya', label: 'Thousand Years Ago (KYA)', multiplier: 1000 },
+  { value: 'ya', label: 'Years Ago (YA)', multiplier: 1 }
+];
 
 const EvolutionChartMaker = () => {
   // Constants
   const TIMELINE_HEIGHT = 60;
   const NODE_WIDTH = 120;
   const NODE_HEIGHT = 100;
+  const CONNECTION_COLOR = '#ffffff';
+  const SELECTED_CONNECTION_COLOR = '#ffeb3b';
 
-  // Load from localStorage
-  const loadFromStorage = () => {
-    const saved = localStorage.getItem('evolutionChartData');
-    return saved ? JSON.parse(saved) : null;
-  };
+  // Refs
+  const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const animationRef = useRef(null);
+  const lastPanTime = useRef(0);
 
-  // State management
-  const [projects, setProjects] = useState(loadFromStorage()?.projects || []);
-  const [currentProject, setCurrentProject] = useState(loadFromStorage()?.currentProject || null);
-  const [nodes, setNodes] = useState(loadFromStorage()?.nodes || []);
-  const [connections, setConnections] = useState(loadFromStorage()?.connections || []);
+  // State
+  const [projects, setProjects] = useState([]);
+  const [currentProject, setCurrentProject] = useState(null);
+  const [nodes, setNodes] = useState([]);
+  const [connections, setConnections] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [targetPan, setTargetPan] = useState({ x: 0, y: 0 });
   const [showNodeEditor, setShowNodeEditor] = useState(false);
   const [editingNode, setEditingNode] = useState(null);
   const [showProjectDialog, setShowProjectDialog] = useState(false);
@@ -30,9 +40,22 @@ const EvolutionChartMaker = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragNode, setDragNode] = useState(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [velocity, setVelocity] = useState({ x: 0, y: 0 });
 
-  const canvasRef = useRef(null);
-  const fileInputRef = useRef(null);
+  // Load from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('evolutionChartData');
+    if (saved) {
+      const data = JSON.parse(saved);
+      setProjects(data.projects || []);
+      setCurrentProject(data.currentProject || null);
+      setNodes(data.nodes || []);
+      setConnections(data.connections || []);
+      setZoom(data.zoom || 1);
+      setPan(data.pan || { x: 0, y: 0 });
+      setTargetPan(data.pan || { x: 0, y: 0 });
+    }
+  }, []);
 
   // Save to localStorage
   useEffect(() => {
@@ -40,13 +63,43 @@ const EvolutionChartMaker = () => {
     localStorage.setItem('evolutionChartData', JSON.stringify(data));
   }, [projects, currentProject, nodes, connections, zoom, pan]);
 
-  // Create new project
-  const createProject = (name, start, end) => {
+  // Smooth pan animation
+  useEffect(() => {
+    const animate = () => {
+      const now = Date.now();
+      const deltaTime = Math.min(now - lastPanTime.current, 100) / 1000;
+      lastPanTime.current = now;
+
+      if (deltaTime > 0) {
+        const dx = (targetPan.x - pan.x) * 0.2;
+        const dy = (targetPan.y - pan.y) * 0.2;
+        
+        if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
+          setPan(prev => ({
+            x: prev.x + dx,
+            y: prev.y + dy
+          }));
+          animationRef.current = requestAnimationFrame(animate);
+        } else {
+          setPan(targetPan);
+        }
+      } else {
+        animationRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationRef.current);
+  }, [pan, targetPan]);
+
+  // Project management
+  const createProject = (name, start, end, timeUnit) => {
     const newProject = {
       id: Date.now(),
       name,
       timelineStart: start,
       timelineEnd: end,
+      timeUnit,
       nodes: [],
       connections: []
     };
@@ -57,9 +110,9 @@ const EvolutionChartMaker = () => {
     setShowProjectDialog(false);
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    setTargetPan({ x: 0, y: 0 });
   };
 
-  // Delete project
   const deleteProject = (projectId) => {
     setProjects(projects.filter(p => p.id !== projectId));
     if (currentProject?.id === projectId) {
@@ -69,7 +122,6 @@ const EvolutionChartMaker = () => {
     }
   };
 
-  // Load project
   const loadProject = (project) => {
     setCurrentProject(project);
     setNodes(project.nodes || []);
@@ -77,9 +129,9 @@ const EvolutionChartMaker = () => {
     setShowProjectDialog(false);
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    setTargetPan({ x: 0, y: 0 });
   };
 
-  // Save current project
   const saveCurrentProject = () => {
     if (!currentProject) return;
     
@@ -94,76 +146,115 @@ const EvolutionChartMaker = () => {
   };
 
   // Timeline calculations
-  const getTimelinePosition = useCallback((timeline) => {
+  const getTimelinePosition = useCallback((timelineValue) => {
     if (!currentProject) return 0;
-    const range = currentProject.timelineStart - currentProject.timelineEnd;
-    const position = (currentProject.timelineStart - timeline) / range;
+    
+    // Convert the timeline value to years based on its unit
+    const valueInYears = convertToYears(timelineValue.value, timelineValue.unit);
+    const startInYears = convertToYears(currentProject.timelineStart, currentProject.timeUnit);
+    const endInYears = convertToYears(currentProject.timelineEnd, currentProject.timeUnit);
+    
+    const range = startInYears - endInYears;
+    const position = (startInYears - valueInYears) / range;
     const canvasWidth = canvasRef.current?.offsetWidth || 800;
+    
     return position * canvasWidth;
   }, [currentProject]);
 
-  const getTimelineFromX = useCallback((x) => {
-    if (!currentProject) return 0;
-    const canvasWidth = canvasRef.current?.offsetWidth || 800;
-    const range = currentProject.timelineStart - currentProject.timelineEnd;
-    const position = x / canvasWidth;
-    return currentProject.timelineStart - (position * range);
-  }, [currentProject]);
+  const convertToYears = (value, unit) => {
+    const unitObj = TIME_UNITS.find(u => u.value === unit) || TIME_UNITS[0];
+    return value * unitObj.multiplier;
+  };
 
-  // Format timeline marker based on zoom level
-  const formatTimelineMarker = (value) => {
-    if (value >= 1000000) {
-      return `${(value / 1000000).toFixed(1)} BYA`;
-    } else if (value >= 1000) {
-      return `${(value / 1000).toFixed(1)} MYA`;
-    } else if (value >= 1) {
-      return `${value} KYA`;
-    } else {
-      return `${(value * 1000).toFixed(0)} LYA`;
-    }
+  const formatTimelineValue = (value, unit) => {
+    if (unit === 'bya') return `${value} BYA`;
+    if (unit === 'mya') return `${value} MYA`;
+    if (unit === 'kya') return `${value} KYA`;
+    return `${value} YA`;
   };
 
   const getVisibleTimelineMarkers = useCallback(() => {
     if (!currentProject) return [];
     
     const canvasWidth = canvasRef.current?.offsetWidth || 800;
-    const range = currentProject.timelineStart - currentProject.timelineEnd;
+    const startInYears = convertToYears(currentProject.timelineStart, currentProject.timeUnit);
+    const endInYears = convertToYears(currentProject.timelineEnd, currentProject.timeUnit);
+    const range = startInYears - endInYears;
     const visibleRange = range / zoom;
     
     // Determine step size based on zoom level
-    let step;
-    if (visibleRange > 2000000) step = 1000000;
-    else if (visibleRange > 1000000) step = 500000;
-    else if (visibleRange > 500000) step = 100000;
-    else if (visibleRange > 200000) step = 50000;
-    else if (visibleRange > 100000) step = 25000;
-    else if (visibleRange > 50000) step = 10000;
-    else if (visibleRange > 20000) step = 5000;
-    else if (visibleRange > 10000) step = 2500;
-    else if (visibleRange > 5000) step = 1000;
-    else if (visibleRange > 2000) step = 500;
-    else if (visibleRange > 1000) step = 250;
-    else if (visibleRange > 500) step = 100;
-    else if (visibleRange > 200) step = 50;
-    else if (visibleRange > 100) step = 25;
-    else if (visibleRange > 50) step = 10;
-    else if (visibleRange > 20) step = 5;
-    else step = 1;
+    let stepYears;
+    if (visibleRange > 2000000000) stepYears = 1000000000;
+    else if (visibleRange > 1000000000) stepYears = 500000000;
+    else if (visibleRange > 500000000) stepYears = 100000000;
+    else if (visibleRange > 200000000) stepYears = 50000000;
+    else if (visibleRange > 100000000) stepYears = 25000000;
+    else if (visibleRange > 50000000) stepYears = 10000000;
+    else if (visibleRange > 20000000) stepYears = 5000000;
+    else if (visibleRange > 10000000) stepYears = 2500000;
+    else if (visibleRange > 5000000) stepYears = 1000000;
+    else if (visibleRange > 2000000) stepYears = 500000;
+    else if (visibleRange > 1000000) stepYears = 250000;
+    else if (visibleRange > 500000) stepYears = 100000;
+    else if (visibleRange > 200000) stepYears = 50000;
+    else if (visibleRange > 100000) stepYears = 25000;
+    else if (visibleRange > 50000) stepYears = 10000;
+    else if (visibleRange > 20000) stepYears = 5000;
+    else if (visibleRange > 10000) stepYears = 2500;
+    else if (visibleRange > 5000) stepYears = 1000;
+    else if (visibleRange > 2000) stepYears = 500;
+    else if (visibleRange > 1000) stepYears = 250;
+    else if (visibleRange > 500) stepYears = 100;
+    else if (visibleRange > 200) stepYears = 50;
+    else if (visibleRange > 100) stepYears = 25;
+    else if (visibleRange > 50) stepYears = 10;
+    else if (visibleRange > 20) stepYears = 5;
+    else stepYears = 1;
     
     const markers = [];
     const leftTime = getTimelineFromX(-pan.x / zoom);
     const rightTime = getTimelineFromX((canvasWidth - pan.x) / zoom);
     
-    const start = Math.ceil(Math.min(leftTime, rightTime) / step) * step;
-    const end = Math.floor(Math.max(leftTime, rightTime) / step) * step;
+    const start = Math.ceil(Math.min(leftTime, rightTime) / stepYears) * stepYears;
+    const end = Math.floor(Math.max(leftTime, rightTime) / stepYears) * stepYears;
     
-    for (let i = start; i <= end; i += step) {
-      if (i >= currentProject.timelineEnd && i <= currentProject.timelineStart) {
-        markers.push(i);
+    for (let i = start; i <= end; i += stepYears) {
+      if (i >= endInYears && i <= startInYears) {
+        // Find the best unit to display this marker
+        let displayValue = i;
+        let displayUnit = 'ya';
+        
+        if (i >= 1000000000) {
+          displayValue = i / 1000000000;
+          displayUnit = 'bya';
+        } else if (i >= 1000000) {
+          displayValue = i / 1000000;
+          displayUnit = 'mya';
+        } else if (i >= 1000) {
+          displayValue = i / 1000;
+          displayUnit = 'kya';
+        }
+        
+        markers.push({
+          value: displayValue,
+          unit: displayUnit,
+          position: (startInYears - i) / range
+        });
       }
     }
+    
     return markers;
-  }, [currentProject, zoom, pan, getTimelineFromX]);
+  }, [currentProject, zoom, pan]);
+
+  const getTimelineFromX = useCallback((x) => {
+    if (!currentProject) return 0;
+    const canvasWidth = canvasRef.current?.offsetWidth || 800;
+    const startInYears = convertToYears(currentProject.timelineStart, currentProject.timeUnit);
+    const endInYears = convertToYears(currentProject.timelineEnd, currentProject.timeUnit);
+    const range = startInYears - endInYears;
+    const position = x / canvasWidth;
+    return startInYears - (position * range);
+  }, [currentProject]);
 
   // Node management
   const createNode = (clientX, clientY) => {
@@ -174,7 +265,10 @@ const EvolutionChartMaker = () => {
     const canvasY = clientY - rect.top - TIMELINE_HEIGHT;
     
     // Calculate timeline position based on X coordinate
-    const timeline = getTimelineFromX((canvasX - pan.x) / zoom);
+    const years = getTimelineFromX((canvasX - pan.x) / zoom);
+    
+    // Convert years to project's time unit for display
+    const displayValue = years / (TIME_UNITS.find(u => u.value === currentProject.timeUnit)?.multiplier || 1);
     
     const newNode = {
       id: Date.now(),
@@ -183,7 +277,10 @@ const EvolutionChartMaker = () => {
       title: 'New Species',
       description: 'Description here...',
       imageSrc: '',
-      timeline: Math.round(timeline * 10) / 10
+      timeline: {
+        value: parseFloat(displayValue.toFixed(4)),
+        unit: currentProject.timeUnit
+      }
     };
     
     setNodes([...nodes, newNode]);
@@ -204,6 +301,15 @@ const EvolutionChartMaker = () => {
   };
 
   // Connection management
+  const createConnection = (fromId, toId) => {
+    const newConnection = {
+      id: Date.now(),
+      from: fromId,
+      to: toId
+    };
+    setConnections([...connections, newConnection]);
+  };
+
   const deleteConnection = (connectionId) => {
     setConnections(connections.filter(conn => conn.id !== connectionId));
     setSelectedConnection(null);
@@ -249,14 +355,38 @@ const EvolutionChartMaker = () => {
     
     setDragNode(updatedNode);
     setDragStart({ x: currentX, y: currentY });
+    
+    // Update velocity for momentum scrolling
+    const now = Date.now();
+    const deltaTime = now - lastPanTime.current;
+    if (deltaTime > 0) {
+      setVelocity({
+        x: (currentX - dragStart.x) / deltaTime,
+        y: (currentY - dragStart.y) / deltaTime
+      });
+    }
+    lastPanTime.current = now;
   }, [isDragging, dragNode, dragStart, zoom]);
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
     setDragNode(null);
-  }, []);
+    
+    // Apply momentum scrolling
+    if (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.y) > 0.1) {
+      const momentumX = velocity.x * 1000;
+      const momentumY = velocity.y * 1000;
+      
+      setTargetPan(prev => ({
+        x: prev.x - momentumX,
+        y: prev.y - momentumY
+      }));
+    }
+    
+    setVelocity({ x: 0, y: 0 });
+  }, [velocity]);
 
-  // Connection management
+  // Connection handling
   const handleNodeClick = (e, node) => {
     e.stopPropagation();
     
@@ -271,11 +401,7 @@ const EvolutionChartMaker = () => {
         );
         
         if (!existingConnection) {
-          setConnections([...connections, {
-            id: Date.now(),
-            from: connectionStart,
-            to: node.id
-          }]);
+          createConnection(connectionStart, node.id);
         }
         setConnectionMode(false);
         setConnectionStart(null);
@@ -382,10 +508,12 @@ const EvolutionChartMaker = () => {
     const newZoom = Math.max(0.1, Math.min(5, zoom + delta));
     
     if (centerX !== null && centerY !== null) {
-      setPan({
+      const newPan = {
         x: centerX - (centerX - pan.x) * (newZoom / zoom),
         y: centerY - (centerY - pan.y) * (newZoom / zoom)
-      });
+      };
+      setPan(newPan);
+      setTargetPan(newPan);
     }
     
     setZoom(newZoom);
@@ -396,10 +524,10 @@ const EvolutionChartMaker = () => {
     
     if (e.shiftKey) {
       // Smooth horizontal scrolling with Shift
-      setPan({
-        x: pan.x - e.deltaY * 0.8,
-        y: pan.y
-      });
+      setTargetPan(prev => ({
+        x: prev.x - e.deltaY * 0.8,
+        y: prev.y
+      }));
     } else if (e.ctrlKey) {
       // Zoom centered on mouse position
       const rect = canvasRef.current.getBoundingClientRect();
@@ -409,10 +537,10 @@ const EvolutionChartMaker = () => {
       handleZoom(-e.deltaY * 0.001, mouseX, mouseY);
     } else {
       // Regular panning
-      setPan({
-        x: pan.x - e.deltaX * 0.5,
-        y: pan.y - e.deltaY * 0.5
-      });
+      setTargetPan(prev => ({
+        x: prev.x - e.deltaX * 0.5,
+        y: prev.y - e.deltaY * 0.5
+      }));
     }
   };
 
@@ -435,59 +563,22 @@ const EvolutionChartMaker = () => {
     }
   }, [nodes, connections, currentProject]);
 
+  // Render
   return (
-    <div style={{
-      width: '100vw',
-      height: '100vh',
-      background: '#4a90a4',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      overflow: 'hidden',
-      userSelect: 'none'
-    }}>
+    <div className="evolution-chart-maker">
       {/* Header */}
-      <div style={{
-        background: 'rgba(255, 255, 255, 0.95)',
-        padding: '12px 20px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottom: '1px solid rgba(0,0,0,0.1)',
-        zIndex: 1000,
-        position: 'relative'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '700', color: '#2d3748' }}>
-            🧬 Evolution Chart Maker
-          </h1>
+      <div className="header">
+        <div className="header-left">
+          <h1>🧬 Evolution Chart Maker</h1>
           {currentProject && (
-            <span style={{
-              background: '#4299e1',
-              color: 'white',
-              padding: '4px 12px',
-              borderRadius: '20px',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}>
-              {currentProject.name}
-            </span>
+            <span className="project-name">{currentProject.name}</span>
           )}
         </div>
         
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div className="toolbar">
           <button
             onClick={() => setShowProjectDialog(true)}
-            style={{
-              background: '#48bb78',
-              color: 'white',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontWeight: '500'
-            }}
+            className="toolbar-btn primary"
           >
             <Plus size={16} /> {currentProject ? 'Project' : 'New Project'}
           </button>
@@ -499,82 +590,37 @@ const EvolutionChartMaker = () => {
                   setConnectionMode(!connectionMode);
                   setConnectionStart(null);
                 }}
-                style={{
-                  background: connectionMode ? '#f56565' : '#ed8936',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: '500'
-                }}
+                className={`toolbar-btn ${connectionMode ? 'danger' : 'warning'}`}
               >
                 {connectionMode ? 'Cancel' : 'Connect'}
               </button>
               
               <button
                 onClick={() => fileInputRef.current?.click()}
-                style={{
-                  background: '#ed8936',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: '500'
-                }}
+                className="toolbar-btn warning"
               >
                 <Upload size={16} /> Import
               </button>
               
               <button
                 onClick={exportProject}
-                style={{
-                  background: '#4299e1',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: '500'
-                }}
+                className="toolbar-btn info"
               >
                 <Download size={16} /> Export
               </button>
             </>
           )}
           
-          <div style={{ display: 'flex', gap: '4px' }}>
+          <div className="zoom-controls">
             <button 
               onClick={() => handleZoom(0.1)} 
-              style={{ 
-                padding: '8px', 
-                border: 'none', 
-                borderRadius: '6px', 
-                cursor: 'pointer', 
-                background: '#e2e8f0' 
-              }}
+              className="zoom-btn"
             >
               <ZoomIn size={16} />
             </button>
             <button 
               onClick={() => handleZoom(-0.1)} 
-              style={{ 
-                padding: '8px', 
-                border: 'none', 
-                borderRadius: '6px', 
-                cursor: 'pointer', 
-                background: '#e2e8f0' 
-              }}
+              className="zoom-btn"
             >
               <ZoomOut size={16} />
             </button>
@@ -584,45 +630,18 @@ const EvolutionChartMaker = () => {
 
       {/* Timeline */}
       {currentProject && (
-        <div style={{
-          position: 'absolute',
-          top: '70px',
-          left: '0',
-          right: '0',
-          height: `${TIMELINE_HEIGHT}px`,
-          background: 'rgba(255, 255, 255, 0.9)',
-          borderBottom: '2px solid #4299e1',
-          zIndex: 100,
-          overflow: 'hidden'
-        }}>
-          {getVisibleTimelineMarkers().map(marker => (
+        <div className="timeline">
+          {getVisibleTimelineMarkers().map((marker, index) => (
             <div
-              key={marker}
+              key={index}
+              className="timeline-marker"
               style={{
-                position: 'absolute',
-                left: `${(getTimelinePosition(marker) + pan.x) * zoom}px`,
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                minWidth: '60px',
-                transition: 'left 0.1s ease'
+                left: `${(marker.position * (canvasRef.current?.offsetWidth || 800) + pan.x) * zoom}px`,
               }}
             >
-              <div style={{
-                width: '2px',
-                height: '20px',
-                background: '#4299e1',
-                marginBottom: '4px'
-              }} />
-              <span style={{
-                fontSize: '12px',
-                fontWeight: '600',
-                color: '#2d3748',
-                whiteSpace: 'nowrap'
-              }}>
-                {formatTimelineMarker(marker)}
+              <div className="timeline-line" />
+              <span className="timeline-label">
+                {formatTimelineValue(marker.value, marker.unit)}
               </span>
             </div>
           ))}
@@ -635,29 +654,13 @@ const EvolutionChartMaker = () => {
           ref={canvasRef}
           onClick={handleCanvasClick}
           onWheel={handleWheel}
+          className="canvas"
           style={{
-            position: 'absolute',
-            top: `${70 + TIMELINE_HEIGHT}px`,
-            left: '0',
-            right: '0',
-            bottom: '0',
             cursor: connectionMode ? 'crosshair' : isDragging ? 'grabbing' : 'default',
-            overflow: 'hidden',
-            background: '#4a90a4'
           }}
         >
           {/* SVG for connections */}
-          <svg
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              pointerEvents: 'none',
-              zIndex: 1
-            }}
-          >
+          <svg className="connections-svg">
             {connections.map(conn => {
               const fromNode = nodes.find(n => n.id === conn.from);
               const toNode = nodes.find(n => n.id === conn.to);
@@ -671,7 +674,7 @@ const EvolutionChartMaker = () => {
                 <g key={conn.id}>
                   <path
                     d={getConnectionPath(fromNode, toNode)}
-                    stroke={isSelected ? '#ffeb3b' : '#ffffff'}
+                    stroke={isSelected ? SELECTED_CONNECTION_COLOR : CONNECTION_COLOR}
                     strokeWidth={isSelected ? '3' : '2'}
                     fill="none"
                     opacity="0.8"
@@ -698,67 +701,36 @@ const EvolutionChartMaker = () => {
           {nodes.map(node => (
             <div
               key={node.id}
-              onMouseDown={(e) => handleMouseDown(e, node)}
-              onClick={(e) => handleNodeClick(e, node)}
-              onDoubleClick={() => handleNodeDoubleClick(node)}
+              className={`node ${selectedNode?.id === node.id ? 'selected' : ''}`}
               style={{
-                position: 'absolute',
                 left: `${(getTimelinePosition(node.timeline) + pan.x) * zoom}px`,
                 top: `${(node.y + pan.y) * zoom}px`,
                 width: `${NODE_WIDTH * zoom}px`,
                 height: `${NODE_HEIGHT * zoom}px`,
-                background: selectedNode?.id === node.id ? '#81c784' : '#66bb6a',
-                borderRadius: '25px',
-                padding: `${8 * zoom}px`,
-                cursor: isDragging && dragNode?.id === node.id ? 'grabbing' : 'grab',
-                zIndex: selectedNode?.id === node.id ? 100 : 10,
-                border: selectedNode?.id === node.id ? '3px solid #2e7d32' : '2px solid rgba(255,255,255,0.3)',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-                transition: isDragging && dragNode?.id === node.id ? 'none' : 'all 0.2s ease',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden'
+                transform: isDragging && dragNode?.id === node.id ? 'scale(1.02)' : 'scale(1)'
               }}
+              onMouseDown={(e) => handleMouseDown(e, node)}
+              onClick={(e) => handleNodeClick(e, node)}
+              onDoubleClick={() => handleNodeDoubleClick(node)}
             >
               {node.imageSrc && (
                 <img
                   src={node.imageSrc}
                   alt={node.title}
+                  className="node-image"
                   style={{
                     width: `${40 * zoom}px`,
-                    height: `${40 * zoom}px`,
-                    objectFit: 'cover',
-                    borderRadius: '50%',
-                    marginBottom: `${4 * zoom}px`,
-                    pointerEvents: 'none'
+                    height: `${40 * zoom}px`
                   }}
                 />
               )}
               
-              <div style={{
-                color: 'white',
-                fontSize: `${11 * zoom}px`,
-                fontWeight: '600',
-                textAlign: 'center',
-                marginBottom: `${2 * zoom}px`,
-                lineHeight: '1.2',
-                overflow: 'hidden',
-                display: '-webkit-box',
-                WebkitLineClamp: 1,
-                WebkitBoxOrient: 'vertical'
-              }}>
+              <div className="node-title" style={{ fontSize: `${11 * zoom}px` }}>
                 {node.title}
               </div>
               
-              <div style={{
-                color: 'rgba(255,255,255,0.9)',
-                fontSize: `${9 * zoom}px`,
-                textAlign: 'center',
-                fontWeight: '500'
-              }}>
-                {formatTimelineMarker(node.timeline)}
+              <div className="node-timeline" style={{ fontSize: `${9 * zoom}px` }}>
+                {formatTimelineValue(node.timeline.value, node.timeline.unit)}
               </div>
 
               {selectedNode?.id === node.id && (
@@ -767,21 +739,10 @@ const EvolutionChartMaker = () => {
                     e.stopPropagation();
                     deleteNode(node.id);
                   }}
+                  className="delete-node-btn"
                   style={{
-                    position: 'absolute',
-                    top: '-8px',
-                    right: '-8px',
-                    background: '#e53e3e',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '50%',
                     width: `${24 * zoom}px`,
-                    height: `${24 * zoom}px`,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 200
+                    height: `${24 * zoom}px`
                   }}
                 >
                   <Trash2 size={12 * zoom} />
@@ -792,72 +753,29 @@ const EvolutionChartMaker = () => {
 
           {/* Connection mode indicator */}
           {connectionMode && (
-            <div style={{
-              position: 'absolute',
-              bottom: '20px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              background: 'rgba(255, 255, 255, 0.9)',
-              padding: '8px 16px',
-              borderRadius: '20px',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: '#2d3748',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-              zIndex: 1000
-            }}>
+            <div className="connection-mode-indicator">
               {connectionStart ? 'Select child node' : 'Select parent node'}
             </div>
           )}
 
           {/* Instructions */}
-          <div style={{
-            position: 'absolute',
-            bottom: '20px',
-            left: '20px',
-            background: 'rgba(255, 255, 255, 0.9)',
-            padding: '12px 16px',
-            borderRadius: '8px',
-            fontSize: '12px',
-            color: '#4a5568',
-            zIndex: 100
-          }}>
+          <div className="instructions-panel">
             <div>💡 <strong>Ctrl+Click:</strong> Create new node</div>
             <div>🔗 <strong>Connect Mode:</strong> Click two nodes to link them</div>
             <div>❌ <strong>Click connection midpoint:</strong> Delete connection</div>
-            <div>📍 <strong>Drag:</strong> Move nodes vertically (timeline fixed)</div>
+            <div>📍 <strong>Drag:</strong> Move nodes vertically</div>
             <div>✏️ <strong>Double-click:</strong> Edit node details</div>
             <div>🔍 <strong>Ctrl+Scroll:</strong> Zoom | <strong>Shift+Scroll:</strong> Horizontal Pan</div>
           </div>
         </div>
       ) : (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: 'calc(100vh - 70px)',
-          color: 'white',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '48px', marginBottom: '20px' }}>🧬</div>
-          <h2 style={{ fontSize: '32px', marginBottom: '16px' }}>Welcome to Evolution Chart Maker</h2>
-          <p style={{ fontSize: '18px', marginBottom: '30px', opacity: '0.9' }}>
-            Create beautiful evolutionary trees and classification charts
-          </p>
+        <div className="welcome-screen">
+          <div className="welcome-icon">🧬</div>
+          <h2>Welcome to Evolution Chart Maker</h2>
+          <p>Create beautiful evolutionary trees and classification charts</p>
           <button
             onClick={() => setShowProjectDialog(true)}
-            style={{
-              background: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: '2px solid rgba(255,255,255,0.3)',
-              padding: '15px 30px',
-              borderRadius: '12px',
-              fontSize: '16px',
-              cursor: 'pointer',
-              backdropFilter: 'blur(10px)',
-              transition: 'all 0.2s ease'
-            }}
+            className="create-project-btn"
           >
             Create Your First Project
           </button>
@@ -866,140 +784,85 @@ const EvolutionChartMaker = () => {
 
       {/* Project Dialog */}
       {showProjectDialog && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '16px',
-            padding: '24px',
-            width: '400px',
-            maxHeight: '80vh',
-            overflow: 'auto'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, color: '#2d3748' }}>Project Manager</h2>
-              <button onClick={() => setShowProjectDialog(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2>Project Manager</h2>
+              <button onClick={() => setShowProjectDialog(false)} className="close-btn">
                 <X size={20} />
               </button>
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
-              <h3 style={{ marginBottom: '12px', color: '#4a5568' }}>Create New Project</h3>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#4a5568' }}>
-                  Project Name
-                </label>
+            <div className="modal-section">
+              <h3>Create New Project</h3>
+              <div className="form-group">
+                <label>Project Name</label>
                 <input
                   type="text"
                   placeholder="e.g., Mammalian Evolution"
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: '2px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '14px'
-                  }}
                   id="projectName"
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#4a5568' }}>
-                    Timeline Start (MYA)
-                  </label>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Timeline Start</label>
                   <input
                     type="number"
                     defaultValue="500"
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      border: '2px solid #e2e8f0',
-                      borderRadius: '8px',
-                      fontSize: '14px'
-                    }}
                     id="timelineStart"
                   />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#4a5568' }}>
-                    Timeline End (MYA)
-                  </label>
+                <div className="form-group">
+                  <label>Timeline End</label>
                   <input
                     type="number"
                     defaultValue="0"
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      border: '2px solid #e2e8f0',
-                      borderRadius: '8px',
-                      fontSize: '14px'
-                    }}
                     id="timelineEnd"
                   />
                 </div>
               </div>
 
+              <div className="form-group">
+                <label>Time Unit</label>
+                <select id="timeUnit" defaultValue="mya">
+                  {TIME_UNITS.map(unit => (
+                    <option key={unit.value} value={unit.value}>{unit.label}</option>
+                  ))}
+                </select>
+              </div>
+
               <button
                 onClick={() => {
                   const name = document.getElementById('projectName').value;
-                  const start = parseInt(document.getElementById('timelineStart').value);
-                  const end = parseInt(document.getElementById('timelineEnd').value);
+                  const start = parseFloat(document.getElementById('timelineStart').value);
+                  const end = parseFloat(document.getElementById('timelineEnd').value);
+                  const timeUnit = document.getElementById('timeUnit').value;
                   if (name.trim() && start > end) {
-                    createProject(name, start, end);
+                    createProject(name, start, end, timeUnit);
                   }
                 }}
-                style={{
-                  background: '#48bb78',
-                  color: 'white',
-                  border: 'none',
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  width: '100%',
-                  fontWeight: '600'
-                }}
+                className="create-btn"
               >
                 Create Project
               </button>
             </div>
 
             {projects.length > 0 && (
-              <div>
-                <h3 style={{ marginBottom: '12px', color: '#4a5568' }}>Existing Projects</h3>
+              <div className="modal-section">
+                <h3>Existing Projects</h3>
                 {projects.map(project => (
                   <div
                     key={project.id}
-                    style={{
-                      padding: '12px',
-                      border: '2px solid #e2e8f0',
-                      borderRadius: '8px',
-                      marginBottom: '8px',
-                      transition: 'all 0.2s ease',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.borderColor = '#4299e1'}
-                    onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}
+                    className="project-item"
                   >
                     <div 
                       onClick={() => loadProject(project)}
-                      style={{ flex: 1, cursor: 'pointer' }}
+                      className="project-info"
                     >
-                      <div style={{ fontWeight: '600', color: '#2d3748' }}>{project.name}</div>
-                      <div style={{ fontSize: '12px', color: '#718096' }}>
-                        Timeline: {project.timelineStart} - {project.timelineEnd} MYA
+                      <div className="project-name">{project.name}</div>
+                      <div className="project-timeline">
+                        Timeline: {project.timelineStart} - {project.timelineEnd} {project.timeUnit.toUpperCase()}
                       </div>
                     </div>
                     <button
@@ -1007,13 +870,7 @@ const EvolutionChartMaker = () => {
                         e.stopPropagation();
                         deleteProject(project.id);
                       }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: '4px',
-                        color: '#e53e3e'
-                      }}
+                      className="delete-project-btn"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -1027,121 +884,73 @@ const EvolutionChartMaker = () => {
 
       {/* Node Editor */}
       {showNodeEditor && editingNode && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '16px',
-            padding: '24px',
-            width: '400px'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, color: '#2d3748' }}>Edit Node</h2>
-              <button onClick={() => setShowNodeEditor(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2>Edit Node</h2>
+              <button onClick={() => setShowNodeEditor(false)} className="close-btn">
                 <X size={20} />
               </button>
             </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#4a5568' }}>
-                Title
-              </label>
+            <div className="form-group">
+              <label>Title</label>
               <input
                 type="text"
                 defaultValue={editingNode.title}
                 placeholder="Species name"
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #e2e8f0',
-                  borderRadius: '8px',
-                  fontSize: '14px'
-                }}
                 id="nodeTitle"
               />
             </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#4a5568' }}>
-                Image URL
-              </label>
+            <div className="form-group">
+              <label>Image URL</label>
               <input
                 type="text"
                 defaultValue={editingNode.imageSrc}
                 placeholder="https://example.com/image.jpg"
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #e2e8f0',
-                  borderRadius: '8px',
-                  fontSize: '14px'
-                }}
                 id="nodeImage"
               />
             </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#4a5568' }}>
-                Timeline (Million Years Ago)
-              </label>
-              <input
-                type="number"
-                defaultValue={editingNode.timeline}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #e2e8f0',
-                  borderRadius: '8px',
-                  fontSize: '14px'
-                }}
-                id="nodeTimeline"
-              />
+            <div className="form-row">
+              <div className="form-group">
+                <label>Timeline Value</label>
+                <input
+                  type="number"
+                  defaultValue={editingNode.timeline.value}
+                  id="nodeTimelineValue"
+                />
+              </div>
+              <div className="form-group">
+                <label>Time Unit</label>
+                <select 
+                  id="nodeTimelineUnit" 
+                  defaultValue={editingNode.timeline.unit}
+                >
+                  {TIME_UNITS.map(unit => (
+                    <option key={unit.value} value={unit.value}>
+                      {unit.value.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#4a5568' }}>
-                Description
-              </label>
+            <div className="form-group">
+              <label>Description</label>
               <textarea
                 defaultValue={editingNode.description}
                 placeholder="Brief description of the species..."
                 rows={4}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #e2e8f0',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  resize: 'vertical',
-                  fontFamily: 'inherit'
-                }}
                 id="nodeDescription"
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div className="form-actions">
               <button
                 onClick={() => setShowNodeEditor(false)}
-                style={{
-                  flex: 1,
-                  background: '#e2e8f0',
-                  color: '#4a5568',
-                  border: 'none',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: '600'
-                }}
+                className="cancel-btn"
               >
                 Cancel
               </button>
@@ -1151,21 +960,15 @@ const EvolutionChartMaker = () => {
                     ...editingNode,
                     title: document.getElementById('nodeTitle').value,
                     imageSrc: document.getElementById('nodeImage').value,
-                    timeline: parseFloat(document.getElementById('nodeTimeline').value),
+                    timeline: {
+                      value: parseFloat(document.getElementById('nodeTimelineValue').value),
+                      unit: document.getElementById('nodeTimelineUnit').value
+                    },
                     description: document.getElementById('nodeDescription').value
                   };
                   updateNode(updatedNode);
                 }}
-                style={{
-                  flex: 1,
-                  background: '#48bb78',
-                  color: 'white',
-                  border: 'none',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: '600'
-                }}
+                className="save-btn"
               >
                 Save Changes
               </button>
@@ -1181,6 +984,467 @@ const EvolutionChartMaker = () => {
         onChange={importProject}
         style={{ display: 'none' }}
       />
+
+      <style jsx>{`
+        .evolution-chart-maker {
+          width: 100vw;
+          height: 100vh;
+          background: #4a90a4;
+          font-family: system-ui, -apple-system, sans-serif;
+          overflow: hidden;
+          user-select: none;
+        }
+        
+        .header {
+          background: rgba(255, 255, 255, 0.95);
+          padding: 12px 20px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          border-bottom: 1px solid rgba(0,0,0,0.1);
+          z-index: 1000;
+          position: relative;
+        }
+        
+        .header-left {
+          display: flex;
+          align-items: center;
+          gap: 15px;
+        }
+        
+        h1 {
+          margin: 0;
+          font-size: 24px;
+          font-weight: 700;
+          color: #2d3748;
+        }
+        
+        .project-name {
+          background: #4299e1;
+          color: white;
+          padding: 4px 12px;
+          border-radius: 20px;
+          font-size: 14px;
+          font-weight: 500;
+        }
+        
+        .toolbar {
+          display: flex;
+          gap: 8px;
+        }
+        
+        .toolbar-btn {
+          color: white;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 8px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-weight: 500;
+          font-size: 14px;
+        }
+        
+        .primary {
+          background: #48bb78;
+        }
+        
+        .warning {
+          background: #ed8936;
+        }
+        
+        .danger {
+          background: #f56565;
+        }
+        
+        .info {
+          background: #4299e1;
+        }
+        
+        .zoom-controls {
+          display: flex;
+          gap: 4px;
+        }
+        
+        .zoom-btn {
+          padding: 8px;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          background: #e2e8f0;
+        }
+        
+        .timeline {
+          position: absolute;
+          top: 70px;
+          left: 0;
+          right: 0;
+          height: ${TIMELINE_HEIGHT}px;
+          background: rgba(255, 255, 255, 0.9);
+          border-bottom: 2px solid #4299e1;
+          z-index: 100;
+          overflow: hidden;
+        }
+        
+        .timeline-marker {
+          position: absolute;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-width: 60px;
+          transition: left 0.15s ease-out;
+        }
+        
+        .timeline-line {
+          width: 2px;
+          height: 20px;
+          background: #4299e1;
+          margin-bottom: 4px;
+        }
+        
+        .timeline-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #2d3748;
+          white-space: nowrap;
+        }
+        
+        .canvas {
+          position: absolute;
+          top: ${70 + TIMELINE_HEIGHT}px;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          overflow: hidden;
+          background: #4a90a4;
+        }
+        
+        .connections-svg {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          z-index: 1;
+        }
+        
+        .node {
+          position: absolute;
+          background: #66bb6a;
+          border-radius: 25px;
+          padding: 8px;
+          cursor: grab;
+          z-index: 10;
+          border: 2px solid rgba(255,255,255,0.3);
+          box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+          transition: all 0.2s ease;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        
+        .node.selected {
+          background: #81c784;
+          border: 3px solid #2e7d32;
+          z-index: 100;
+        }
+        
+        .node-image {
+          object-fit: cover;
+          border-radius: 50%;
+          margin-bottom: 4px;
+          pointer-events: none;
+        }
+        
+        .node-title {
+          color: white;
+          font-weight: 600;
+          text-align: center;
+          margin-bottom: 2px;
+          line-height: 1.2;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 1;
+          -webkit-box-orient: vertical;
+        }
+        
+        .node-timeline {
+          color: rgba(255,255,255,0.9);
+          text-align: center;
+          font-weight: 500;
+        }
+        
+        .delete-node-btn {
+          position: absolute;
+          top: -8px;
+          right: -8px;
+          background: #e53e3e;
+          color: white;
+          border: none;
+          border-radius: 50%;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 200;
+        }
+        
+        .connection-mode-indicator {
+          position: absolute;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(255, 255, 255, 0.9);
+          padding: 8px 16px;
+          border-radius: 20px;
+          font-size: 14px;
+          font-weight: 600;
+          color: #2d3748;
+          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+          z-index: 1000;
+        }
+        
+        .instructions-panel {
+          position: absolute;
+          bottom: 20px;
+          left: 20px;
+          background: rgba(255, 255, 255, 0.9);
+          padding: 12px 16px;
+          border-radius: 8px;
+          font-size: 12px;
+          color: #4a5568;
+          z-index: 100;
+        }
+        
+        .instructions-panel div {
+          margin-bottom: 4px;
+        }
+        
+        .welcome-screen {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: calc(100vh - 70px);
+          color: white;
+          text-align: center;
+        }
+        
+        .welcome-icon {
+          font-size: 48px;
+          margin-bottom: 20px;
+        }
+        
+        .welcome-screen h2 {
+          font-size: 32px;
+          margin-bottom: 16px;
+        }
+        
+        .welcome-screen p {
+          font-size: 18px;
+          margin-bottom: 30px;
+          opacity: 0.9;
+        }
+        
+        .create-project-btn {
+          background: rgba(255,255,255,0.2);
+          color: white;
+          border: 2px solid rgba(255,255,255,0.3);
+          padding: 15px 30px;
+          border-radius: 12px;
+          font-size: 16px;
+          cursor: pointer;
+          backdrop-filter: blur(10px);
+          transition: all 0.2s ease;
+        }
+        
+        .create-project-btn:hover {
+          background: rgba(255,255,255,0.3);
+        }
+        
+        /* Modal styles */
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0,0,0,0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+        
+        .modal-content {
+          background: white;
+          border-radius: 16px;
+          padding: 24px;
+          width: 400px;
+          max-height: 80vh;
+          overflow: auto;
+        }
+        
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+        }
+        
+        .modal-header h2 {
+          margin: 0;
+          color: #2d3748;
+        }
+        
+        .close-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+        }
+        
+        .modal-section {
+          margin-bottom: 20px;
+        }
+        
+        .modal-section h3 {
+          margin-bottom: 12px;
+          color: #4a5568;
+        }
+        
+        .form-group {
+          margin-bottom: 16px;
+        }
+        
+        .form-group label {
+          display: block;
+          margin-bottom: 6px;
+          font-weight: 600;
+          color: #4a5568;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+          width: 100%;
+          padding: 12px;
+          border: 2px solid #e2e8f0;
+          border-radius: 8px;
+          font-size: 14px;
+          font-family: inherit;
+        }
+        
+        .form-group textarea {
+          resize: vertical;
+        }
+        
+        .form-row {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+        
+        .form-row .form-group {
+          flex: 1;
+          margin-bottom: 0;
+        }
+        
+        .create-btn {
+          background: #48bb78;
+          color: white;
+          border: none;
+          padding: 12px 24px;
+          border-radius: 8px;
+          cursor: pointer;
+          width: 100%;
+          font-weight: 600;
+        }
+        
+        .project-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px;
+          border: 2px solid #e2e8f0;
+          border-radius: 8px;
+          margin-bottom: 8px;
+          transition: all 0.2s ease;
+        }
+        
+        .project-item:hover {
+          border-color: #4299e1;
+        }
+        
+        .project-info {
+          flex: 1;
+          cursor: pointer;
+        }
+        
+        .project-name {
+          font-weight: 600;
+          color: #2d3748;
+          background: none;
+          padding: 0;
+          border-radius: 0;
+          font-size: inherit;
+        }
+        
+        .project-timeline {
+          font-size: 12px;
+          color: #718096;
+        }
+        
+        .delete-project-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 4px;
+          color: #e53e3e;
+        }
+        
+        .form-actions {
+          display: flex;
+          gap: 12px;
+        }
+        
+        .cancel-btn {
+          flex: 1;
+          background: #e2e8f0;
+          color: #4a5568;
+          border: none;
+          padding: 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 600;
+        }
+        
+        .save-btn {
+          flex: 1;
+          background: #48bb78;
+          color: white;
+          border: none;
+          padding: 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 600;
+        }
+        
+        select {
+          appearance: none;
+          background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+          background-repeat: no-repeat;
+          background-position: right 10px center;
+          background-size: 16px;
+          padding-right: 30px;
+        }
+      `}</style>
     </div>
   );
 };
