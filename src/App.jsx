@@ -21,6 +21,9 @@ const EvolutionChartMaker = () => {
   const fileInputRef = useRef(null);
   const animationRef = useRef(null);
   const lastPanTime = useRef(0);
+  const lastPosition = useRef({ x: 0, y: 0 });
+  const velocityRef = useRef({ x: 0, y: 0 });
+  const timestampRef = useRef(0);
 
   // State
   const [projects, setProjects] = useState([]);
@@ -40,37 +43,52 @@ const EvolutionChartMaker = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragNode, setDragNode] = useState(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [velocity, setVelocity] = useState({ x: 0, y: 0 });
 
-  // Load from localStorage
+  // Load from localStorage on initial render
   useEffect(() => {
-    const saved = localStorage.getItem('evolutionChartData');
-    if (saved) {
-      const data = JSON.parse(saved);
-      setProjects(data.projects || []);
-      setCurrentProject(data.currentProject || null);
-      setNodes(data.nodes || []);
-      setConnections(data.connections || []);
-      setZoom(data.zoom || 1);
-      setPan(data.pan || { x: 0, y: 0 });
-      setTargetPan(data.pan || { x: 0, y: 0 });
+    const savedData = localStorage.getItem('evolutionChartData');
+    if (savedData) {
+      try {
+        const data = JSON.parse(savedData);
+        if (data.projects) {
+          setProjects(data.projects);
+          // If there was a current project, try to load it
+          if (data.currentProject) {
+            const projectToLoad = data.projects.find(p => p.id === data.currentProject.id);
+            if (projectToLoad) {
+              loadProject(projectToLoad);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Failed to parse saved data", e);
+      }
     }
   }, []);
 
-  // Save to localStorage
+  // Save to localStorage whenever relevant data changes
   useEffect(() => {
-    const data = { projects, currentProject, nodes, connections, zoom, pan };
+    const data = {
+      projects,
+      currentProject,
+      nodes: currentProject ? nodes : [],
+      connections: currentProject ? connections : [],
+      zoom: currentProject ? zoom : 1,
+      pan: currentProject ? pan : { x: 0, y: 0 }
+    };
     localStorage.setItem('evolutionChartData', JSON.stringify(data));
   }, [projects, currentProject, nodes, connections, zoom, pan]);
 
-  // Smooth pan animation
+  // Smooth pan animation using requestAnimationFrame
   useEffect(() => {
+    let animationFrameId;
     const animate = () => {
       const now = Date.now();
       const deltaTime = Math.min(now - lastPanTime.current, 100) / 1000;
       lastPanTime.current = now;
 
       if (deltaTime > 0) {
+        // Apply smooth interpolation to target pan
         const dx = (targetPan.x - pan.x) * 0.2;
         const dy = (targetPan.y - pan.y) * 0.2;
         
@@ -79,20 +97,20 @@ const EvolutionChartMaker = () => {
             x: prev.x + dx,
             y: prev.y + dy
           }));
-          animationRef.current = requestAnimationFrame(animate);
+          animationFrameId = requestAnimationFrame(animate);
         } else {
           setPan(targetPan);
         }
       } else {
-        animationRef.current = requestAnimationFrame(animate);
+        animationFrameId = requestAnimationFrame(animate);
       }
     };
 
-    animationRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationRef.current);
+    animationFrameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrameId);
   }, [pan, targetPan]);
 
-  // Project management
+  // Project management functions
   const createProject = (name, start, end, timeUnit) => {
     const newProject = {
       id: Date.now(),
@@ -100,10 +118,11 @@ const EvolutionChartMaker = () => {
       timelineStart: start,
       timelineEnd: end,
       timeUnit,
-      nodes: [],
-      connections: []
+      createdAt: new Date().toISOString()
     };
-    setProjects([...projects, newProject]);
+    
+    const updatedProjects = [...projects, newProject];
+    setProjects(updatedProjects);
     setCurrentProject(newProject);
     setNodes([]);
     setConnections([]);
@@ -114,7 +133,9 @@ const EvolutionChartMaker = () => {
   };
 
   const deleteProject = (projectId) => {
-    setProjects(projects.filter(p => p.id !== projectId));
+    const updatedProjects = projects.filter(p => p.id !== projectId);
+    setProjects(updatedProjects);
+    
     if (currentProject?.id === projectId) {
       setCurrentProject(null);
       setNodes([]);
@@ -127,29 +148,32 @@ const EvolutionChartMaker = () => {
     setNodes(project.nodes || []);
     setConnections(project.connections || []);
     setShowProjectDialog(false);
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-    setTargetPan({ x: 0, y: 0 });
+    setZoom(project.zoom || 1);
+    setPan(project.pan || { x: 0, y: 0 });
+    setTargetPan(project.pan || { x: 0, y: 0 });
   };
 
-  const saveCurrentProject = () => {
+  const saveCurrentProject = useCallback(() => {
     if (!currentProject) return;
     
     const updatedProject = {
       ...currentProject,
       nodes,
-      connections
+      connections,
+      zoom,
+      pan
     };
     
-    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p));
+    setProjects(prevProjects => 
+      prevProjects.map(p => p.id === currentProject.id ? updatedProject : p)
+    );
     setCurrentProject(updatedProject);
-  };
+  }, [currentProject, nodes, connections, zoom, pan]);
 
   // Timeline calculations
   const getTimelinePosition = useCallback((timelineValue) => {
     if (!currentProject) return 0;
     
-    // Convert the timeline value to years based on its unit
     const valueInYears = convertToYears(timelineValue.value, timelineValue.unit);
     const startInYears = convertToYears(currentProject.timelineStart, currentProject.timeUnit);
     const endInYears = convertToYears(currentProject.timelineEnd, currentProject.timeUnit);
@@ -172,6 +196,16 @@ const EvolutionChartMaker = () => {
     if (unit === 'kya') return `${value} KYA`;
     return `${value} YA`;
   };
+
+  const getTimelineFromX = useCallback((x) => {
+    if (!currentProject) return 0;
+    const canvasWidth = canvasRef.current?.offsetWidth || 800;
+    const startInYears = convertToYears(currentProject.timelineStart, currentProject.timeUnit);
+    const endInYears = convertToYears(currentProject.timelineEnd, currentProject.timeUnit);
+    const range = startInYears - endInYears;
+    const position = x / canvasWidth;
+    return startInYears - (position * range);
+  }, [currentProject]);
 
   const getVisibleTimelineMarkers = useCallback(() => {
     if (!currentProject) return [];
@@ -220,7 +254,6 @@ const EvolutionChartMaker = () => {
     
     for (let i = start; i <= end; i += stepYears) {
       if (i >= endInYears && i <= startInYears) {
-        // Find the best unit to display this marker
         let displayValue = i;
         let displayUnit = 'ya';
         
@@ -244,17 +277,7 @@ const EvolutionChartMaker = () => {
     }
     
     return markers;
-  }, [currentProject, zoom, pan]);
-
-  const getTimelineFromX = useCallback((x) => {
-    if (!currentProject) return 0;
-    const canvasWidth = canvasRef.current?.offsetWidth || 800;
-    const startInYears = convertToYears(currentProject.timelineStart, currentProject.timeUnit);
-    const endInYears = convertToYears(currentProject.timelineEnd, currentProject.timeUnit);
-    const range = startInYears - endInYears;
-    const position = x / canvasWidth;
-    return startInYears - (position * range);
-  }, [currentProject]);
+  }, [currentProject, zoom, pan, getTimelineFromX]);
 
   // Node management
   const createNode = (clientX, clientY) => {
@@ -264,10 +287,7 @@ const EvolutionChartMaker = () => {
     const canvasX = clientX - rect.left;
     const canvasY = clientY - rect.top - TIMELINE_HEIGHT;
     
-    // Calculate timeline position based on X coordinate
     const years = getTimelineFromX((canvasX - pan.x) / zoom);
-    
-    // Convert years to project's time unit for display
     const displayValue = years / (TIME_UNITS.find(u => u.value === currentProject.timeUnit)?.multiplier || 1);
     
     const newNode = {
@@ -315,7 +335,7 @@ const EvolutionChartMaker = () => {
     setSelectedConnection(null);
   };
 
-  // Dragging functionality
+  // Dragging functionality with improved smoothness
   const handleMouseDown = (e, node) => {
     if (connectionMode) return;
     
@@ -328,6 +348,12 @@ const EvolutionChartMaker = () => {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top
     });
+    
+    // Initialize velocity tracking
+    lastPosition.current = { x: e.clientX, y: e.clientY };
+    velocityRef.current = { x: 0, y: 0 };
+    timestampRef.current = performance.now();
+    
     setSelectedNode(node);
     setSelectedConnection(null);
   };
@@ -335,13 +361,28 @@ const EvolutionChartMaker = () => {
   const handleMouseMove = useCallback((e) => {
     if (!isDragging || !dragNode) return;
     
+    const now = performance.now();
+    const deltaTime = (now - timestampRef.current) / 1000;
+    timestampRef.current = now;
+    
     const rect = canvasRef.current.getBoundingClientRect();
     const currentX = e.clientX - rect.left;
     const currentY = e.clientY - rect.top;
     
+    // Calculate velocity
+    const deltaX = e.clientX - lastPosition.current.x;
+    const deltaY = e.clientY - lastPosition.current.y;
+    lastPosition.current = { x: e.clientX, y: e.clientY };
+    
+    // Smooth velocity calculation
+    velocityRef.current = {
+      x: deltaX / (deltaTime || 0.016),
+      y: deltaY / (deltaTime || 0.016)
+    };
+    
     // Calculate new Y position (X is fixed by timeline)
-    const deltaY = (currentY - dragStart.y) / zoom;
-    const newY = Math.max(20, dragNode.y + deltaY);
+    const deltaYPos = (currentY - dragStart.y) / zoom;
+    const newY = Math.max(20, dragNode.y + deltaYPos);
     
     // Update node position
     const updatedNode = {
@@ -355,27 +396,19 @@ const EvolutionChartMaker = () => {
     
     setDragNode(updatedNode);
     setDragStart({ x: currentX, y: currentY });
-    
-    // Update velocity for momentum scrolling
-    const now = Date.now();
-    const deltaTime = now - lastPanTime.current;
-    if (deltaTime > 0) {
-      setVelocity({
-        x: (currentX - dragStart.x) / deltaTime,
-        y: (currentY - dragStart.y) / deltaTime
-      });
-    }
-    lastPanTime.current = now;
   }, [isDragging, dragNode, dragStart, zoom]);
 
   const handleMouseUp = useCallback(() => {
+    if (!isDragging) return;
+    
     setIsDragging(false);
     setDragNode(null);
     
-    // Apply momentum scrolling
-    if (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.y) > 0.1) {
-      const momentumX = velocity.x * 1000;
-      const momentumY = velocity.y * 1000;
+    // Apply momentum scrolling if velocity is significant
+    if (Math.abs(velocityRef.current.x) > 50 || Math.abs(velocityRef.current.y) > 50) {
+      const momentumFactor = 0.9; // Damping factor
+      const momentumX = velocityRef.current.x * momentumFactor;
+      const momentumY = velocityRef.current.y * momentumFactor;
       
       setTargetPan(prev => ({
         x: prev.x - momentumX,
@@ -383,8 +416,8 @@ const EvolutionChartMaker = () => {
       }));
     }
     
-    setVelocity({ x: 0, y: 0 });
-  }, [velocity]);
+    velocityRef.current = { x: 0, y: 0 };
+  }, [isDragging]);
 
   // Connection handling
   const handleNodeClick = (e, node) => {
@@ -394,7 +427,6 @@ const EvolutionChartMaker = () => {
       if (!connectionStart) {
         setConnectionStart(node.id);
       } else if (connectionStart !== node.id) {
-        // Create connection if it doesn't exist
         const existingConnection = connections.find(conn =>
           (conn.from === connectionStart && conn.to === node.id) ||
           (conn.from === node.id && conn.to === connectionStart)
@@ -412,8 +444,10 @@ const EvolutionChartMaker = () => {
     }
   };
 
-  // Calculate curved path for connections
+  // Calculate curved path for connections that stay attached to nodes during zoom
   const getConnectionPath = (fromNode, toNode) => {
+    if (!fromNode || !toNode) return '';
+    
     const fromX = (getTimelinePosition(fromNode.timeline) + pan.x) * zoom + (NODE_WIDTH * zoom) / 2;
     const fromY = (fromNode.y + pan.y) * zoom + TIMELINE_HEIGHT + (NODE_HEIGHT * zoom) / 2;
     const toX = (getTimelinePosition(toNode.timeline) + pan.x) * zoom + (NODE_WIDTH * zoom) / 2;
@@ -427,7 +461,6 @@ const EvolutionChartMaker = () => {
               ${toX} ${toY}`;
   };
 
-  // Get midpoint of connection for delete button
   const getConnectionMidpoint = (fromNode, toNode) => {
     const fromX = (getTimelinePosition(fromNode.timeline) + pan.x) * zoom + (NODE_WIDTH * zoom) / 2;
     const fromY = (fromNode.y + pan.y) * zoom + TIMELINE_HEIGHT + (NODE_HEIGHT * zoom) / 2;
@@ -447,7 +480,9 @@ const EvolutionChartMaker = () => {
     const exportData = {
       project: currentProject,
       nodes,
-      connections
+      connections,
+      zoom,
+      pan
     };
     
     const dataStr = JSON.stringify(exportData, null, 2);
@@ -472,6 +507,9 @@ const EvolutionChartMaker = () => {
           setCurrentProject(importData.project);
           setNodes(importData.nodes || []);
           setConnections(importData.connections || []);
+          setZoom(importData.zoom || 1);
+          setPan(importData.pan || { x: 0, y: 0 });
+          setTargetPan(importData.pan || { x: 0, y: 0 });
           
           if (!projects.some(p => p.id === importData.project.id)) {
             setProjects([...projects, importData.project]);
@@ -503,15 +541,21 @@ const EvolutionChartMaker = () => {
     setShowNodeEditor(true);
   };
 
-  // Zoom and pan functionality
+  // Improved zoom functionality that keeps content centered
   const handleZoom = (delta, centerX = null, centerY = null) => {
     const newZoom = Math.max(0.1, Math.min(5, zoom + delta));
     
     if (centerX !== null && centerY !== null) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const mouseX = centerX - rect.left;
+      const mouseY = centerY - rect.top - TIMELINE_HEIGHT;
+      
+      // Calculate new pan to keep content under mouse stable
       const newPan = {
-        x: centerX - (centerX - pan.x) * (newZoom / zoom),
-        y: centerY - (centerY - pan.y) * (newZoom / zoom)
+        x: mouseX - (mouseX - pan.x) * (newZoom / zoom),
+        y: mouseY - (mouseY - pan.y) * (newZoom / zoom)
       };
+      
       setPan(newPan);
       setTargetPan(newPan);
     }
@@ -523,18 +567,14 @@ const EvolutionChartMaker = () => {
     e.preventDefault();
     
     if (e.shiftKey) {
-      // Smooth horizontal scrolling with Shift
+      // Horizontal scrolling
       setTargetPan(prev => ({
         x: prev.x - e.deltaY * 0.8,
         y: prev.y
       }));
-    } else if (e.ctrlKey) {
+    } else if (e.ctrlKey || e.metaKey) {
       // Zoom centered on mouse position
-      const rect = canvasRef.current.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-      
-      handleZoom(-e.deltaY * 0.001, mouseX, mouseY);
+      handleZoom(-e.deltaY * 0.001, e.clientX, e.clientY);
     } else {
       // Regular panning
       setTargetPan(prev => ({
@@ -544,14 +584,16 @@ const EvolutionChartMaker = () => {
     }
   };
 
-  // Event listeners
+  // Event listeners for smooth dragging
   useEffect(() => {
+    const handleMouseUpGlobal = () => handleMouseUp();
+    
     document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseup', handleMouseUpGlobal);
     
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseup', handleMouseUpGlobal);
     };
   }, [handleMouseMove, handleMouseUp]);
 
@@ -561,7 +603,7 @@ const EvolutionChartMaker = () => {
       const timer = setTimeout(saveCurrentProject, 1000);
       return () => clearTimeout(timer);
     }
-  }, [nodes, connections, currentProject]);
+  }, [nodes, connections, zoom, pan, currentProject, saveCurrentProject]);
 
   // Render
   return (
@@ -664,6 +706,7 @@ const EvolutionChartMaker = () => {
             {connections.map(conn => {
               const fromNode = nodes.find(n => n.id === conn.from);
               const toNode = nodes.find(n => n.id === conn.to);
+              
               if (!fromNode || !toNode) return null;
               
               const midpoint = getConnectionMidpoint(fromNode, toNode);
@@ -707,7 +750,8 @@ const EvolutionChartMaker = () => {
                 top: `${(node.y + pan.y) * zoom}px`,
                 width: `${NODE_WIDTH * zoom}px`,
                 height: `${NODE_HEIGHT * zoom}px`,
-                transform: isDragging && dragNode?.id === node.id ? 'scale(1.02)' : 'scale(1)'
+                transform: isDragging && dragNode?.id === node.id ? 'scale(1.02)' : 'scale(1)',
+                transition: isDragging ? 'none' : 'transform 0.2s ease, top 0.2s ease'
               }}
               onMouseDown={(e) => handleMouseDown(e, node)}
               onClick={(e) => handleNodeClick(e, node)}
@@ -773,11 +817,31 @@ const EvolutionChartMaker = () => {
           <div className="welcome-icon">🧬</div>
           <h2>Welcome to Evolution Chart Maker</h2>
           <p>Create beautiful evolutionary trees and classification charts</p>
+          
+          {projects.length > 0 && (
+            <div className="project-list">
+              <h3>Your Projects</h3>
+              {projects.map(project => (
+                <div 
+                  key={project.id} 
+                  className="project-card"
+                  onClick={() => loadProject(project)}
+                >
+                  <div className="project-card-name">{project.name}</div>
+                  <div className="project-card-meta">
+                    {new Date(project.createdAt).toLocaleDateString()} • 
+                    {project.nodes?.length || 0} nodes
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
           <button
             onClick={() => setShowProjectDialog(true)}
             className="create-project-btn"
           >
-            Create Your First Project
+            Create New Project
           </button>
         </div>
       )}
@@ -1095,7 +1159,6 @@ const EvolutionChartMaker = () => {
           align-items: center;
           justify-content: center;
           min-width: 60px;
-          transition: left 0.15s ease-out;
         }
         
         .timeline-line {
@@ -1141,7 +1204,6 @@ const EvolutionChartMaker = () => {
           z-index: 10;
           border: 2px solid rgba(255,255,255,0.3);
           box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-          transition: all 0.2s ease;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -1234,6 +1296,7 @@ const EvolutionChartMaker = () => {
           height: calc(100vh - 70px);
           color: white;
           text-align: center;
+          padding: 20px;
         }
         
         .welcome-icon {
@@ -1250,6 +1313,37 @@ const EvolutionChartMaker = () => {
           font-size: 18px;
           margin-bottom: 30px;
           opacity: 0.9;
+        }
+        
+        .project-list {
+          width: 100%;
+          max-width: 500px;
+          margin-bottom: 20px;
+        }
+        
+        .project-card {
+          background: rgba(255,255,255,0.15);
+          border-radius: 12px;
+          padding: 16px;
+          margin-bottom: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          backdrop-filter: blur(5px);
+        }
+        
+        .project-card:hover {
+          background: rgba(255,255,255,0.25);
+        }
+        
+        .project-card-name {
+          font-size: 18px;
+          font-weight: 600;
+          margin-bottom: 4px;
+        }
+        
+        .project-card-meta {
+          font-size: 14px;
+          opacity: 0.8;
         }
         
         .create-project-btn {
