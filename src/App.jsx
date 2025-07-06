@@ -1,58 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useReducer } from 'react';
 import EvolutionChartMain from './treecanvas';
 import EvolutionChartMaker from './timeline';
 
-const App = () => {
-  const [projects, setProjects] = useState([]);
-  const [currentProject, setCurrentProject] = useState(null);
+const getStoredData = () => {
+  const savedData = localStorage.getItem('evolutionChartData');
+  if (!savedData) return { projects: [], currentProject: null };
 
-  // Load from localStorage on initial render
-  useEffect(() => {
-    const savedData = localStorage.getItem('evolutionChartData');
-    if (savedData) {
-      try {
-        const data = JSON.parse(savedData);
-        if (data.projects) {
-          setProjects(data.projects);
-          if (data.currentProject) {
-            // Find the full project data from projects array
-            const projectToLoad = data.projects.find(p => p.id === data.currentProject.id);
-            if (projectToLoad) {
-              setCurrentProject({
-                ...projectToLoad,
-                nodes: data.currentProject.nodes || [],
-                connections: data.currentProject.connections || [],
-                zoom: data.currentProject.zoom || 1,
-                pan: data.currentProject.pan || { x: 0, y: 0 }
-              });
-            }
+  try {
+    const parsed = JSON.parse(savedData);
+    return {
+      projects: parsed.projects || [],
+      currentProject: parsed.currentProject
+        ? {
+            ...parsed.currentProject,
+            nodes: parsed.currentProject.nodes || [],
+            connections: parsed.currentProject.connections || [],
+            zoom: parsed.currentProject.zoom || 1,
+            pan: parsed.currentProject.pan || { x: 0, y: 0 }
           }
-        }
-      } catch (e) {
-        console.error("Failed to parse saved data", e);
-      }
-    }
-  }, []);
-
-  // Save to localStorage whenever relevant data changes
-  useEffect(() => {
-    const data = {
-      projects,
-      currentProject: currentProject ? {
-        id: currentProject.id,
-        name: currentProject.name,
-        timelineStart: currentProject.timelineStart,
-        timelineEnd: currentProject.timelineEnd,
-        timeUnit: currentProject.timeUnit,
-        createdAt: currentProject.createdAt,
-        nodes: currentProject.nodes,
-        connections: currentProject.connections,
-        zoom: currentProject.zoom,
-        pan: currentProject.pan
-      } : null
+        : null
     };
-    localStorage.setItem('evolutionChartData', JSON.stringify(data));
-  }, [projects, currentProject]);
+  } catch (e) {
+    console.error('Failed to parse localStorage data:', e);
+    return { projects: [], currentProject: null };
+  }
+};
+
+const saveToLocalStorage = (projects, currentProject) => {
+  localStorage.setItem(
+    'evolutionChartData',
+    JSON.stringify({ 
+      projects: projects.map(p => ({
+        ...p,
+        // Ensure we save the full project data including nodes/connections when it's the current project
+        nodes: currentProject?.id === p.id ? currentProject.nodes : p.nodes || [],
+        connections: currentProject?.id === p.id ? currentProject.connections : p.connections || [],
+        zoom: currentProject?.id === p.id ? currentProject.zoom : p.zoom || 1,
+        pan: currentProject?.id === p.id ? currentProject.pan : p.pan || { x: 0, y: 0 }
+      })),
+      currentProject 
+    })
+  );
+};
+
+const App = () => {
+  const [, forceUpdate] = useReducer(x => x + 1, 0);
+  const { projects, currentProject } = getStoredData();
 
   const createProject = (name, start, end, timeUnit) => {
     const newProject = {
@@ -67,26 +60,29 @@ const App = () => {
       zoom: 1,
       pan: { x: 0, y: 0 }
     };
-    
-    const updatedProjects = [...projects, newProject];
-    setProjects(updatedProjects);
-    setCurrentProject(newProject);
+    saveToLocalStorage([...projects, newProject], newProject);
+    forceUpdate();
   };
 
   const deleteProject = (projectId) => {
     const updatedProjects = projects.filter(p => p.id !== projectId);
-    setProjects(updatedProjects);
-    
-    if (currentProject?.id === projectId) {
-      setCurrentProject(null);
-    }
+    const isCurrent = currentProject?.id === projectId;
+    saveToLocalStorage(updatedProjects, isCurrent ? null : currentProject);
+    forceUpdate();
   };
 
   const updateProject = (updatedProject) => {
-    setProjects(prevProjects => 
-      prevProjects.map(p => p.id === updatedProject.id ? updatedProject : p)
+    saveToLocalStorage(
+      projects.map(p => p.id === updatedProject.id ? {
+        ...p,
+        nodes: updatedProject.nodes,
+        connections: updatedProject.connections,
+        zoom: updatedProject.zoom,
+        pan: updatedProject.pan
+      } : p),
+      updatedProject
     );
-    setCurrentProject(updatedProject);
+    forceUpdate();
   };
 
   return (
@@ -97,13 +93,19 @@ const App = () => {
           nodes={currentProject.nodes || []}
           connections={currentProject.connections || []}
           onUpdateProject={updateProject}
-          onBack={() => setCurrentProject(null)}
+          onBack={() => {
+            saveToLocalStorage(projects, null);
+            forceUpdate();
+          }}
         />
       ) : (
         <EvolutionChartMain
           projects={projects}
           onCreateProject={createProject}
-          onLoadProject={setCurrentProject}
+          onLoadProject={(project) => {
+            saveToLocalStorage(projects, project);
+            forceUpdate();
+          }}
           onDeleteProject={deleteProject}
         />
       )}
