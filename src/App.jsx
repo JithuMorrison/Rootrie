@@ -24,6 +24,7 @@ const EvolutionChartMaker = () => {
   const lastPosition = useRef({ x: 0, y: 0 });
   const velocityRef = useRef({ x: 0, y: 0 });
   const timestampRef = useRef(0);
+  const isDraggingRef = useRef(false);
 
   // State
   const [projects, setProjects] = useState([]);
@@ -40,9 +41,6 @@ const EvolutionChartMaker = () => {
   const [showProjectDialog, setShowProjectDialog] = useState(false);
   const [connectionMode, setConnectionMode] = useState(false);
   const [connectionStart, setConnectionStart] = useState(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragNode, setDragNode] = useState(null);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   // Load from localStorage on initial render
   useEffect(() => {
@@ -52,7 +50,6 @@ const EvolutionChartMaker = () => {
         const data = JSON.parse(savedData);
         if (data.projects) {
           setProjects(data.projects);
-          // If there was a current project, try to load it
           if (data.currentProject) {
             const projectToLoad = data.projects.find(p => p.id === data.currentProject.id);
             if (projectToLoad) {
@@ -87,7 +84,7 @@ const EvolutionChartMaker = () => {
       const deltaTime = Math.min(now - lastPanTime.current, 100) / 1000;
       lastPanTime.current = now;
 
-      if (deltaTime > 0) {
+      if (deltaTime > 0 && !isDraggingRef.current) {
         // Apply smooth interpolation to target pan
         const dx = (targetPan.x - pan.x) * 0.2;
         const dy = (targetPan.y - pan.y) * 0.2;
@@ -335,31 +332,25 @@ const EvolutionChartMaker = () => {
     setSelectedConnection(null);
   };
 
-  // Dragging functionality with improved smoothness
+  // Improved dragging functionality
   const handleMouseDown = (e, node) => {
     if (connectionMode) return;
     
     e.stopPropagation();
-    setIsDragging(true);
-    setDragNode(node);
-    
-    const rect = canvasRef.current.getBoundingClientRect();
-    setDragStart({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    });
-    
-    // Initialize velocity tracking
-    lastPosition.current = { x: e.clientX, y: e.clientY };
-    velocityRef.current = { x: 0, y: 0 };
-    timestampRef.current = performance.now();
-    
+    isDraggingRef.current = true;
     setSelectedNode(node);
     setSelectedConnection(null);
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    lastPosition.current = {
+      x: e.clientX,
+      y: e.clientY
+    };
+    timestampRef.current = performance.now();
   };
 
   const handleMouseMove = useCallback((e) => {
-    if (!isDragging || !dragNode) return;
+    if (!isDraggingRef.current || !selectedNode) return;
     
     const now = performance.now();
     const deltaTime = (now - timestampRef.current) / 1000;
@@ -374,50 +365,45 @@ const EvolutionChartMaker = () => {
     const deltaY = e.clientY - lastPosition.current.y;
     lastPosition.current = { x: e.clientX, y: e.clientY };
     
-    // Smooth velocity calculation
     velocityRef.current = {
       x: deltaX / (deltaTime || 0.016),
       y: deltaY / (deltaTime || 0.016)
     };
     
     // Calculate new Y position (X is fixed by timeline)
-    const deltaYPos = (currentY - dragStart.y) / zoom;
-    const newY = Math.max(20, dragNode.y + deltaYPos);
+    const deltaYPos = deltaY / zoom;
+    const newY = Math.max(20, selectedNode.y + deltaYPos);
     
     // Update node position
     const updatedNode = {
-      ...dragNode,
+      ...selectedNode,
       y: newY
     };
     
     setNodes(prev => prev.map(node => 
-      node.id === dragNode.id ? updatedNode : node
+      node.id === selectedNode.id ? updatedNode : node
     ));
-    
-    setDragNode(updatedNode);
-    setDragStart({ x: currentX, y: currentY });
-  }, [isDragging, dragNode, dragStart, zoom]);
+    setSelectedNode(updatedNode);
+  }, [selectedNode, zoom]);
 
   const handleMouseUp = useCallback(() => {
-    if (!isDragging) return;
+    if (!isDraggingRef.current) return;
     
-    setIsDragging(false);
-    setDragNode(null);
+    isDraggingRef.current = false;
     
     // Apply momentum scrolling if velocity is significant
-    if (Math.abs(velocityRef.current.x) > 50 || Math.abs(velocityRef.current.y) > 50) {
-      const momentumFactor = 0.9; // Damping factor
-      const momentumX = velocityRef.current.x * momentumFactor;
+    if (Math.abs(velocityRef.current.y) > 50) {
+      const momentumFactor = 0.9;
       const momentumY = velocityRef.current.y * momentumFactor;
       
       setTargetPan(prev => ({
-        x: prev.x - momentumX,
+        x: prev.x,
         y: prev.y - momentumY
       }));
     }
     
     velocityRef.current = { x: 0, y: 0 };
-  }, [isDragging]);
+  }, []);
 
   // Connection handling
   const handleNodeClick = (e, node) => {
@@ -438,13 +424,13 @@ const EvolutionChartMaker = () => {
         setConnectionMode(false);
         setConnectionStart(null);
       }
-    } else if (!isDragging) {
+    } else if (!isDraggingRef.current) {
       setSelectedNode(node);
       setSelectedConnection(null);
     }
   };
 
-  // Calculate curved path for connections that stay attached to nodes during zoom
+  // Calculate curved path for connections that stay properly attached
   const getConnectionPath = (fromNode, toNode) => {
     if (!fromNode || !toNode) return '';
     
@@ -541,7 +527,7 @@ const EvolutionChartMaker = () => {
     setShowNodeEditor(true);
   };
 
-  // Improved zoom functionality that keeps content centered
+  // Improved zoom functionality
   const handleZoom = (delta, centerX = null, centerY = null) => {
     const newZoom = Math.max(0.1, Math.min(5, zoom + delta));
     
@@ -563,23 +549,24 @@ const EvolutionChartMaker = () => {
     setZoom(newZoom);
   };
 
+  // Smooth scrolling for both normal and shift scroll
   const handleWheel = (e) => {
     e.preventDefault();
     
+    const deltaFactor = 0.5;
+    const smoothingFactor = 0.1;
+    
     if (e.shiftKey) {
-      // Horizontal scrolling
+      // Horizontal scrolling with shift
       setTargetPan(prev => ({
-        x: prev.x - e.deltaY * 0.8,
+        x: prev.x - e.deltaY * deltaFactor,
         y: prev.y
       }));
-    } else if (e.ctrlKey || e.metaKey) {
-      // Zoom centered on mouse position
-      handleZoom(-e.deltaY * 0.001, e.clientX, e.clientY);
     } else {
-      // Regular panning
+      // Normal scrolling (vertical)
       setTargetPan(prev => ({
-        x: prev.x - e.deltaX * 0.5,
-        y: prev.y - e.deltaY * 0.5
+        x: prev.x - e.deltaX * deltaFactor,
+        y: prev.y - e.deltaY * deltaFactor
       }));
     }
   };
@@ -698,10 +685,10 @@ const EvolutionChartMaker = () => {
           onWheel={handleWheel}
           className="canvas"
           style={{
-            cursor: connectionMode ? 'crosshair' : isDragging ? 'grabbing' : 'default',
+            cursor: connectionMode ? 'crosshair' : isDraggingRef.current ? 'grabbing' : 'default',
           }}
         >
-          {/* SVG for connections */}
+          {/* SVG for connections - now properly attached to nodes */}
           <svg className="connections-svg">
             {connections.map(conn => {
               const fromNode = nodes.find(n => n.id === conn.from);
@@ -750,8 +737,8 @@ const EvolutionChartMaker = () => {
                 top: `${(node.y + pan.y) * zoom}px`,
                 width: `${NODE_WIDTH * zoom}px`,
                 height: `${NODE_HEIGHT * zoom}px`,
-                transform: isDragging && dragNode?.id === node.id ? 'scale(1.02)' : 'scale(1)',
-                transition: isDragging ? 'none' : 'transform 0.2s ease, top 0.2s ease'
+                transform: selectedNode?.id === node.id && isDraggingRef.current ? 'scale(1.02)' : 'scale(1)',
+                transition: 'transform 0.1s ease'
               }}
               onMouseDown={(e) => handleMouseDown(e, node)}
               onClick={(e) => handleNodeClick(e, node)}
@@ -809,7 +796,7 @@ const EvolutionChartMaker = () => {
             <div>❌ <strong>Click connection midpoint:</strong> Delete connection</div>
             <div>📍 <strong>Drag:</strong> Move nodes vertically</div>
             <div>✏️ <strong>Double-click:</strong> Edit node details</div>
-            <div>🔍 <strong>Ctrl+Scroll:</strong> Zoom | <strong>Shift+Scroll:</strong> Horizontal Pan</div>
+            <div>🔍 <strong>Scroll:</strong> Pan | <strong>Shift+Scroll:</strong> Horizontal Pan | <strong>Ctrl+Scroll:</strong> Zoom</div>
           </div>
         </div>
       ) : (
