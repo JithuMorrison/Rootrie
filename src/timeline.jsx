@@ -651,24 +651,28 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
             onClick={(e) => handleNodeClick(e, node)}
             onDoubleClick={() => handleNodeDoubleClick(node)}
           >
-            {node.imageSrc && (
-              <img
-                src={node.imageSrc}
-                alt={node.title}
-                className="node-image"
-                style={{
-                  width: `${40 * zoom}px`,
-                  height: `${40 * zoom}px`
-                }}
-              />
-            )}
-            
-            <div className="node-title" style={{ fontSize: `${11 * zoom}px` }}>
-              {node.title}
-            </div>
-            
-            <div className="node-timeline" style={{ fontSize: `${9 * zoom}px` }}>
-              {formatTimelineValue(node.timeline.value, node.timeline.unit)}
+            <div style={{ display: 'flex'}}>
+              {node.imageSrc && (
+                <img
+                  src={node.imageSrc}
+                  alt={node.title}
+                  className="node-image"
+                  style={{
+                    width: `${40 * zoom}px`,
+                    height: `${40 * zoom}px`
+                  }}
+                />
+              )}
+              
+              <div>
+                <div className="node-title" style={{ fontSize: `${11 * zoom}px` }}>
+                  {node.title}
+                </div>
+              
+                <div className="node-timeline" style={{ fontSize: `${9 * zoom}px` }}>
+                  {formatTimelineValue(node.timeline.value, node.timeline.unit)}
+                </div>
+              </div>
             </div>
 
             {selectedNode?.id === node.id && (
