@@ -1,45 +1,394 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 
 const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange, onImportJson, onUpdateFlowchart, onBack }) => {
   const [activeTab, setActiveTab] = useState('editor');
   const [selectedTool, setSelectedTool] = useState(null);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [dragState, setDragState] = useState(null);
+  const [editingNode, setEditingNode] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [connectionMode, setConnectionMode] = useState(false);
+  const [fromNode, setFromNode] = useState(null);
+  const canvasRef = useRef(null);
   
   const handleExportJson = () => {
-    const data = {
-      nodes,
-      edges
-    };
+    const data = { nodes, edges };
     return JSON.stringify(data, null, 2);
   };
 
   const handleExportImage = () => {
-    console.log("Exporting as image");
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 600;
+    
+    // Set background
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw edges first
+    edges.forEach(edge => {
+      const fromNodeData = nodes.find(n => n.id === edge.from);
+      const toNodeData = nodes.find(n => n.id === edge.to);
+      
+      if (fromNodeData && toNodeData) {
+        const fromX = fromNodeData.x + fromNodeData.width / 2;
+        const fromY = fromNodeData.y + fromNodeData.height / 2;
+        const toX = toNodeData.x + toNodeData.width / 2;
+        const toY = toNodeData.y + toNodeData.height / 2;
+        
+        ctx.strokeStyle = '#646cff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(toX, toY);
+        ctx.stroke();
+        
+        // Draw arrowhead
+        const angle = Math.atan2(toY - fromY, toX - fromX);
+        const headLength = 10;
+        ctx.beginPath();
+        ctx.moveTo(toX, toY);
+        ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI/6), toY - headLength * Math.sin(angle - Math.PI/6));
+        ctx.moveTo(toX, toY);
+        ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI/6), toY - headLength * Math.sin(angle + Math.PI/6));
+        ctx.stroke();
+        
+        // Draw label if exists
+        if (edge.label) {
+          const midX = (fromX + toX) / 2;
+          const midY = (fromY + toY) / 2;
+          ctx.fillStyle = 'white';
+          ctx.font = '12px Arial';
+          ctx.textAlign = 'center';
+          ctx.fillText(edge.label, midX, midY - 5);
+        }
+      }
+    });
+    
+    // Draw nodes
+    nodes.forEach(node => {
+      ctx.fillStyle = '#646cff';
+      
+      if (node.type === 'rectangle') {
+        ctx.fillRect(node.x, node.y, node.width, node.height);
+      } else if (node.type === 'circle') {
+        ctx.beginPath();
+        ctx.arc(node.x + node.width/2, node.y + node.height/2, node.width/2, 0, 2 * Math.PI);
+        ctx.fill();
+      } else if (node.type === 'diamond') {
+        ctx.beginPath();
+        ctx.moveTo(node.x + node.width/2, node.y);
+        ctx.lineTo(node.x + node.width, node.y + node.height/2);
+        ctx.lineTo(node.x + node.width/2, node.y + node.height);
+        ctx.lineTo(node.x, node.y + node.height/2);
+        ctx.closePath();
+        ctx.fill();
+      }
+      
+      // Draw text
+      ctx.fillStyle = 'white';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(node.text, node.x + node.width/2, node.y + node.height/2);
+    });
+    
+    // Download the image
+    const link = document.createElement('a');
+    link.download = `${flowchart.name || 'flowchart'}.png`;
+    link.href = canvas.toDataURL();
+    link.click();
   };
 
   const handleCanvasClick = (e) => {
-    if (!selectedTool) return;
+    if (editingNode) return;
     
     const canvas = e.currentTarget;
     const rect = canvas.getBoundingClientRect();
-    
-    // Calculate position relative to canvas
     const x = (e.clientX - rect.left - flowchart.pan.x) / flowchart.zoom;
     const y = (e.clientY - rect.top - flowchart.pan.y) / flowchart.zoom;
     
-    const newNode = {
-      id: Date.now(),
-      type: selectedTool,
-      x,
-      y,
-      width: 100,
-      height: 60,
-      text: `${selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} Node`
-    };
+    // Check if clicking on a node
+    const clickedNode = nodes.find(node => 
+      x >= node.x && x <= node.x + node.width &&
+      y >= node.y && y <= node.y + node.height
+    );
+    
+    if (connectionMode && clickedNode) {
+      if (!fromNode) {
+        setFromNode(clickedNode);
+      } else if (clickedNode.id !== fromNode.id) {
+        // Create connection
+        let label = '';
+        if (fromNode.type === 'diamond') {
+          const response = prompt('Is this the "Yes" or "No" path?', 'Yes');
+          label = response || 'Yes';
+        }
+        
+        const newEdge = {
+          id: Date.now(),
+          from: fromNode.id,
+          to: clickedNode.id,
+          label
+        };
+        
+        onUpdateFlowchart({
+          ...flowchart,
+          edges: [...edges, newEdge]
+        });
+        
+        setFromNode(null);
+        setConnectionMode(false);
+        setSelectedTool(null);
+      }
+      return;
+    }
+    
+    if (clickedNode) {
+      setSelectedNode(clickedNode);
+      return;
+    }
+    
+    // Place new node
+    if (selectedTool && selectedTool !== 'arrow') {
+      const newNode = {
+        id: Date.now(),
+        type: selectedTool,
+        x,
+        y,
+        width: 120,
+        height: 60,
+        text: `${selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)}`
+      };
+      
+      onUpdateFlowchart({
+        ...flowchart,
+        nodes: [...nodes, newNode]
+      });
+      
+      setSelectedTool(null); // Deselect tool after placing
+    }
+    
+    setSelectedNode(null);
+  };
+
+  const handleNodeDoubleClick = (node) => {
+    setEditingNode(node.id);
+    setEditText(node.text);
+  };
+
+  const handleTextSubmit = () => {
+    const updatedNodes = nodes.map(node => 
+      node.id === editingNode ? { ...node, text: editText } : node
+    );
     
     onUpdateFlowchart({
       ...flowchart,
-      nodes: [...nodes, newNode]
+      nodes: updatedNodes
     });
+    
+    setEditingNode(null);
+    setEditText('');
+  };
+
+  const handleMouseDown = (e, node) => {
+    if (editingNode) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const startX = e.clientX - rect.left;
+    const startY = e.clientY - rect.top;
+    
+    setDragState({
+      nodeId: node.id,
+      startX,
+      startY,
+      originalX: node.x,
+      originalY: node.y
+    });
+  };
+
+  const handleMouseMove = useCallback((e) => {
+    if (!dragState) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const currentX = e.clientX - rect.left;
+    const currentY = e.clientY - rect.top;
+    
+    const deltaX = (currentX - dragState.startX) / flowchart.zoom;
+    const deltaY = (currentY - dragState.startY) / flowchart.zoom;
+    
+    const updatedNodes = nodes.map(node => 
+      node.id === dragState.nodeId 
+        ? { 
+            ...node, 
+            x: dragState.originalX + deltaX,
+            y: dragState.originalY + deltaY
+          }
+        : node
+    );
+    
+    onUpdateFlowchart({
+      ...flowchart,
+      nodes: updatedNodes
+    });
+  }, [dragState, nodes, flowchart, onUpdateFlowchart]);
+
+  const handleMouseUp = useCallback(() => {
+    setDragState(null);
+  }, []);
+
+  React.useEffect(() => {
+    if (dragState) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [dragState, handleMouseMove, handleMouseUp]);
+
+  const handleArrowTool = () => {
+    setSelectedTool('arrow');
+    setConnectionMode(true);
+    setFromNode(null);
+  };
+
+  const renderNode = (node) => {
+    const isSelected = selectedNode?.id === node.id;
+    const isEditing = editingNode === node.id;
+    
+    let nodeStyle = {
+      position: 'absolute',
+      left: `${node.x}px`,
+      top: `${node.y}px`,
+      width: `${node.width}px`,
+      height: `${node.height}px`,
+      backgroundColor: isSelected ? '#7c3aed' : '#646cff',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      color: 'white',
+      cursor: 'move',
+      fontSize: '12px',
+      textAlign: 'center',
+      wordBreak: 'break-word',
+      padding: '5px',
+      boxSizing: 'border-box',
+      border: isSelected ? '2px solid #a855f7' : '1px solid transparent',
+      userSelect: 'none'
+    };
+
+    if (node.type === 'circle') {
+      nodeStyle.borderRadius = '50%';
+    } else if (node.type === 'diamond') {
+      nodeStyle.clipPath = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+      nodeStyle.borderRadius = '0';
+    } else {
+      nodeStyle.borderRadius = '4px';
+    }
+
+    return (
+      <div 
+        key={node.id}
+        style={nodeStyle}
+        onMouseDown={(e) => handleMouseDown(e, node)}
+        onDoubleClick={() => handleNodeDoubleClick(node)}
+      >
+        {isEditing ? (
+          <input
+            type="text"
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            onBlur={handleTextSubmit}
+            onKeyPress={(e) => e.key === 'Enter' && handleTextSubmit()}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'white',
+              textAlign: 'center',
+              fontSize: '12px',
+              width: '100%',
+              outline: 'none'
+            }}
+            autoFocus
+          />
+        ) : (
+          node.text
+        )}
+      </div>
+    );
+  };
+
+  const renderEdge = (edge) => {
+    const fromNodeData = nodes.find(n => n.id === edge.from);
+    const toNodeData = nodes.find(n => n.id === edge.to);
+    
+    if (!fromNodeData || !toNodeData) return null;
+    
+    const fromX = fromNodeData.x + fromNodeData.width / 2;
+    const fromY = fromNodeData.y + fromNodeData.height / 2;
+    const toX = toNodeData.x + toNodeData.width / 2;
+    const toY = toNodeData.y + toNodeData.height / 2;
+    
+    const length = Math.sqrt(Math.pow(toX - fromX, 2) + Math.pow(toY - fromY, 2));
+    const angle = Math.atan2(toY - fromY, toX - fromX) * 180 / Math.PI;
+    
+    return (
+      <div key={edge.id}>
+        <div
+          style={{
+            position: 'absolute',
+            left: `${fromX}px`,
+            top: `${fromY}px`,
+            width: `${length}px`,
+            height: '2px',
+            backgroundColor: '#646cff',
+            transformOrigin: '0 0',
+            transform: `rotate(${angle}deg)`,
+            pointerEvents: 'none'
+          }}
+        />
+        {/* Arrow head */}
+        <div
+          style={{
+            position: 'absolute',
+            left: `${toX - 5}px`,
+            top: `${toY - 5}px`,
+            width: '0',
+            height: '0',
+            borderLeft: '5px solid #646cff',
+            borderTop: '5px solid transparent',
+            borderBottom: '5px solid transparent',
+            transform: `rotate(${angle}deg)`,
+            pointerEvents: 'none'
+          }}
+        />
+        {/* Label */}
+        {edge.label && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${(fromX + toX) / 2}px`,
+              top: `${(fromY + toY) / 2 - 10}px`,
+              color: 'white',
+              fontSize: '10px',
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              transform: 'translate(-50%, -50%)',
+              pointerEvents: 'none'
+            }}
+          >
+            {edge.label}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -188,10 +537,10 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                 Add Circle
               </button>
               <button 
-                onClick={() => setSelectedTool('arrow')}
+                onClick={handleArrowTool}
                 style={{
                   padding: '8px 16px',
-                  backgroundColor: selectedTool === 'arrow' ? '#646cff' : '#333',
+                  backgroundColor: connectionMode ? '#646cff' : '#333',
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
@@ -199,7 +548,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   transition: 'background-color 0.25s'
                 }}
               >
-                Add Arrow
+                {connectionMode ? (fromNode ? 'Select Target' : 'Select Source') : 'Connect Nodes'}
               </button>
             </div>
             
@@ -239,8 +588,29 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             </div>
           </div>
           
+          {/* Instructions */}
+          {(selectedTool || connectionMode) && (
+            <div style={{
+              padding: '10px',
+              backgroundColor: 'rgba(100, 108, 255, 0.1)',
+              border: '1px solid #646cff',
+              borderRadius: '8px',
+              color: '#646cff',
+              textAlign: 'center'
+            }}>
+              {connectionMode ? 
+                (fromNode ? 
+                  `Click on target node to connect from "${fromNode.text}"` : 
+                  'Click on a node to start connection'
+                ) :
+                `Click on canvas to place a ${selectedTool}`
+              }
+            </div>
+          )}
+          
           {/* Flowchart Canvas */}
           <div 
+            ref={canvasRef}
             onClick={handleCanvasClick}
             style={{
               height: '600px',
@@ -258,22 +628,14 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             {nodes.length === 0 && !selectedTool && (
               <p style={{ 
                 color: '#666',
-                fontStyle: 'italic'
+                fontStyle: 'italic',
+                pointerEvents: 'none'
               }}>
                 Select a tool from the toolbar to start building your flowchart
               </p>
             )}
             
-            {selectedTool && nodes.length === 0 && (
-              <p style={{ 
-                color: '#666',
-                fontStyle: 'italic'
-              }}>
-                Click anywhere to place a {selectedTool}
-              </p>
-            )}
-            
-            {/* Render nodes */}
+            {/* Render canvas content */}
             <div style={{
               position: 'absolute',
               transform: `scale(${flowchart.zoom}) translate(${flowchart.pan.x}px, ${flowchart.pan.y}px)`,
@@ -281,34 +643,22 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               width: '100%',
               height: '100%'
             }}>
-              {nodes.map(node => (
-                <div 
-                  key={node.id}
-                  style={{
-                    position: 'absolute',
-                    left: `${node.x}px`,
-                    top: `${node.y}px`,
-                    width: `${node.width}px`,
-                    height: `${node.height}px`,
-                    backgroundColor: '#646cff',
-                    borderRadius: node.type === 'circle' ? '50%' : node.type === 'diamond' ? '0' : '4px',
-                    transform: node.type === 'diamond' ? 'rotate(45deg)' : 'none',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    color: 'white',
-                    cursor: 'move',
-                    fontSize: '12px',
-                    textAlign: 'center',
-                    wordBreak: 'break-word',
-                    padding: '5px',
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  {node.text}
-                </div>
-              ))}
+              {/* Render edges */}
+              {edges.map(renderEdge)}
+              
+              {/* Render nodes */}
+              {nodes.map(renderNode)}
             </div>
+          </div>
+          
+          {/* Instructions */}
+          <div style={{
+            fontSize: '14px',
+            color: '#888',
+            textAlign: 'center',
+            marginTop: '10px'
+          }}>
+            • Single click to select nodes • Double click to edit text • Drag nodes to move them • Use "Connect Nodes" to create arrows
           </div>
         </div>
       ) : (

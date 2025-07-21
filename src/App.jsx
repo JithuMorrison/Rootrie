@@ -169,6 +169,164 @@ const App = () => {
     forceUpdate();
   };
 
+  const styles = {
+    appContainer: {
+      minHeight: '100vh',
+      width: '100%',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      padding: '20px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+    },
+    mainCard: {
+      maxWidth: '1200px',
+      margin: '0 auto',
+      background: 'rgba(255, 255, 255, 0.95)',
+      backdropFilter: 'blur(10px)',
+      borderRadius: '20px',
+      boxShadow: '0 20px 40px rgba(0, 0, 0, 0.1)',
+      overflow: 'hidden',
+      minHeight: '80vh'
+    },
+    header: {
+      background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+      color: 'white',
+      padding: '30px',
+      textAlign: 'center'
+    },
+    headerTitle: {
+      fontSize: '32px',
+      fontWeight: '700',
+      margin: '0 0 10px 0',
+      textShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+    },
+    headerSubtitle: {
+      fontSize: '16px',
+      opacity: '0.9',
+      margin: '0'
+    },
+    modeSelector: {
+      display: 'flex',
+      justifyContent: 'center',
+      padding: '20px',
+      borderBottom: '1px solid #e5e7eb',
+      gap: '10px'
+    },
+    tabButton: {
+      padding: '12px 24px',
+      border: '2px solid #e5e7eb',
+      borderRadius: '50px',
+      background: 'white',
+      color: '#6b7280',
+      fontSize: '14px',
+      fontWeight: '600',
+      cursor: 'pointer',
+      transition: 'all 0.3s ease',
+      outline: 'none'
+    },
+    tabButtonActive: {
+      background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+      color: 'white',
+      borderColor: '#4f46e5',
+      boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)'
+    },
+    content: {
+      padding: '30px'
+    },
+    createButton: {
+      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+      color: 'white',
+      border: 'none',
+      padding: '16px 32px',
+      borderRadius: '12px',
+      fontSize: '16px',
+      fontWeight: '600',
+      cursor: 'pointer',
+      transition: 'all 0.3s ease',
+      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+      marginBottom: '30px'
+    },
+    createButtonHover: {
+      transform: 'translateY(-2px)',
+      boxShadow: '0 8px 20px rgba(16, 185, 129, 0.4)'
+    },
+    itemsList: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+      gap: '20px'
+    },
+    itemCard: {
+      background: 'white',
+      border: '1px solid #e5e7eb',
+      borderRadius: '16px',
+      padding: '24px',
+      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
+      transition: 'all 0.3s ease',
+      cursor: 'pointer'
+    },
+    itemCardHover: {
+      transform: 'translateY(-4px)',
+      boxShadow: '0 8px 25px rgba(0, 0, 0, 0.15)',
+      borderColor: '#4f46e5'
+    },
+    itemTitle: {
+      fontSize: '18px',
+      fontWeight: '700',
+      color: '#1f2937',
+      margin: '0 0 8px 0'
+    },
+    itemMeta: {
+      fontSize: '14px',
+      color: '#6b7280',
+      margin: '0 0 16px 0'
+    },
+    itemActions: {
+      display: 'flex',
+      gap: '10px'
+    },
+    actionButton: {
+      padding: '8px 16px',
+      border: '1px solid #d1d5db',
+      borderRadius: '8px',
+      fontSize: '14px',
+      fontWeight: '500',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      background: 'white'
+    },
+    openButton: {
+      background: '#4f46e5',
+      color: 'white',
+      borderColor: '#4f46e5'
+    },
+    deleteButton: {
+      color: '#dc2626',
+      borderColor: '#fca5a5'
+    },
+    deleteButtonHover: {
+      background: '#dc2626',
+      color: 'white'
+    },
+    emptyState: {
+      textAlign: 'center',
+      padding: '60px 20px',
+      color: '#6b7280'
+    },
+    emptyStateIcon: {
+      fontSize: '64px',
+      marginBottom: '16px',
+      opacity: '0.5'
+    },
+    emptyStateTitle: {
+      fontSize: '20px',
+      fontWeight: '600',
+      margin: '0 0 8px 0'
+    },
+    emptyStateText: {
+      fontSize: '16px',
+      margin: '0'
+    }
+  };
+
   return (
     <>
       {currentProject ? (
@@ -191,68 +349,126 @@ const App = () => {
           onBack={handleBack}
         />
       ) : (
-        <div className="app-container">
-          <div className="mode-selector">
-            <button 
-              onClick={() => setActiveTab('projects')} 
-              className={activeTab === 'projects' ? 'active' : ''}
-            >
-              Evolution Charts
-            </button>
-            <button 
-              onClick={() => setActiveTab('flowcharts')} 
-              className={activeTab === 'flowcharts' ? 'active' : ''}
-            >
-              Flowcharts
-            </button>
-          </div>
-
-          {activeTab === 'projects' ? (
-            <EvolutionChartMain
-              projects={projects}
-              onCreateProject={createProject}
-              onLoadProject={(project) => {
-                saveToLocalStorage({
-                  projects,
-                  currentProject: project,
-                  flowcharts,
-                  currentFlowchart: null
-                });
-                forceUpdate();
-              }}
-              onDeleteProject={deleteProject}
-            />
-          ) : (
-            <div className="flowchart-main">
-              <button onClick={() => createFlowchart(`New Flowchart ${flowcharts.length + 1}`)}>
-                Create New Flowchart
-              </button>
-              <div className="flowchart-list">
-                {flowcharts.map(flowchart => (
-                  <div key={flowchart.id} className="flowchart-item">
-                    <h3>{flowchart.name}</h3>
-                    <p>Created: {new Date(flowchart.createdAt).toLocaleString()}</p>
-                    <div className="flowchart-actions">
-                      <button onClick={() => {
-                        saveToLocalStorage({
-                          projects,
-                          currentProject: null,
-                          flowcharts,
-                          currentFlowchart: flowchart
-                        });
-                        forceUpdate();
-                      }}>
-                        Open
-                      </button>
-                      <button onClick={() => deleteFlowchart(flowchart.id)}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+        <div style={styles.appContainer}>
+          <div style={styles.mainCard}>
+            <div style={styles.header}>
+              <h1 style={styles.headerTitle}>Visual Designer Suite</h1>
+              <p style={styles.headerSubtitle}>Create beautiful evolution charts and flowcharts</p>
             </div>
-          )}
+            <div style={styles.modeSelector}>
+              <button
+                onClick={() => setActiveTab('projects')}
+                className={activeTab === 'projects' ? 'active' : ''}
+              >
+                Evolution Charts
+              </button>
+              <button
+                onClick={() => setActiveTab('flowcharts')}
+                className={activeTab === 'flowcharts' ? 'active' : ''}
+              >
+                Flowcharts
+              </button>
+            </div>
+            {activeTab === 'projects' ? (
+              <EvolutionChartMain
+                projects={projects}
+                onCreateProject={createProject}
+                onLoadProject={(project) => {
+                  saveToLocalStorage({
+                    projects,
+                    currentProject: project,
+                    flowcharts,
+                    currentFlowchart: null
+                  });
+                  forceUpdate();
+                }}
+                onDeleteProject={deleteProject}
+              />
+            ) : (
+              <div>
+                    <button
+                      style={styles.createButton}
+                      onMouseEnter={(e) => {
+                        e.target.style.transform = 'translateY(-2px)';
+                        e.target.style.boxShadow = '0 8px 20px rgba(16, 185, 129, 0.4)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = 'translateY(0)';
+                        e.target.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+                      }}
+                      onClick={() => createFlowchart(`New Flowchart ${flowcharts.length + 1}`)}
+                    >
+                      🚀 Create New Flowchart
+                    </button>
+                    {flowcharts.length === 0 ? (
+                      <div style={styles.emptyState}>
+                        <div style={styles.emptyStateIcon}>🔄</div>
+                        <h3 style={styles.emptyStateTitle}>No Flowcharts Yet</h3>
+                        <p style={styles.emptyStateText}>Create your first flowchart to get started</p>
+                      </div>
+                    ) : (
+                      <div style={styles.itemsList}>
+                        {flowcharts.map(flowchart => (
+                          <div
+                            key={flowchart.id}
+                            style={styles.itemCard}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.transform = 'translateY(-4px)';
+                              e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.15)';
+                              e.currentTarget.style.borderColor = '#4f46e5';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.transform = 'translateY(0)';
+                              e.currentTarget.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.05)';
+                              e.currentTarget.style.borderColor = '#e5e7eb';
+                            }}
+                          >
+                            <h3 style={styles.itemTitle}>{flowchart.name}</h3>
+                            <p style={styles.itemMeta}>
+                              Created: {new Date(flowchart.createdAt).toLocaleDateString()}<br/>
+                              Nodes: {flowchart.nodes?.length || 0} | Edges: {flowchart.edges?.length || 0}
+                            </p>
+                            <div style={styles.itemActions}>
+                              <button
+                                style={{...styles.actionButton, ...styles.openButton}}
+                                onClick={() => {
+                                  saveToMemory({
+                                    projects,
+                                    currentProject: null,
+                                    flowcharts,
+                                    currentFlowchart: flowchart
+                                  });
+                                  forceUpdate();
+                                }}
+                              >
+                                Open
+                              </button>
+                              <button
+                                style={{...styles.actionButton, ...styles.deleteButton}}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background = '#dc2626';
+                                  e.target.style.color = 'white';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background = 'white';
+                                  e.target.style.color = '#dc2626';
+                                }}
+                                onClick={() => {
+                                  if (confirm('Are you sure you want to delete this flowchart?')) {
+                                    deleteFlowchart(flowchart.id);
+                                  }
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+            )}
+          </div>
         </div>
       )}
     </>
