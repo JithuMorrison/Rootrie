@@ -175,7 +175,7 @@ const App = () => {
   const styles = {
     appContainer: {
       minHeight: '100vh',
-      width: '100%',
+      width: '97.3%',
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       padding: '20px',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'

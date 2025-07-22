@@ -816,7 +816,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
 
       <style jsx>{`
         .evolution-chart-maker {
-          width: 100vw;
+          width: 91.7vw;
           height: 100vh;
           background: #4a90a4;
           font-family: system-ui, -apple-system, sans-serif;
