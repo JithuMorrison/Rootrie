@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange, onImportJson, onUpdateFlowchart, onBack }) => {
   const [activeTab, setActiveTab] = useState('editor');
@@ -9,8 +9,25 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
   const [editText, setEditText] = useState('');
   const [connectionMode, setConnectionMode] = useState(false);
   const [fromNode, setFromNode] = useState(null);
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  const [edgeLabel, setEdgeLabel] = useState('');
+  const [pendingEdge, setPendingEdge] = useState(null);
   const canvasRef = useRef(null);
-  
+
+  // Handle keyboard events for deletion
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Delete' && selectedNode) {
+        handleDeleteNode();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedNode]);
+
   const handleExportJson = () => {
     const data = { nodes, edges };
     return JSON.stringify(data, null, 2);
@@ -84,6 +101,16 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         ctx.lineTo(node.x, node.y + node.height/2);
         ctx.closePath();
         ctx.fill();
+      } else if (node.type === 'oval') {
+        ctx.beginPath();
+        ctx.ellipse(
+          node.x + node.width/2, 
+          node.y + node.height/2, 
+          node.width/2, 
+          node.height/2, 
+          0, 0, 2 * Math.PI
+        );
+        ctx.fill();
       }
       
       // Draw text
@@ -119,28 +146,32 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       if (!fromNode) {
         setFromNode(clickedNode);
       } else if (clickedNode.id !== fromNode.id) {
-        // Create connection
-        let label = '';
+        // Check if this is a diamond node (decision node)
         if (fromNode.type === 'diamond') {
-          const response = prompt('Is this the "Yes" or "No" path?', 'Yes');
-          label = response || 'Yes';
+          setPendingEdge({
+            id: Date.now(),
+            from: fromNode.id,
+            to: clickedNode.id
+          });
+          setShowLabelModal(true);
+        } else {
+          // For other nodes, just create the connection
+          const newEdge = {
+            id: Date.now(),
+            from: fromNode.id,
+            to: clickedNode.id,
+            label: ''
+          };
+          
+          onUpdateFlowchart({
+            ...flowchart,
+            edges: [...edges, newEdge]
+          });
+          
+          setFromNode(null);
+          setConnectionMode(false);
+          setSelectedTool(null);
         }
-        
-        const newEdge = {
-          id: Date.now(),
-          from: fromNode.id,
-          to: clickedNode.id,
-          label
-        };
-        
-        onUpdateFlowchart({
-          ...flowchart,
-          edges: [...edges, newEdge]
-        });
-        
-        setFromNode(null);
-        setConnectionMode(false);
-        setSelectedTool(null);
       }
       return;
     }
@@ -157,9 +188,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         type: selectedTool,
         x,
         y,
-        width: 120,
-        height: 60,
-        text: `${selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)}`
+        width: selectedTool === 'oval' ? 100 : 120,
+        height: selectedTool === 'oval' ? 60 : 60,
+        text: getDefaultNodeText(selectedTool)
       };
       
       onUpdateFlowchart({
@@ -171,6 +202,19 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     }
     
     setSelectedNode(null);
+  };
+
+  const getDefaultNodeText = (type) => {
+    switch (type) {
+      case 'oval':
+        return type === 'start' ? 'Start' : 'End';
+      case 'diamond':
+        return 'Decision';
+      case 'rectangle':
+        return 'Process';
+      default:
+        return type.charAt(0).toUpperCase() + type.slice(1);
+    }
   };
 
   const handleNodeDoubleClick = (node) => {
@@ -190,6 +234,24 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     
     setEditingNode(null);
     setEditText('');
+  };
+
+  const handleDeleteNode = () => {
+    if (!selectedNode) return;
+    
+    // Remove the node and any connected edges
+    const updatedNodes = nodes.filter(node => node.id !== selectedNode.id);
+    const updatedEdges = edges.filter(edge => 
+      edge.from !== selectedNode.id && edge.to !== selectedNode.id
+    );
+    
+    onUpdateFlowchart({
+      ...flowchart,
+      nodes: updatedNodes,
+      edges: updatedEdges
+    });
+    
+    setSelectedNode(null);
   };
 
   const handleMouseDown = (e, node) => {
@@ -258,6 +320,27 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     setFromNode(null);
   };
 
+  const handleLabelSubmit = () => {
+    if (!pendingEdge) return;
+    
+    const newEdge = {
+      ...pendingEdge,
+      label: edgeLabel
+    };
+    
+    onUpdateFlowchart({
+      ...flowchart,
+      edges: [...edges, newEdge]
+    });
+    
+    setFromNode(null);
+    setConnectionMode(false);
+    setSelectedTool(null);
+    setShowLabelModal(false);
+    setPendingEdge(null);
+    setEdgeLabel('');
+  };
+
   const renderNode = (node) => {
     const isSelected = selectedNode?.id === node.id;
     const isEditing = editingNode === node.id;
@@ -280,11 +363,12 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       padding: '5px',
       boxSizing: 'border-box',
       border: isSelected ? '2px solid #a855f7' : '1px solid transparent',
-      userSelect: 'none'
+      userSelect: 'none',
+      transition: 'all 0.2s ease'
     };
 
-    if (node.type === 'circle') {
-      nodeStyle.borderRadius = '50%';
+    if (node.type === 'circle' || node.type === 'oval') {
+      nodeStyle.borderRadius = node.type === 'oval' ? '50%' : '50%';
     } else if (node.type === 'diamond') {
       nodeStyle.clipPath = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
       nodeStyle.borderRadius = '0';
@@ -424,8 +508,11 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             borderRadius: '8px',
             cursor: 'pointer',
             fontSize: '1em',
-            transition: 'border-color 0.25s',
-            fontWeight: '500'
+            transition: 'all 0.25s',
+            fontWeight: '500',
+            '&:hover': {
+              borderColor: '#a855f7'
+            }
           }}
         >
           Back to List
@@ -450,7 +537,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             marginRight: '5px',
             borderRadius: '8px 8px 0 0',
             fontWeight: '500',
-            transition: 'background-color 0.25s'
+            transition: 'all 0.25s'
           }}
         >
           Flowchart Editor
@@ -466,7 +553,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             fontSize: '1em',
             borderRadius: '8px 8px 0 0',
             fontWeight: '500',
-            transition: 'background-color 0.25s'
+            transition: 'all 0.25s'
           }}
         >
           JSON Editor
@@ -503,7 +590,10 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   border: 'none',
                   borderRadius: '8px',
                   cursor: 'pointer',
-                  transition: 'background-color 0.25s'
+                  transition: 'all 0.25s',
+                  '&:hover': {
+                    backgroundColor: selectedTool === 'rectangle' ? '#7c3aed' : '#444'
+                  }
                 }}
               >
                 Add Rectangle
@@ -517,7 +607,10 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   border: 'none',
                   borderRadius: '8px',
                   cursor: 'pointer',
-                  transition: 'background-color 0.25s'
+                  transition: 'all 0.25s',
+                  '&:hover': {
+                    backgroundColor: selectedTool === 'diamond' ? '#7c3aed' : '#444'
+                  }
                 }}
               >
                 Add Diamond
@@ -531,10 +624,30 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   border: 'none',
                   borderRadius: '8px',
                   cursor: 'pointer',
-                  transition: 'background-color 0.25s'
+                  transition: 'all 0.25s',
+                  '&:hover': {
+                    backgroundColor: selectedTool === 'circle' ? '#7c3aed' : '#444'
+                  }
                 }}
               >
                 Add Circle
+              </button>
+              <button 
+                onClick={() => setSelectedTool('oval')}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: selectedTool === 'oval' ? '#646cff' : '#333',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'all 0.25s',
+                  '&:hover': {
+                    backgroundColor: selectedTool === 'oval' ? '#7c3aed' : '#444'
+                  }
+                }}
+              >
+                Add Oval
               </button>
               <button 
                 onClick={handleArrowTool}
@@ -545,11 +658,33 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   border: 'none',
                   borderRadius: '8px',
                   cursor: 'pointer',
-                  transition: 'background-color 0.25s'
+                  transition: 'all 0.25s',
+                  '&:hover': {
+                    backgroundColor: connectionMode ? '#7c3aed' : '#444'
+                  }
                 }}
               >
                 {connectionMode ? (fromNode ? 'Select Target' : 'Select Source') : 'Connect Nodes'}
               </button>
+              {selectedNode && (
+                <button 
+                  onClick={handleDeleteNode}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    transition: 'all 0.25s',
+                    '&:hover': {
+                      backgroundColor: '#dc2626'
+                    }
+                  }}
+                >
+                  Delete Node
+                </button>
+              )}
             </div>
             
             <div style={{
@@ -566,7 +701,10 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   border: 'none',
                   borderRadius: '8px',
                   cursor: 'pointer',
-                  transition: 'background-color 0.25s'
+                  transition: 'all 0.25s',
+                  '&:hover': {
+                    backgroundColor: '#e68a00'
+                  }
                 }}
               >
                 Export as Image
@@ -580,7 +718,10 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   border: 'none',
                   borderRadius: '8px',
                   cursor: 'pointer',
-                  transition: 'background-color 0.25s'
+                  transition: 'all 0.25s',
+                  '&:hover': {
+                    backgroundColor: '#8a1fa0'
+                  }
                 }}
               >
                 Copy JSON
@@ -658,7 +799,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             textAlign: 'center',
             marginTop: '10px'
           }}>
-            • Single click to select nodes • Double click to edit text • Drag nodes to move them • Use "Connect Nodes" to create arrows
+            • Single click to select nodes • Double click to edit text • Drag nodes to move them • Use "Connect Nodes" to create arrows • Press Delete to remove selected node
           </div>
         </div>
       ) : (
@@ -709,7 +850,10 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                 width: '100%',
                 fontSize: '1em',
                 fontWeight: '500',
-                transition: 'background-color 0.25s'
+                transition: 'all 0.25s',
+                '&:hover': {
+                  backgroundColor: '#3e8e41'
+                }
               }}
             >
               Import JSON
@@ -743,6 +887,84 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             }}>
               {handleExportJson()}
             </pre>
+          </div>
+        </div>
+      )}
+
+      {/* Label Modal */}
+      {showLabelModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: '#1a1a1a',
+            padding: '20px',
+            borderRadius: '8px',
+            width: '300px',
+            border: '1px solid #646cff'
+          }}>
+            <h3 style={{ marginTop: 0, color: 'white' }}>Add Connection Label</h3>
+            <p style={{ color: '#aaa', marginBottom: '20px' }}>
+              Please enter a label for this connection (e.g., "Yes" or "No"):
+            </p>
+            <input
+              type="text"
+              value={edgeLabel}
+              onChange={(e) => setEdgeLabel(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                marginBottom: '20px',
+                backgroundColor: '#242424',
+                border: '1px solid #444',
+                color: 'white',
+                borderRadius: '4px'
+              }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => {
+                  setShowLabelModal(false);
+                  setEdgeLabel('');
+                  setFromNode(null);
+                  setConnectionMode(false);
+                  setSelectedTool(null);
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#333',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLabelSubmit}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#646cff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Add Label
+              </button>
+            </div>
           </div>
         </div>
       )}
