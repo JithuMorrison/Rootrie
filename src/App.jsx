@@ -4,7 +4,7 @@ import EvolutionChartMaker from './timeline';
 import FlowchartMain from './flowchartmain';
 import FlowchartMaker from './flowchart';
 import GanttChartMain from './ganttchartmain';
-import GanttChartMaker from './ganttchartmaker';
+import GanttChartMaker from './gantt';
 
 const getStoredData = () => {
   const savedData = localStorage.getItem('evolutionChartData');
