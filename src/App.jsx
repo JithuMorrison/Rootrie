@@ -3,10 +3,19 @@ import EvolutionChartMain from './treecanvas';
 import EvolutionChartMaker from './timeline';
 import FlowchartMain from './flowchartmain';
 import FlowchartMaker from './flowchart';
+import GanttChartMain from './ganttchartmain';
+import GanttChartMaker from './ganttchartmaker';
 
 const getStoredData = () => {
   const savedData = localStorage.getItem('evolutionChartData');
-  if (!savedData) return { projects: [], currentProject: null, flowcharts: [], currentFlowchart: null };
+  if (!savedData) return { 
+    projects: [], 
+    currentProject: null, 
+    flowcharts: [], 
+    currentFlowchart: null,
+    ganttCharts: [],
+    currentGanttChart: null
+  };
 
   try {
     const parsed = JSON.parse(savedData);
@@ -30,11 +39,27 @@ const getStoredData = () => {
             zoom: parsed.currentFlowchart.zoom || 1,
             pan: parsed.currentFlowchart.pan || { x: 0, y: 0 }
           }
+        : null,
+      ganttCharts: parsed.ganttCharts || [],
+      currentGanttChart: parsed.currentGanttChart
+        ? {
+            ...parsed.currentGanttChart,
+            tasks: parsed.currentGanttChart.tasks || [],
+            startDate: parsed.currentGanttChart.startDate || new Date().toISOString(),
+            endDate: parsed.currentGanttChart.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          }
         : null
     };
   } catch (e) {
     console.error('Failed to parse localStorage data:', e);
-    return { projects: [], currentProject: null, flowcharts: [], currentFlowchart: null };
+    return { 
+      projects: [], 
+      currentProject: null, 
+      flowcharts: [], 
+      currentFlowchart: null,
+      ganttCharts: [],
+      currentGanttChart: null
+    };
   }
 };
 
@@ -47,7 +72,14 @@ const saveToLocalStorage = (data) => {
 
 const App = () => {
   const [, forceUpdate] = useReducer(x => x + 1, 0);
-  const { projects, currentProject, flowcharts, currentFlowchart } = getStoredData();
+  const { 
+    projects, 
+    currentProject, 
+    flowcharts, 
+    currentFlowchart,
+    ganttCharts,
+    currentGanttChart 
+  } = getStoredData();
   const [activeTab, setActiveTab] = useState('projects');
   const [jsonInput, setJsonInput] = useState('');
 
@@ -68,7 +100,9 @@ const App = () => {
       projects: [...projects, newProject],
       currentProject: newProject,
       flowcharts,
-      currentFlowchart: null
+      currentFlowchart: null,
+      ganttCharts,
+      currentGanttChart: null
     });
     forceUpdate();
   };
@@ -87,7 +121,29 @@ const App = () => {
       projects,
       currentProject: null,
       flowcharts: [...flowcharts, newFlowchart],
-      currentFlowchart: newFlowchart
+      currentFlowchart: newFlowchart,
+      ganttCharts,
+      currentGanttChart: null
+    });
+    forceUpdate();
+  };
+
+  const createGanttChart = (name) => {
+    const newGanttChart = {
+      id: Date.now(),
+      name,
+      createdAt: new Date().toISOString(),
+      tasks: [],
+      startDate: new Date().toISOString(),
+      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    };
+    saveToLocalStorage({
+      projects,
+      currentProject: null,
+      flowcharts,
+      currentFlowchart: null,
+      ganttCharts: [...ganttCharts, newGanttChart],
+      currentGanttChart: newGanttChart
     });
     forceUpdate();
   };
@@ -99,7 +155,9 @@ const App = () => {
       projects: updatedProjects,
       currentProject: isCurrent ? null : currentProject,
       flowcharts,
-      currentFlowchart
+      currentFlowchart,
+      ganttCharts,
+      currentGanttChart
     });
     forceUpdate();
   };
@@ -111,7 +169,23 @@ const App = () => {
       projects,
       currentProject,
       flowcharts: updatedFlowcharts,
-      currentFlowchart: isCurrent ? null : currentFlowchart
+      currentFlowchart: isCurrent ? null : currentFlowchart,
+      ganttCharts,
+      currentGanttChart
+    });
+    forceUpdate();
+  };
+
+  const deleteGanttChart = (ganttChartId) => {
+    const updatedGanttCharts = ganttCharts.filter(g => g.id !== ganttChartId);
+    const isCurrent = currentGanttChart?.id === ganttChartId;
+    saveToLocalStorage({
+      projects,
+      currentProject,
+      flowcharts,
+      currentFlowchart,
+      ganttCharts: updatedGanttCharts,
+      currentGanttChart: isCurrent ? null : currentGanttChart
     });
     forceUpdate();
   };
@@ -121,7 +195,9 @@ const App = () => {
       projects: projects.map(p => p.id === updatedProject.id ? updatedProject : p),
       currentProject: updatedProject,
       flowcharts,
-      currentFlowchart: null
+      currentFlowchart: null,
+      ganttCharts,
+      currentGanttChart: null
     });
     forceUpdate();
   };
@@ -131,7 +207,21 @@ const App = () => {
       projects,
       currentProject: null,
       flowcharts: flowcharts.map(f => f.id === updatedFlowchart.id ? updatedFlowchart : f),
-      currentFlowchart: updatedFlowchart
+      currentFlowchart: updatedFlowchart,
+      ganttCharts,
+      currentGanttChart: null
+    });
+    forceUpdate();
+  };
+
+  const updateGanttChart = (updatedGanttChart) => {
+    saveToLocalStorage({
+      projects,
+      currentProject: null,
+      flowcharts,
+      currentFlowchart: null,
+      ganttCharts: ganttCharts.map(g => g.id === updatedGanttChart.id ? updatedGanttChart : g),
+      currentGanttChart: updatedGanttChart
     });
     forceUpdate();
   };
@@ -152,7 +242,9 @@ const App = () => {
         projects,
         currentProject: null,
         flowcharts: [...flowcharts, newFlowchart],
-        currentFlowchart: newFlowchart
+        currentFlowchart: newFlowchart,
+        ganttCharts,
+        currentGanttChart: null
       });
       forceUpdate();
       return true;
@@ -167,7 +259,9 @@ const App = () => {
       projects,
       currentProject: null,
       flowcharts,
-      currentFlowchart: null
+      currentFlowchart: null,
+      ganttCharts,
+      currentGanttChart: null
     });
     forceUpdate();
   };
@@ -262,6 +356,13 @@ const App = () => {
             onUpdateFlowchart={updateFlowchart}
             onBack={handleBack}
           />
+        ) : currentGanttChart ? (
+          <GanttChartMaker
+            ganttChart={currentGanttChart}
+            tasks={currentGanttChart.tasks || []}
+            onUpdateGanttChart={updateGanttChart}
+            onBack={handleBack}
+          />
         ) : (
           <>
             <div style={styles.header}>
@@ -312,6 +413,27 @@ const App = () => {
               >
                 🔄 Flowcharts
               </button>
+              <button
+                onClick={() => setActiveTab('gantt')}
+                style={{
+                  ...styles.tabButton,
+                  ...(activeTab === 'gantt' ? styles.tabButtonActive : {})
+                }}
+                onMouseEnter={(e) => {
+                  if (activeTab !== 'gantt') {
+                    e.target.style.background = 'rgba(59, 130, 246, 0.1)';
+                    e.target.style.color = '#3b82f6';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeTab !== 'gantt') {
+                    e.target.style.background = 'rgba(0, 0, 0, 0.05)';
+                    e.target.style.color = '#64748b';
+                  }
+                }}
+              >
+                📅 Gantt Charts
+              </button>
             </div>
 
             {activeTab === 'projects' ? (
@@ -323,13 +445,15 @@ const App = () => {
                     projects,
                     currentProject: project,
                     flowcharts,
-                    currentFlowchart: null
+                    currentFlowchart: null,
+                    ganttCharts,
+                    currentGanttChart: null
                   });
                   forceUpdate();
                 }}
                 onDeleteProject={deleteProject}
               />
-            ) : (
+            ) : activeTab === 'flowcharts' ? (
               <FlowchartMain
                 flowcharts={flowcharts}
                 onCreateFlowchart={createFlowchart}
@@ -338,12 +462,31 @@ const App = () => {
                     projects,
                     currentProject: null,
                     flowcharts,
-                    currentFlowchart: flowchart
+                    currentFlowchart: flowchart,
+                    ganttCharts,
+                    currentGanttChart: null
                   });
                   forceUpdate();
                 }}
                 onDeleteFlowchart={deleteFlowchart}
                 onImportFlowchart={importFlowchartFromJson}
+              />
+            ) : (
+              <GanttChartMain
+                ganttCharts={ganttCharts}
+                onCreateGanttChart={createGanttChart}
+                onLoadGanttChart={(ganttChart) => {
+                  saveToLocalStorage({
+                    projects,
+                    currentProject: null,
+                    flowcharts,
+                    currentFlowchart: null,
+                    ganttCharts,
+                    currentGanttChart: ganttChart
+                  });
+                  forceUpdate();
+                }}
+                onDeleteGanttChart={deleteGanttChart}
               />
             )}
           </>
