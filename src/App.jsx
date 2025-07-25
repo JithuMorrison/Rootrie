@@ -14,39 +14,29 @@ const getStoredData = () => {
     flowcharts: [], 
     currentFlowchart: null,
     ganttCharts: [],
-    currentGanttChart: null
+    currentGanttChart: null,
+    useCaseDiagrams: [],
+    currentUseCaseDiagram: null
   };
 
   try {
     const parsed = JSON.parse(savedData);
     return {
       projects: parsed.projects || [],
-      currentProject: parsed.currentProject
-        ? {
-            ...parsed.currentProject,
-            nodes: parsed.currentProject.nodes || [],
-            connections: parsed.currentProject.connections || [],
-            zoom: parsed.currentProject.zoom || 1,
-            pan: parsed.currentProject.pan || { x: 0, y: 0 }
-          }
-        : null,
+      currentProject: parsed.currentProject || null,
       flowcharts: parsed.flowcharts || [],
-      currentFlowchart: parsed.currentFlowchart
-        ? {
-            ...parsed.currentFlowchart,
-            nodes: parsed.currentFlowchart.nodes || [],
-            edges: parsed.currentFlowchart.edges || [],
-            zoom: parsed.currentFlowchart.zoom || 1,
-            pan: parsed.currentFlowchart.pan || { x: 0, y: 0 }
-          }
-        : null,
+      currentFlowchart: parsed.currentFlowchart || null,
       ganttCharts: parsed.ganttCharts || [],
-      currentGanttChart: parsed.currentGanttChart
+      currentGanttChart: parsed.currentGanttChart || null,
+      useCaseDiagrams: parsed.useCaseDiagrams || [],
+      currentUseCaseDiagram: parsed.currentUseCaseDiagram
         ? {
-            ...parsed.currentGanttChart,
-            tasks: parsed.currentGanttChart.tasks || [],
-            startDate: parsed.currentGanttChart.startDate || new Date().toISOString(),
-            endDate: parsed.currentGanttChart.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+            ...parsed.currentUseCaseDiagram,
+            actors: parsed.currentUseCaseDiagram.actors || [],
+            useCases: parsed.currentUseCaseDiagram.useCases || [],
+            relationships: parsed.currentUseCaseDiagram.relationships || [],
+            zoom: parsed.currentUseCaseDiagram.zoom || 1,
+            pan: parsed.currentUseCaseDiagram.pan || { x: 0, y: 0 }
           }
         : null
     };
@@ -58,7 +48,9 @@ const getStoredData = () => {
       flowcharts: [], 
       currentFlowchart: null,
       ganttCharts: [],
-      currentGanttChart: null
+      currentGanttChart: null,
+      useCaseDiagrams: [],
+      currentUseCaseDiagram: null
     };
   }
 };
@@ -226,6 +218,60 @@ const App = () => {
     forceUpdate();
   };
 
+  const createUseCaseDiagram = (name) => {
+    const newUseCaseDiagram = {
+      id: Date.now(),
+      name,
+      createdAt: new Date().toISOString(),
+      actors: [],
+      useCases: [],
+      relationships: [],
+      zoom: 1,
+      pan: { x: 0, y: 0 }
+    };
+    saveToLocalStorage({
+      projects,
+      currentProject: null,
+      flowcharts,
+      currentFlowchart: null,
+      ganttCharts,
+      currentGanttChart: null,
+      useCaseDiagrams: [...useCaseDiagrams, newUseCaseDiagram],
+      currentUseCaseDiagram: newUseCaseDiagram
+    });
+    forceUpdate();
+  };
+
+  const deleteUseCaseDiagram = (diagramId) => {
+    const updatedDiagrams = useCaseDiagrams.filter(d => d.id !== diagramId);
+    const isCurrent = currentUseCaseDiagram?.id === diagramId;
+    saveToLocalStorage({
+      projects,
+      currentProject,
+      flowcharts,
+      currentFlowchart,
+      ganttCharts,
+      currentGanttChart,
+      useCaseDiagrams: updatedDiagrams,
+      currentUseCaseDiagram: isCurrent ? null : currentUseCaseDiagram
+    });
+    forceUpdate();
+  };
+
+  const updateUseCaseDiagram = (updatedDiagram) => {
+    saveToLocalStorage({
+      projects,
+      currentProject: null,
+      flowcharts,
+      currentFlowchart: null,
+      ganttCharts,
+      currentGanttChart: null,
+      useCaseDiagrams: useCaseDiagrams.map(d => d.id === updatedDiagram.id ? updatedDiagram : d),
+      currentUseCaseDiagram: updatedDiagram
+    });
+    forceUpdate();
+  };
+
   const importFlowchartFromJson = (jsonString) => {
     try {
       const parsed = JSON.parse(jsonString);
@@ -261,7 +307,9 @@ const App = () => {
       flowcharts,
       currentFlowchart: null,
       ganttCharts,
-      currentGanttChart: null
+      currentGanttChart: null,
+      useCaseDiagrams,
+      currentUseCaseDiagram: null
     });
     forceUpdate();
   };
