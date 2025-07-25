@@ -157,34 +157,33 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     const toX = toNode.x + toNode.width / 2;
     const toY = toNode.y + toNode.height / 2;
 
-    // Check if there's already a direct connection between these nodes
-    const existingDirectConnection = edges.find(e => 
-      e.id !== edge.id && 
-      ((e.from === edge.from && e.to === edge.to) || (e.from === edge.to && e.to === edge.from))
+    const similarEdges = edges.filter(e =>
+      ((e.from === edge.from && e.to === edge.to) ||
+      (e.from === edge.to && e.to === edge.from))
     );
 
-    if (!existingDirectConnection) {
-      // Direct connection
+    const edgeIndex = similarEdges.findIndex(e => e.id === edge.id);
+    const offset = 30;
+
+    if (similarEdges.length === 1) {
       return [{ x: fromX, y: fromY }, { x: toX, y: toY }];
     }
 
-    // Create a path with turns to avoid overlap
-    const midX = (fromX + toX) / 2;
-    const midY = (fromY + toY) / 2;
-    const offset = 30;
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const normX = -dy / length;
+    const normY = dx / length;
 
-    // Determine turn direction based on relative positions
-    const turnRight = fromX < toX;
-    const turnDown = fromY < toY;
+    const offsetX = normX * offset * edgeIndex;
+    const offsetY = normY * offset * edgeIndex;
 
-    const turn1X = turnRight ? midX + offset : midX - offset;
-    const turn1Y = turnDown ? midY + offset : midY - offset;
+    const midX = (fromX + toX) / 2 + offsetX;
+    const midY = (fromY + toY) / 2 + offsetY;
 
     return [
       { x: fromX, y: fromY },
-      { x: turn1X, y: fromY },
-      { x: turn1X, y: turn1Y },
-      { x: toX, y: turn1Y },
+      { x: midX, y: midY },
       { x: toX, y: toY }
     ];
   };
