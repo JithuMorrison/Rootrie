@@ -15,6 +15,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
   const [edgeLabel, setEdgeLabel] = useState('');
   const [pendingEdge, setPendingEdge] = useState(null);
   const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Handle keyboard events for deletion
   useEffect(() => {
@@ -37,6 +38,42 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
   const handleExportJson = () => {
     const data = { nodes, edges };
     return JSON.stringify(data, null, 2);
+  };
+
+  const handleFetchCurrentJson = () => {
+    onJsonInputChange(handleExportJson());
+    setActiveTab('json');
+  };
+
+  const handleFileImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const jsonData = JSON.parse(event.target.result);
+        onJsonInputChange(JSON.stringify(jsonData, null, 2));
+        setActiveTab('json');
+      } catch (error) {
+        alert('Invalid JSON file');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset file input
+  };
+
+  const handleImportJson = () => {
+    try {
+      const parsedData = JSON.parse(jsonInput);
+      onUpdateFlowchart({
+        ...flowchart,
+        nodes: parsedData.nodes || [],
+        edges: parsedData.edges || []
+      });
+    } catch (error) {
+      alert('Invalid JSON: ' + error.message);
+    }
   };
 
   const handleExportImage = () => {
@@ -969,6 +1006,20 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               >
                 Copy JSON
               </button>
+              <button 
+                onClick={handleFetchCurrentJson}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#4CAF50',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'all 0.25s'
+                }}
+              >
+                Fetch Current JSON
+              </button>
             </div>
           </div>
           
@@ -1083,23 +1134,53 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                 resize: 'vertical'
               }}
             />
-            <button 
-              onClick={onImportJson}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#4CAF50',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                width: '100%',
-                fontSize: '1em',
-                fontWeight: '500',
-                transition: 'all 0.25s'
-              }}
-            >
-              Import JSON
-            </button>
+            <div style={{
+              display: 'flex',
+              gap: '10px',
+              marginBottom: '15px'
+            }}>
+              <button 
+                onClick={handleImportJson}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#4CAF50',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  flex: 1,
+                  fontSize: '1em',
+                  fontWeight: '500',
+                  transition: 'all 0.25s'
+                }}
+              >
+                Import JSON
+              </button>
+              <button 
+                onClick={() => fileInputRef.current.click()}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#2196F3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  flex: 1,
+                  fontSize: '1em',
+                  fontWeight: '500',
+                  transition: 'all 0.25s'
+                }}
+              >
+                Import from File
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileImport}
+                accept=".json"
+                style={{ display: 'none' }}
+              />
+            </div>
           </div>
           
           {/* JSON Output */}
