@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { ArrowLeft, Save, Plus, Trash2, Calendar, GanttChart, Edit2 } from 'lucide-react';
+import React, { useState, useMemo, useRef } from 'react';
+import { ArrowLeft, Plus, Trash2, Calendar, GanttChart, Edit2, Download, Upload, Image } from 'lucide-react';
+import html2canvas from 'html2canvas';
 
 const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
   const [newTask, setNewTask] = useState({
@@ -7,10 +8,21 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     progress: 0,
-    dependencies: []
+    dependencies: [],
+    color: getRandomColor()
   });
 
   const [editingTask, setEditingTask] = useState(null);
+  const ganttContainerRef = useRef(null);
+
+  // Helper function to generate random colors
+  function getRandomColor() {
+    const colors = [
+      '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#6366f1', 
+      '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#d946ef'
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
 
   // Calculate timeline boundaries
   const timelineBounds = useMemo(() => {
@@ -92,7 +104,8 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
       startDate: new Date().toISOString().split('T')[0],
       endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       progress: 0,
-      dependencies: []
+      dependencies: [],
+      color: getRandomColor()
     });
   };
 
@@ -170,6 +183,60 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
     });
   };
 
+  const exportToJSON = () => {
+    const data = {
+      ...ganttChart,
+      tasks: tasks
+    };
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${ganttChart.name.replace(/\s+/g, '_')}_gantt.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const importFromJSON = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (data.name && Array.isArray(data.tasks)) {
+          onUpdateGanttChart(data);
+        } else {
+          alert('Invalid Gantt chart file format');
+        }
+      } catch (error) {
+        alert('Error parsing JSON file');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const exportToImage = () => {
+    if (!ganttContainerRef.current) return;
+    
+    html2canvas(ganttContainerRef.current, {
+      scrollX: -window.scrollX,
+      scrollY: -window.scrollY,
+      windowWidth: ganttContainerRef.current.scrollWidth,
+      windowHeight: ganttContainerRef.current.scrollHeight,
+      scale: 2 // Higher quality
+    }).then(canvas => {
+      const link = document.createElement('a');
+      link.download = `${ganttChart.name.replace(/\s+/g, '_')}_gantt.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+  };
+
   const getTaskById = (id) => tasks.find(task => task.id === id);
 
   return (
@@ -180,12 +247,23 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
         </button>
         <h2>{ganttChart.name}</h2>
         <div className="spacer"></div>
-        <button 
-          onClick={() => onUpdateGanttChart(ganttChart)} 
-          className="save-btn"
-        >
-          <Save size={16} /> Save
-        </button>
+        <div className="export-actions">
+          <button onClick={exportToJSON} className="export-btn" title="Export as JSON">
+            <Download size={16} /> JSON
+          </button>
+          <label className="import-btn" title="Import from JSON">
+            <Upload size={16} /> JSON
+            <input 
+              type="file" 
+              accept=".json" 
+              onChange={importFromJSON} 
+              style={{ display: 'none' }} 
+            />
+          </label>
+          <button onClick={exportToImage} className="export-btn" title="Export as Image">
+            <Image size={16} /> Image
+          </button>
+        </div>
       </div>
 
       <div className="gantt-container">
@@ -255,15 +333,34 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
                 />
               </div>
             </div>
-            <div className="form-group">
-              <label>Progress (%)</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={newTask.progress}
-                onChange={(e) => setNewTask({...newTask, progress: e.target.value})}
-              />
+            <div className="form-row">
+              <div className="form-group">
+                <label>Progress (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={newTask.progress}
+                  onChange={(e) => setNewTask({...newTask, progress: e.target.value})}
+                />
+              </div>
+              <div className="form-group">
+                <label>Color</label>
+                <div className="color-picker">
+                  <input
+                    type="color"
+                    value={newTask.color}
+                    onChange={(e) => setNewTask({...newTask, color: e.target.value})}
+                  />
+                  <button 
+                    onClick={() => setNewTask({...newTask, color: getRandomColor()})}
+                    className="random-color-btn"
+                    title="Random color"
+                  >
+                    Random
+                  </button>
+                </div>
+              </div>
             </div>
             <button onClick={addTask} className="add-btn">
               <Plus size={16} /> Add Task
@@ -271,7 +368,7 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
           </div>
         </div>
         
-        <div className="gantt-timeline">
+        <div className="gantt-timeline" ref={ganttContainerRef}>
           <div className="timeline-header">
             <div className="timeline-title">Timeline</div>
             <div className="timeline-scale">
@@ -291,6 +388,7 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
             {tasks.map((task, index) => {
               const position = calculatePosition(task.startDate);
               const duration = calculateDuration(task.startDate, task.endDate);
+              const lightColor = `${task.color}33`; // Add transparency
               
               return (
                 <div key={task.id} className="timeline-row">
@@ -300,7 +398,8 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
                       style={{
                         left: `${position}%`,
                         width: `${duration}%`,
-                        background: `linear-gradient(to right, #3b82f6 ${task.progress}%, #e0e7ff ${task.progress}%)`
+                        background: `linear-gradient(to right, ${task.color} ${task.progress}%, ${lightColor} ${task.progress}%)`,
+                        borderColor: task.color
                       }}
                       title={`${task.name}: ${task.progress}% complete`}
                     >
@@ -406,15 +505,25 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
                 />
               </div>
             </div>
-            <div className="form-group">
-              <label>Progress (%)</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={editingTask.progress}
-                onChange={(e) => setEditingTask({...editingTask, progress: e.target.value})}
-              />
+            <div className="form-row">
+              <div className="form-group">
+                <label>Progress (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={editingTask.progress}
+                  onChange={(e) => setEditingTask({...editingTask, progress: e.target.value})}
+                />
+              </div>
+              <div className="form-group">
+                <label>Color</label>
+                <input
+                  type="color"
+                  value={editingTask.color}
+                  onChange={(e) => setEditingTask({...editingTask, color: e.target.value})}
+                />
+              </div>
             </div>
             <div className="form-group">
               <label>Dependencies</label>
@@ -480,7 +589,12 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
           flex: 1;
         }
         
-        .back-btn, .save-btn {
+        .export-actions {
+          display: flex;
+          gap: 8px;
+        }
+        
+        .export-btn, .import-btn {
           display: flex;
           align-items: center;
           gap: 8px;
@@ -489,9 +603,39 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
           font-weight: 500;
           cursor: pointer;
           transition: all 0.2s;
+          font-size: 14px;
+        }
+        
+        .export-btn {
+          background: #3b82f6;
+          color: white;
+          border: 1px solid #3b82f6;
+        }
+        
+        .export-btn:hover {
+          background: #2563eb;
+        }
+        
+        .import-btn {
+          background: #f1f5f9;
+          color: #64748b;
+          border: 1px solid #e2e8f0;
+          position: relative;
+        }
+        
+        .import-btn:hover {
+          background: #e2e8f0;
         }
         
         .back-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
           background: #f1f5f9;
           color: #64748b;
           border: 1px solid #e2e8f0;
@@ -499,16 +643,6 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
         
         .back-btn:hover {
           background: #e2e8f0;
-        }
-        
-        .save-btn {
-          background: #3b82f6;
-          color: white;
-          border: 1px solid #3b82f6;
-        }
-        
-        .save-btn:hover {
-          background: #2563eb;
         }
         
         .gantt-container {
@@ -662,6 +796,35 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
           border-color: #3b82f6;
         }
         
+        .color-picker {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .color-picker input[type="color"] {
+          width: 40px;
+          height: 40px;
+          padding: 2px;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          cursor: pointer;
+        }
+        
+        .random-color-btn {
+          padding: 8px 12px;
+          background: #f1f5f9;
+          color: #64748b;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        
+        .random-color-btn:hover {
+          background: #e2e8f0;
+        }
+        
         .add-btn {
           width: 100%;
           padding: 8px 16px;
@@ -755,7 +918,6 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
           height: 28px;
           top: 4px;
           border-radius: 4px;
-          border: 1px solid #bfdbfe;
           box-sizing: border-box;
           cursor: pointer;
           transition: all 0.2s;
@@ -764,7 +926,7 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
         
         .task-bar:hover {
           transform: translateY(-1px);
-          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
         
         .task-progress {
@@ -888,6 +1050,19 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
         
         .cancel-btn:hover {
           background: #e2e8f0;
+        }
+        
+        .save-btn {
+          padding: 8px 16px;
+          background: #3b82f6;
+          color: white;
+          border: 1px solid #3b82f6;
+          border-radius: 6px;
+          cursor: pointer;
+        }
+        
+        .save-btn:hover {
+          background: #2563eb;
         }
       `}</style>
     </div>
