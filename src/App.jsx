@@ -6,6 +6,7 @@ import FlowchartMaker from './flowchart';
 import GanttChartMain from './ganttchartmain';
 import GanttChartMaker from './gantt';
 import UseCaseDiagramMain from './usecasemain';
+import UseCaseDiagramMaker from './usecase';
 
 const getStoredData = () => {
   const savedData = localStorage.getItem('evolutionChartData');
@@ -30,16 +31,7 @@ const getStoredData = () => {
       ganttCharts: parsed.ganttCharts || [],
       currentGanttChart: parsed.currentGanttChart || null,
       useCaseDiagrams: parsed.useCaseDiagrams || [],
-      currentUseCaseDiagram: parsed.currentUseCaseDiagram
-        ? {
-            ...parsed.currentUseCaseDiagram,
-            actors: parsed.currentUseCaseDiagram.actors || [],
-            useCases: parsed.currentUseCaseDiagram.useCases || [],
-            relationships: parsed.currentUseCaseDiagram.relationships || [],
-            zoom: parsed.currentUseCaseDiagram.zoom || 1,
-            pan: parsed.currentUseCaseDiagram.pan || { x: 0, y: 0 }
-          }
-        : null
+      currentUseCaseDiagram: parsed.currentUseCaseDiagram || null
     };
   } catch (e) {
     console.error('Failed to parse localStorage data:', e);
@@ -71,7 +63,9 @@ const App = () => {
     flowcharts, 
     currentFlowchart,
     ganttCharts,
-    currentGanttChart 
+    currentGanttChart,
+    useCaseDiagrams,
+    currentUseCaseDiagram
   } = getStoredData();
   const [activeTab, setActiveTab] = useState('projects');
   const [jsonInput, setJsonInput] = useState('');
@@ -95,7 +89,9 @@ const App = () => {
       flowcharts,
       currentFlowchart: null,
       ganttCharts,
-      currentGanttChart: null
+      currentGanttChart: null,
+      useCaseDiagrams,
+      currentUseCaseDiagram: null
     });
     forceUpdate();
   };
@@ -116,7 +112,9 @@ const App = () => {
       flowcharts: [...flowcharts, newFlowchart],
       currentFlowchart: newFlowchart,
       ganttCharts,
-      currentGanttChart: null
+      currentGanttChart: null,
+      useCaseDiagrams,
+      currentUseCaseDiagram: null
     });
     forceUpdate();
   };
@@ -136,7 +134,9 @@ const App = () => {
       flowcharts,
       currentFlowchart: null,
       ganttCharts: [...ganttCharts, newGanttChart],
-      currentGanttChart: newGanttChart
+      currentGanttChart: newGanttChart,
+      useCaseDiagrams,
+      currentUseCaseDiagram: null
     });
     forceUpdate();
   };
@@ -150,7 +150,9 @@ const App = () => {
       flowcharts,
       currentFlowchart,
       ganttCharts,
-      currentGanttChart
+      currentGanttChart,
+      useCaseDiagrams,
+      currentUseCaseDiagram: null
     });
     forceUpdate();
   };
@@ -164,7 +166,9 @@ const App = () => {
       flowcharts: updatedFlowcharts,
       currentFlowchart: isCurrent ? null : currentFlowchart,
       ganttCharts,
-      currentGanttChart
+      currentGanttChart,
+      useCaseDiagrams,
+      currentUseCaseDiagram: null
     });
     forceUpdate();
   };
@@ -178,7 +182,9 @@ const App = () => {
       flowcharts,
       currentFlowchart,
       ganttCharts: updatedGanttCharts,
-      currentGanttChart: isCurrent ? null : currentGanttChart
+      currentGanttChart: isCurrent ? null : currentGanttChart,
+      useCaseDiagrams,
+      currentUseCaseDiagram: null
     });
     forceUpdate();
   };
@@ -190,7 +196,9 @@ const App = () => {
       flowcharts,
       currentFlowchart: null,
       ganttCharts,
-      currentGanttChart: null
+      currentGanttChart: null,
+      useCaseDiagrams,
+      currentUseCaseDiagram: null
     });
     forceUpdate();
   };
@@ -202,7 +210,9 @@ const App = () => {
       flowcharts: flowcharts.map(f => f.id === updatedFlowchart.id ? updatedFlowchart : f),
       currentFlowchart: updatedFlowchart,
       ganttCharts,
-      currentGanttChart: null
+      currentGanttChart: null,
+      useCaseDiagrams,
+      currentUseCaseDiagram: null
     });
     forceUpdate();
   };
@@ -214,7 +224,9 @@ const App = () => {
       flowcharts,
       currentFlowchart: null,
       ganttCharts: ganttCharts.map(g => g.id === updatedGanttChart.id ? updatedGanttChart : g),
-      currentGanttChart: updatedGanttChart
+      currentGanttChart: updatedGanttChart,
+      useCaseDiagrams,
+      currentUseCaseDiagram: null
     });
     forceUpdate();
   };
@@ -291,7 +303,9 @@ const App = () => {
         flowcharts: [...flowcharts, newFlowchart],
         currentFlowchart: newFlowchart,
         ganttCharts,
-        currentGanttChart: null
+        currentGanttChart: null,
+        useCaseDiagrams,
+        currentUseCaseDiagram: null
       });
       forceUpdate();
       return true;
@@ -412,11 +426,20 @@ const App = () => {
             onUpdateGanttChart={updateGanttChart}
             onBack={handleBack}
           />
+        ) : currentUseCaseDiagram ? (
+          <UseCaseDiagramMaker
+            useCaseDiagram={currentUseCaseDiagram}
+            actors={currentUseCaseDiagram.actors || []}
+            useCases={currentUseCaseDiagram.useCases || []}
+            relationships={currentUseCaseDiagram.relationships || []}
+            onUpdateUseCaseDiagram={updateUseCaseDiagram}
+            onBack={handleBack}
+          />
         ) : (
           <>
             <div style={styles.header}>
               <h1 style={styles.headerTitle}>Visual Designer Suite</h1>
-              <p style={styles.headerSubtitle}>Create stunning evolution charts and interactive flowcharts</p>
+              <p style={styles.headerSubtitle}>Create stunning diagrams and charts</p>
             </div>
             
             <div style={styles.modeSelector}>
@@ -487,12 +510,18 @@ const App = () => {
                 onClick={() => setActiveTab('usecase')}
                 style={{
                   ...styles.tabButton,
-                  ...(activeTab === 'usecase' ? styles.tabButtonActive : {})
+                  ...(activeTab === 'usecase' ? {
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    color: 'white',
+                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                    boxShadow: '0 8px 25px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                    transform: 'translateY(-2px)'
+                  } : {})
                 }}
                 onMouseEnter={(e) => {
                   if (activeTab !== 'usecase') {
-                    e.target.style.background = 'rgba(59, 130, 246, 0.1)';
-                    e.target.style.color = '#3b82f6';
+                    e.target.style.background = 'rgba(16, 185, 129, 0.1)';
+                    e.target.style.color = '#10b981';
                   }
                 }}
                 onMouseLeave={(e) => {
@@ -502,7 +531,7 @@ const App = () => {
                   }
                 }}
               >
-                📅 Use Case
+                👥 Use Case
               </button>
             </div>
 
@@ -517,7 +546,9 @@ const App = () => {
                     flowcharts,
                     currentFlowchart: null,
                     ganttCharts,
-                    currentGanttChart: null
+                    currentGanttChart: null,
+                    useCaseDiagrams,
+                    currentUseCaseDiagram: null
                   });
                   forceUpdate();
                 }}
@@ -534,7 +565,9 @@ const App = () => {
                     flowcharts,
                     currentFlowchart: flowchart,
                     ganttCharts,
-                    currentGanttChart: null
+                    currentGanttChart: null,
+                    useCaseDiagrams,
+                    currentUseCaseDiagram: null
                   });
                   forceUpdate();
                 }}
@@ -552,13 +585,15 @@ const App = () => {
                     flowcharts,
                     currentFlowchart: null,
                     ganttCharts,
-                    currentGanttChart: ganttChart
+                    currentGanttChart: ganttChart,
+                    useCaseDiagrams,
+                    currentUseCaseDiagram: null
                   });
                   forceUpdate();
                 }}
                 onDeleteGanttChart={deleteGanttChart}
               />
-            ): (
+            ) : (
               <UseCaseDiagramMain 
                 useCaseDiagrams={useCaseDiagrams}
                 onCreateUseCaseDiagram={createUseCaseDiagram}
