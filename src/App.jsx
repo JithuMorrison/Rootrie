@@ -5,6 +5,7 @@ import FlowchartMain from './flowchartmain';
 import FlowchartMaker from './flowchart';
 import GanttChartMain from './ganttchartmain';
 import GanttChartMaker from './gantt';
+import UseCaseDiagramMain from './usecasemain';
 
 const getStoredData = () => {
   const savedData = localStorage.getItem('evolutionChartData');
@@ -482,6 +483,27 @@ const App = () => {
               >
                 📅 Gantt Charts
               </button>
+              <button
+                onClick={() => setActiveTab('usecase')}
+                style={{
+                  ...styles.tabButton,
+                  ...(activeTab === 'usecase' ? styles.tabButtonActive : {})
+                }}
+                onMouseEnter={(e) => {
+                  if (activeTab !== 'usecase') {
+                    e.target.style.background = 'rgba(59, 130, 246, 0.1)';
+                    e.target.style.color = '#3b82f6';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeTab !== 'usecase') {
+                    e.target.style.background = 'rgba(0, 0, 0, 0.05)';
+                    e.target.style.color = '#64748b';
+                  }
+                }}
+              >
+                📅 Use Case
+              </button>
             </div>
 
             {activeTab === 'projects' ? (
@@ -519,7 +541,7 @@ const App = () => {
                 onDeleteFlowchart={deleteFlowchart}
                 onImportFlowchart={importFlowchartFromJson}
               />
-            ) : (
+            ) : activeTab === 'gantt' ? (
               <GanttChartMain
                 ganttCharts={ganttCharts}
                 onCreateGanttChart={createGanttChart}
@@ -535,6 +557,25 @@ const App = () => {
                   forceUpdate();
                 }}
                 onDeleteGanttChart={deleteGanttChart}
+              />
+            ): (
+              <UseCaseDiagramMain 
+                useCaseDiagrams={useCaseDiagrams}
+                onCreateUseCaseDiagram={createUseCaseDiagram}
+                onLoadUseCaseDiagram={(diagram) => {
+                  saveToLocalStorage({
+                    projects,
+                    currentProject: null,
+                    flowcharts,
+                    currentFlowchart: null,
+                    ganttCharts,
+                    currentGanttChart: null,
+                    useCaseDiagrams,
+                    currentUseCaseDiagram: diagram
+                  });
+                  forceUpdate();
+                }}
+                onDeleteUseCaseDiagram={deleteUseCaseDiagram}
               />
             )}
           </>
