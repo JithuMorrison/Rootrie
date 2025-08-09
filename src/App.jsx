@@ -7,52 +7,50 @@ import GanttChartMain from './ganttchartmain';
 import GanttChartMaker from './gantt';
 import UseCaseDiagramMain from './usecasemain';
 import UseCaseDiagramMaker from './usecase';
+import SequenceDiagramMain from './sequencemain';
+import SequenceDiagramMaker from './sequence';
+
+// Diagram type constants for better maintainability
+const DIAGRAM_TYPES = {
+  PROJECT: 'projects',
+  FLOWCHART: 'flowcharts',
+  GANTT: 'gantt',
+  USE_CASE: 'usecase',
+  SEQUENCE: 'sequence'
+};
+
+// Initial data structure
+const getInitialData = () => ({
+  projects: [],
+  currentProject: null,
+  flowcharts: [],
+  currentFlowchart: null,
+  ganttCharts: [],
+  currentGanttChart: null,
+  useCaseDiagrams: [],
+  currentUseCaseDiagram: null,
+  sequenceDiagrams: [],
+  currentSequenceDiagram: null
+});
 
 const getStoredData = () => {
   const savedData = localStorage.getItem('evolutionChartData');
-  if (!savedData) return { 
-    projects: [], 
-    currentProject: null, 
-    flowcharts: [], 
-    currentFlowchart: null,
-    ganttCharts: [],
-    currentGanttChart: null,
-    useCaseDiagrams: [],
-    currentUseCaseDiagram: null
-  };
+  if (!savedData) return getInitialData();
 
   try {
     const parsed = JSON.parse(savedData);
     return {
-      projects: parsed.projects || [],
-      currentProject: parsed.currentProject || null,
-      flowcharts: parsed.flowcharts || [],
-      currentFlowchart: parsed.currentFlowchart || null,
-      ganttCharts: parsed.ganttCharts || [],
-      currentGanttChart: parsed.currentGanttChart || null,
-      useCaseDiagrams: parsed.useCaseDiagrams || [],
-      currentUseCaseDiagram: parsed.currentUseCaseDiagram || null
+      ...getInitialData(),
+      ...parsed
     };
   } catch (e) {
     console.error('Failed to parse localStorage data:', e);
-    return { 
-      projects: [], 
-      currentProject: null, 
-      flowcharts: [], 
-      currentFlowchart: null,
-      ganttCharts: [],
-      currentGanttChart: null,
-      useCaseDiagrams: [],
-      currentUseCaseDiagram: null
-    };
+    return getInitialData();
   }
 };
 
 const saveToLocalStorage = (data) => {
-  localStorage.setItem(
-    'evolutionChartData',
-    JSON.stringify(data)
-  );
+  localStorage.setItem('evolutionChartData', JSON.stringify(data));
 };
 
 const App = () => {
@@ -65,249 +63,188 @@ const App = () => {
     ganttCharts,
     currentGanttChart,
     useCaseDiagrams,
-    currentUseCaseDiagram
+    currentUseCaseDiagram,
+    sequenceDiagrams,
+    currentSequenceDiagram
   } = getStoredData();
-  const [activeTab, setActiveTab] = useState('projects');
+  const [activeTab, setActiveTab] = useState(DIAGRAM_TYPES.PROJECT);
   const [jsonInput, setJsonInput] = useState('');
 
-  const createProject = (name, start, end, timeUnit) => {
-    const newProject = {
+  // Generic diagram creation function
+  const createDiagram = (type, name, extraData = {}) => {
+    const baseDiagram = {
       id: Date.now(),
       name,
+      createdAt: new Date().toISOString(),
+      ...extraData
+    };
+
+    const updateMap = {
+      [DIAGRAM_TYPES.PROJECT]: {
+        projects: [...projects, baseDiagram],
+        currentProject: baseDiagram
+      },
+      [DIAGRAM_TYPES.FLOWCHART]: {
+        flowcharts: [...flowcharts, baseDiagram],
+        currentFlowchart: baseDiagram
+      },
+      [DIAGRAM_TYPES.GANTT]: {
+        ganttCharts: [...ganttCharts, baseDiagram],
+        currentGanttChart: baseDiagram
+      },
+      [DIAGRAM_TYPES.USE_CASE]: {
+        useCaseDiagrams: [...useCaseDiagrams, baseDiagram],
+        currentUseCaseDiagram: baseDiagram
+      },
+      [DIAGRAM_TYPES.SEQUENCE]: {
+        sequenceDiagrams: [...sequenceDiagrams, baseDiagram],
+        currentSequenceDiagram: baseDiagram
+      }
+    };
+
+    saveToLocalStorage({
+      ...getInitialData(),
+      ...updateMap[type]
+    });
+    forceUpdate();
+  };
+
+  // Generic diagram deletion function
+  const deleteDiagram = (type, id) => {
+    const updateMap = {
+      [DIAGRAM_TYPES.PROJECT]: {
+        projects: projects.filter(p => p.id !== id),
+        currentProject: currentProject?.id === id ? null : currentProject
+      },
+      [DIAGRAM_TYPES.FLOWCHART]: {
+        flowcharts: flowcharts.filter(f => f.id !== id),
+        currentFlowchart: currentFlowchart?.id === id ? null : currentFlowchart
+      },
+      [DIAGRAM_TYPES.GANTT]: {
+        ganttCharts: ganttCharts.filter(g => g.id !== id),
+        currentGanttChart: currentGanttChart?.id === id ? null : currentGanttChart
+      },
+      [DIAGRAM_TYPES.USE_CASE]: {
+        useCaseDiagrams: useCaseDiagrams.filter(d => d.id !== id),
+        currentUseCaseDiagram: currentUseCaseDiagram?.id === id ? null : currentUseCaseDiagram
+      },
+      [DIAGRAM_TYPES.SEQUENCE]: {
+        sequenceDiagrams: sequenceDiagrams.filter(d => d.id !== id),
+        currentSequenceDiagram: currentSequenceDiagram?.id === id ? null : currentSequenceDiagram
+      }
+    };
+
+    saveToLocalStorage({
+      ...getStoredData(),
+      ...updateMap[type]
+    });
+    forceUpdate();
+  };
+
+  // Generic diagram update function
+  const updateDiagram = (type, updatedDiagram) => {
+    const updateMap = {
+      [DIAGRAM_TYPES.PROJECT]: {
+        projects: projects.map(p => p.id === updatedDiagram.id ? updatedDiagram : p),
+        currentProject: updatedDiagram
+      },
+      [DIAGRAM_TYPES.FLOWCHART]: {
+        flowcharts: flowcharts.map(f => f.id === updatedDiagram.id ? updatedDiagram : f),
+        currentFlowchart: updatedDiagram
+      },
+      [DIAGRAM_TYPES.GANTT]: {
+        ganttCharts: ganttCharts.map(g => g.id === updatedDiagram.id ? updatedDiagram : g),
+        currentGanttChart: updatedDiagram
+      },
+      [DIAGRAM_TYPES.USE_CASE]: {
+        useCaseDiagrams: useCaseDiagrams.map(d => d.id === updatedDiagram.id ? updatedDiagram : d),
+        currentUseCaseDiagram: updatedDiagram
+      },
+      [DIAGRAM_TYPES.SEQUENCE]: {
+        sequenceDiagrams: sequenceDiagrams.map(d => d.id === updatedDiagram.id ? updatedDiagram : d),
+        currentSequenceDiagram: updatedDiagram
+      }
+    };
+
+    saveToLocalStorage({
+      ...getStoredData(),
+      ...updateMap[type]
+    });
+    forceUpdate();
+  };
+
+  // Specific diagram creation functions
+  const createProject = (name, start, end, timeUnit) => {
+    createDiagram(DIAGRAM_TYPES.PROJECT, name, {
       timelineStart: start,
       timelineEnd: end,
       timeUnit,
-      createdAt: new Date().toISOString(),
       nodes: [],
       connections: [],
       zoom: 1,
       pan: { x: 0, y: 0 }
-    };
-    saveToLocalStorage({
-      projects: [...projects, newProject],
-      currentProject: newProject,
-      flowcharts,
-      currentFlowchart: null,
-      ganttCharts,
-      currentGanttChart: null,
-      useCaseDiagrams,
-      currentUseCaseDiagram: null
     });
-    forceUpdate();
   };
 
   const createFlowchart = (name) => {
-    const newFlowchart = {
-      id: Date.now(),
-      name,
-      createdAt: new Date().toISOString(),
+    createDiagram(DIAGRAM_TYPES.FLOWCHART, name, {
       nodes: [],
       edges: [],
       zoom: 1,
       pan: { x: 0, y: 0 }
-    };
-    saveToLocalStorage({
-      projects,
-      currentProject: null,
-      flowcharts: [...flowcharts, newFlowchart],
-      currentFlowchart: newFlowchart,
-      ganttCharts,
-      currentGanttChart: null,
-      useCaseDiagrams,
-      currentUseCaseDiagram: null
     });
-    forceUpdate();
   };
 
   const createGanttChart = (name) => {
-    const newGanttChart = {
-      id: Date.now(),
-      name,
-      createdAt: new Date().toISOString(),
+    createDiagram(DIAGRAM_TYPES.GANTT, name, {
       tasks: [],
       startDate: new Date().toISOString(),
       endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-    };
-    saveToLocalStorage({
-      projects,
-      currentProject: null,
-      flowcharts,
-      currentFlowchart: null,
-      ganttCharts: [...ganttCharts, newGanttChart],
-      currentGanttChart: newGanttChart,
-      useCaseDiagrams,
-      currentUseCaseDiagram: null
     });
-    forceUpdate();
-  };
-
-  const deleteProject = (projectId) => {
-    const updatedProjects = projects.filter(p => p.id !== projectId);
-    const isCurrent = currentProject?.id === projectId;
-    saveToLocalStorage({
-      projects: updatedProjects,
-      currentProject: isCurrent ? null : currentProject,
-      flowcharts,
-      currentFlowchart,
-      ganttCharts,
-      currentGanttChart,
-      useCaseDiagrams,
-      currentUseCaseDiagram: null
-    });
-    forceUpdate();
-  };
-
-  const deleteFlowchart = (flowchartId) => {
-    const updatedFlowcharts = flowcharts.filter(f => f.id !== flowchartId);
-    const isCurrent = currentFlowchart?.id === flowchartId;
-    saveToLocalStorage({
-      projects,
-      currentProject,
-      flowcharts: updatedFlowcharts,
-      currentFlowchart: isCurrent ? null : currentFlowchart,
-      ganttCharts,
-      currentGanttChart,
-      useCaseDiagrams,
-      currentUseCaseDiagram: null
-    });
-    forceUpdate();
-  };
-
-  const deleteGanttChart = (ganttChartId) => {
-    const updatedGanttCharts = ganttCharts.filter(g => g.id !== ganttChartId);
-    const isCurrent = currentGanttChart?.id === ganttChartId;
-    saveToLocalStorage({
-      projects,
-      currentProject,
-      flowcharts,
-      currentFlowchart,
-      ganttCharts: updatedGanttCharts,
-      currentGanttChart: isCurrent ? null : currentGanttChart,
-      useCaseDiagrams,
-      currentUseCaseDiagram: null
-    });
-    forceUpdate();
-  };
-
-  const updateProject = (updatedProject) => {
-    saveToLocalStorage({
-      projects: projects.map(p => p.id === updatedProject.id ? updatedProject : p),
-      currentProject: updatedProject,
-      flowcharts,
-      currentFlowchart: null,
-      ganttCharts,
-      currentGanttChart: null,
-      useCaseDiagrams,
-      currentUseCaseDiagram: null
-    });
-    forceUpdate();
-  };
-
-  const updateFlowchart = (updatedFlowchart) => {
-    saveToLocalStorage({
-      projects,
-      currentProject: null,
-      flowcharts: flowcharts.map(f => f.id === updatedFlowchart.id ? updatedFlowchart : f),
-      currentFlowchart: updatedFlowchart,
-      ganttCharts,
-      currentGanttChart: null,
-      useCaseDiagrams,
-      currentUseCaseDiagram: null
-    });
-    forceUpdate();
-  };
-
-  const updateGanttChart = (updatedGanttChart) => {
-    saveToLocalStorage({
-      projects,
-      currentProject: null,
-      flowcharts,
-      currentFlowchart: null,
-      ganttCharts: ganttCharts.map(g => g.id === updatedGanttChart.id ? updatedGanttChart : g),
-      currentGanttChart: updatedGanttChart,
-      useCaseDiagrams,
-      currentUseCaseDiagram: null
-    });
-    forceUpdate();
   };
 
   const createUseCaseDiagram = (name) => {
-    const newUseCaseDiagram = {
-      id: Date.now(),
-      name,
-      createdAt: new Date().toISOString(),
+    createDiagram(DIAGRAM_TYPES.USE_CASE, name, {
       actors: [],
       useCases: [],
       relationships: [],
       zoom: 1,
       pan: { x: 0, y: 0 }
-    };
-    saveToLocalStorage({
-      projects,
-      currentProject: null,
-      flowcharts,
-      currentFlowchart: null,
-      ganttCharts,
-      currentGanttChart: null,
-      useCaseDiagrams: [...useCaseDiagrams, newUseCaseDiagram],
-      currentUseCaseDiagram: newUseCaseDiagram
     });
-    forceUpdate();
   };
 
-  const deleteUseCaseDiagram = (diagramId) => {
-    const updatedDiagrams = useCaseDiagrams.filter(d => d.id !== diagramId);
-    const isCurrent = currentUseCaseDiagram?.id === diagramId;
-    saveToLocalStorage({
-      projects,
-      currentProject,
-      flowcharts,
-      currentFlowchart,
-      ganttCharts,
-      currentGanttChart,
-      useCaseDiagrams: updatedDiagrams,
-      currentUseCaseDiagram: isCurrent ? null : currentUseCaseDiagram
+  const createSequenceDiagram = (name) => {
+    createDiagram(DIAGRAM_TYPES.SEQUENCE, name, {
+      participants: [],
+      messages: [],
+      zoom: 1,
+      pan: { x: 0, y: 0 }
     });
-    forceUpdate();
   };
 
-  const updateUseCaseDiagram = (updatedDiagram) => {
-    saveToLocalStorage({
-      projects,
-      currentProject: null,
-      flowcharts,
-      currentFlowchart: null,
-      ganttCharts,
-      currentGanttChart: null,
-      useCaseDiagrams: useCaseDiagrams.map(d => d.id === updatedDiagram.id ? updatedDiagram : d),
-      currentUseCaseDiagram: updatedDiagram
-    });
-    forceUpdate();
-  };
+  // Specific diagram deletion functions
+  const deleteProject = (id) => deleteDiagram(DIAGRAM_TYPES.PROJECT, id);
+  const deleteFlowchart = (id) => deleteDiagram(DIAGRAM_TYPES.FLOWCHART, id);
+  const deleteGanttChart = (id) => deleteDiagram(DIAGRAM_TYPES.GANTT, id);
+  const deleteUseCaseDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.USE_CASE, id);
+  const deleteSequenceDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.SEQUENCE, id);
+
+  // Specific diagram update functions
+  const updateProject = (project) => updateDiagram(DIAGRAM_TYPES.PROJECT, project);
+  const updateFlowchart = (flowchart) => updateDiagram(DIAGRAM_TYPES.FLOWCHART, flowchart);
+  const updateGanttChart = (ganttChart) => updateDiagram(DIAGRAM_TYPES.GANTT, ganttChart);
+  const updateUseCaseDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.USE_CASE, diagram);
+  const updateSequenceDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.SEQUENCE, diagram);
 
   const importFlowchartFromJson = (jsonString) => {
     try {
       const parsed = JSON.parse(jsonString);
-      const newFlowchart = {
-        id: Date.now(),
-        name: `Imported Flowchart ${new Date().toLocaleString()}`,
-        createdAt: new Date().toISOString(),
+      createDiagram(DIAGRAM_TYPES.FLOWCHART, `Imported Flowchart ${new Date().toLocaleString()}`, {
         nodes: parsed.nodes || [],
         edges: parsed.edges || [],
         zoom: 1,
         pan: { x: 0, y: 0 }
-      };
-      saveToLocalStorage({
-        projects,
-        currentProject: null,
-        flowcharts: [...flowcharts, newFlowchart],
-        currentFlowchart: newFlowchart,
-        ganttCharts,
-        currentGanttChart: null,
-        useCaseDiagrams,
-        currentUseCaseDiagram: null
       });
-      forceUpdate();
       return true;
     } catch (e) {
       console.error('Invalid JSON:', e);
@@ -317,14 +254,34 @@ const App = () => {
 
   const handleBack = () => {
     saveToLocalStorage({
-      projects,
+      ...getStoredData(),
       currentProject: null,
-      flowcharts,
       currentFlowchart: null,
-      ganttCharts,
       currentGanttChart: null,
-      useCaseDiagrams,
-      currentUseCaseDiagram: null
+      currentUseCaseDiagram: null,
+      currentSequenceDiagram: null
+    });
+    forceUpdate();
+  };
+
+  const loadDiagram = (type, diagram) => {
+    const updateMap = {
+      [DIAGRAM_TYPES.PROJECT]: { currentProject: diagram },
+      [DIAGRAM_TYPES.FLOWCHART]: { currentFlowchart: diagram },
+      [DIAGRAM_TYPES.GANTT]: { currentGanttChart: diagram },
+      [DIAGRAM_TYPES.USE_CASE]: { currentUseCaseDiagram: diagram },
+      [DIAGRAM_TYPES.SEQUENCE]: { currentSequenceDiagram: diagram }
+    };
+
+    saveToLocalStorage({
+      ...getStoredData(),
+      ...updateMap[type],
+      currentProject: null,
+      currentFlowchart: null,
+      currentGanttChart: null,
+      currentUseCaseDiagram: null,
+      currentSequenceDiagram: null,
+      ...updateMap[type] // This will override the null with the correct diagram
     });
     forceUpdate();
   };
@@ -388,14 +345,94 @@ const App = () => {
       position: 'relative',
       backdropFilter: 'blur(10px)'
     },
-    tabButtonActive: {
-      background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+    tabButtonActive: (color) => ({
+      background: `linear-gradient(135deg, ${color} 0%, ${color} 100%)`,
       color: 'white',
       borderColor: 'rgba(255, 255, 255, 0.2)',
-      boxShadow: '0 8px 25px rgba(79, 70, 229, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+      boxShadow: `0 8px 25px rgba(${hexToRgb(color)}, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)`,
       transform: 'translateY(-2px)'
-    }
+    }),
+    tabButtonHover: (color) => ({
+      background: `rgba(${hexToRgb(color)}, 0.1)`,
+      color: color
+    })
   };
+
+  const hexToRgb = (hex) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `${r}, ${g}, ${b}`;
+  };
+
+  const getTabConfig = () => [
+    {
+      type: DIAGRAM_TYPES.PROJECT,
+      label: '📊 Evolution Charts',
+      color: '#4f46e5',
+      component: (
+        <EvolutionChartMain
+          projects={projects}
+          onCreateProject={createProject}
+          onLoadProject={(project) => loadDiagram(DIAGRAM_TYPES.PROJECT, project)}
+          onDeleteProject={deleteProject}
+        />
+      )
+    },
+    {
+      type: DIAGRAM_TYPES.FLOWCHART,
+      label: '🔄 Flowcharts',
+      color: '#7c3aed',
+      component: (
+        <FlowchartMain
+          flowcharts={flowcharts}
+          onCreateFlowchart={createFlowchart}
+          onLoadFlowchart={(flowchart) => loadDiagram(DIAGRAM_TYPES.FLOWCHART, flowchart)}
+          onDeleteFlowchart={deleteFlowchart}
+          onImportFlowchart={importFlowchartFromJson}
+        />
+      )
+    },
+    {
+      type: DIAGRAM_TYPES.GANTT,
+      label: '📅 Gantt Charts',
+      color: '#3b82f6',
+      component: (
+        <GanttChartMain
+          ganttCharts={ganttCharts}
+          onCreateGanttChart={createGanttChart}
+          onLoadGanttChart={(ganttChart) => loadDiagram(DIAGRAM_TYPES.GANTT, ganttChart)}
+          onDeleteGanttChart={deleteGanttChart}
+        />
+      )
+    },
+    {
+      type: DIAGRAM_TYPES.USE_CASE,
+      label: '👥 Use Case',
+      color: '#10b981',
+      component: (
+        <UseCaseDiagramMain 
+          useCaseDiagrams={useCaseDiagrams}
+          onCreateUseCaseDiagram={createUseCaseDiagram}
+          onLoadUseCaseDiagram={(diagram) => loadDiagram(DIAGRAM_TYPES.USE_CASE, diagram)}
+          onDeleteUseCaseDiagram={deleteUseCaseDiagram}
+        />
+      )
+    },
+    {
+      type: DIAGRAM_TYPES.SEQUENCE,
+      label: '↔️ Sequence',
+      color: '#06b6d4',
+      component: (
+        <SequenceDiagramMain 
+          sequenceDiagrams={sequenceDiagrams}
+          onCreateSequenceDiagram={createSequenceDiagram}
+          onLoadSequenceDiagram={(diagram) => loadDiagram(DIAGRAM_TYPES.SEQUENCE, diagram)}
+          onDeleteSequenceDiagram={deleteSequenceDiagram}
+        />
+      )
+    }
+  ];
 
   return (
     <div style={styles.appContainer}>
@@ -435,6 +472,14 @@ const App = () => {
             onUpdateUseCaseDiagram={updateUseCaseDiagram}
             onBack={handleBack}
           />
+        ) : currentSequenceDiagram ? (
+          <SequenceDiagramMaker
+            sequenceDiagram={currentSequenceDiagram}
+            participants={currentSequenceDiagram.participants || []}
+            messages={currentSequenceDiagram.messages || []}
+            onUpdateSequenceDiagram={updateSequenceDiagram}
+            onBack={handleBack}
+          />
         ) : (
           <>
             <div style={styles.header}>
@@ -443,176 +488,33 @@ const App = () => {
             </div>
             
             <div style={styles.modeSelector}>
-              <button
-                onClick={() => setActiveTab('projects')}
-                style={{
-                  ...styles.tabButton,
-                  ...(activeTab === 'projects' ? styles.tabButtonActive : {})
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== 'projects') {
-                    e.target.style.background = 'rgba(79, 70, 229, 0.1)';
-                    e.target.style.color = '#4f46e5';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== 'projects') {
-                    e.target.style.background = 'rgba(0, 0, 0, 0.05)';
-                    e.target.style.color = '#64748b';
-                  }
-                }}
-              >
-                📊 Evolution Charts
-              </button>
-              <button
-                onClick={() => setActiveTab('flowcharts')}
-                style={{
-                  ...styles.tabButton,
-                  ...(activeTab === 'flowcharts' ? styles.tabButtonActive : {})
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== 'flowcharts') {
-                    e.target.style.background = 'rgba(79, 70, 229, 0.1)';
-                    e.target.style.color = '#4f46e5';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== 'flowcharts') {
-                    e.target.style.background = 'rgba(0, 0, 0, 0.05)';
-                    e.target.style.color = '#64748b';
-                  }
-                }}
-              >
-                🔄 Flowcharts
-              </button>
-              <button
-                onClick={() => setActiveTab('gantt')}
-                style={{
-                  ...styles.tabButton,
-                  ...(activeTab === 'gantt' ? styles.tabButtonActive : {})
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== 'gantt') {
-                    e.target.style.background = 'rgba(59, 130, 246, 0.1)';
-                    e.target.style.color = '#3b82f6';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== 'gantt') {
-                    e.target.style.background = 'rgba(0, 0, 0, 0.05)';
-                    e.target.style.color = '#64748b';
-                  }
-                }}
-              >
-                📅 Gantt Charts
-              </button>
-              <button
-                onClick={() => setActiveTab('usecase')}
-                style={{
-                  ...styles.tabButton,
-                  ...(activeTab === 'usecase' ? {
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                    color: 'white',
-                    borderColor: 'rgba(255, 255, 255, 0.2)',
-                    boxShadow: '0 8px 25px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
-                    transform: 'translateY(-2px)'
-                  } : {})
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== 'usecase') {
-                    e.target.style.background = 'rgba(16, 185, 129, 0.1)';
-                    e.target.style.color = '#10b981';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== 'usecase') {
-                    e.target.style.background = 'rgba(0, 0, 0, 0.05)';
-                    e.target.style.color = '#64748b';
-                  }
-                }}
-              >
-                👥 Use Case
-              </button>
+              {getTabConfig().map((tab) => (
+                <button
+                  key={tab.type}
+                  onClick={() => setActiveTab(tab.type)}
+                  style={{
+                    ...styles.tabButton,
+                    ...(activeTab === tab.type ? styles.tabButtonActive(tab.color) : {}),
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTab !== tab.type) {
+                      e.target.style.background = styles.tabButtonHover(tab.color).background;
+                      e.target.style.color = styles.tabButtonHover(tab.color).color;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTab !== tab.type) {
+                      e.target.style.background = styles.tabButton.background;
+                      e.target.style.color = styles.tabButton.color;
+                    }
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
-            {activeTab === 'projects' ? (
-              <EvolutionChartMain
-                projects={projects}
-                onCreateProject={createProject}
-                onLoadProject={(project) => {
-                  saveToLocalStorage({
-                    projects,
-                    currentProject: project,
-                    flowcharts,
-                    currentFlowchart: null,
-                    ganttCharts,
-                    currentGanttChart: null,
-                    useCaseDiagrams,
-                    currentUseCaseDiagram: null
-                  });
-                  forceUpdate();
-                }}
-                onDeleteProject={deleteProject}
-              />
-            ) : activeTab === 'flowcharts' ? (
-              <FlowchartMain
-                flowcharts={flowcharts}
-                onCreateFlowchart={createFlowchart}
-                onLoadFlowchart={(flowchart) => {
-                  saveToLocalStorage({
-                    projects,
-                    currentProject: null,
-                    flowcharts,
-                    currentFlowchart: flowchart,
-                    ganttCharts,
-                    currentGanttChart: null,
-                    useCaseDiagrams,
-                    currentUseCaseDiagram: null
-                  });
-                  forceUpdate();
-                }}
-                onDeleteFlowchart={deleteFlowchart}
-                onImportFlowchart={importFlowchartFromJson}
-              />
-            ) : activeTab === 'gantt' ? (
-              <GanttChartMain
-                ganttCharts={ganttCharts}
-                onCreateGanttChart={createGanttChart}
-                onLoadGanttChart={(ganttChart) => {
-                  saveToLocalStorage({
-                    projects,
-                    currentProject: null,
-                    flowcharts,
-                    currentFlowchart: null,
-                    ganttCharts,
-                    currentGanttChart: ganttChart,
-                    useCaseDiagrams,
-                    currentUseCaseDiagram: null
-                  });
-                  forceUpdate();
-                }}
-                onDeleteGanttChart={deleteGanttChart}
-              />
-            ) : (
-              <UseCaseDiagramMain 
-                useCaseDiagrams={useCaseDiagrams}
-                onCreateUseCaseDiagram={createUseCaseDiagram}
-                onLoadUseCaseDiagram={(diagram) => {
-                  saveToLocalStorage({
-                    projects,
-                    currentProject: null,
-                    flowcharts,
-                    currentFlowchart: null,
-                    ganttCharts,
-                    currentGanttChart: null,
-                    useCaseDiagrams,
-                    currentUseCaseDiagram: diagram
-                  });
-                  forceUpdate();
-                }}
-                onDeleteUseCaseDiagram={deleteUseCaseDiagram}
-              />
-            )}
+            {getTabConfig().find(tab => tab.type === activeTab)?.component}
           </>
         )}
       </div>
