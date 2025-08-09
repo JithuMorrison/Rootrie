@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Save, Plus, Trash2, Users, GitMerge, Download, Upload, Image, Copy } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import { ArrowLeft, Save, Plus, Trash2, Users, GitMerge, Download, Upload, Image, Copy, Move, Grid, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 const UseCaseDiagramMaker = ({ 
   useCaseDiagram, 
@@ -19,12 +18,29 @@ const UseCaseDiagramMaker = ({
   const [jsonInput, setJsonInput] = useState('');
   const [dragItem, setDragItem] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [showGrid, setShowGrid] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
+  const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
+  const [lastCanvasMousePos, setLastCanvasMousePos] = useState({ x: 0, y: 0 });
   const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+
+  const GRID_SIZE = 20;
+  const ACTOR_WIDTH = 60;
+  const ACTOR_HEIGHT = 80;
+  const USECASE_WIDTH = 150;
+  const USECASE_HEIGHT = 40;
 
   // Initialize JSON input with current diagram data
   useEffect(() => {
     setJsonInput(JSON.stringify({ actors, useCases, relationships }, null, 2));
   }, [actors, useCases, relationships]);
+
+  const snapToGridIfEnabled = (value) => {
+    return snapToGrid ? Math.round(value / GRID_SIZE) * GRID_SIZE : value;
+  };
 
   const addActor = () => {
     if (!newActor.trim()) return;
@@ -34,8 +50,8 @@ const UseCaseDiagramMaker = ({
       {
         id: Date.now(),
         name: newActor,
-        x: 50 + Math.random() * 100,
-        y: 50 + Math.random() * 100
+        x: snapToGridIfEnabled(100 + Math.random() * 200),
+        y: snapToGridIfEnabled(100 + Math.random() * 200)
       }
     ];
     
@@ -55,8 +71,8 @@ const UseCaseDiagramMaker = ({
       {
         id: Date.now(),
         name: newUseCase,
-        x: 200 + Math.random() * 200,
-        y: 100 + Math.random() * 200
+        x: snapToGridIfEnabled(300 + Math.random() * 300),
+        y: snapToGridIfEnabled(150 + Math.random() * 200)
       }
     ];
     
@@ -121,10 +137,70 @@ const UseCaseDiagramMaker = ({
     });
   };
 
+  const getElementCenter = (element, isActor) => {
+    if (isActor) {
+      return {
+        x: element.x + ACTOR_WIDTH / 2,
+        y: element.y + ACTOR_HEIGHT / 2
+      };
+    } else {
+      return {
+        x: element.x + USECASE_WIDTH / 2,
+        y: element.y + USECASE_HEIGHT / 2
+      };
+    }
+  };
+
+  const getElementBorderPoint = (element, isActor, angle) => {
+    const center = getElementCenter(element, isActor);
+    
+    if (isActor) {
+      // For actors (represented as stick figures in circles)
+      const radius = 25; // Half of actor icon size
+      return {
+        x: center.x + radius * Math.cos(angle),
+        y: center.y + radius * Math.sin(angle)
+      };
+    } else {
+      // For use cases (ellipses)
+      const a = USECASE_WIDTH / 2; // semi-major axis
+      const b = USECASE_HEIGHT / 2; // semi-minor axis
+      
+      // Calculate point on ellipse border
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const r = (a * b) / Math.sqrt(b * b * cos * cos + a * a * sin * sin);
+      
+      return {
+        x: center.x + r * cos,
+        y: center.y + r * sin
+      };
+    }
+  };
+
+  const constrainToCanvas = (x, y, itemWidth, itemHeight) => {
+    const container = containerRef.current;
+    if (!container) return { x, y };
+    
+    const canvasRect = container.getBoundingClientRect();
+    const minX = Math.max(0, -canvasOffset.x);
+    const minY = Math.max(0, -canvasOffset.y);
+    const maxX = Math.min(canvasRect.width / zoom - itemWidth, (canvasRect.width / zoom) - canvasOffset.x - itemWidth);
+    const maxY = Math.min(canvasRect.height / zoom - itemHeight, (canvasRect.height / zoom) - canvasOffset.y - itemHeight);
+    
+    return {
+      x: Math.max(minX, Math.min(maxX, x)),
+      y: Math.max(minY, Math.min(maxY, y))
+    };
+  };
+
   const handleMouseDown = (e, item, type) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left - canvasOffset.x) / zoom;
+    const y = (e.clientY - rect.top - canvasOffset.y) / zoom;
     
     setDragItem({ ...item, type });
     setDragOffset({
@@ -134,46 +210,113 @@ const UseCaseDiagramMaker = ({
   };
 
   const handleMouseMove = (e) => {
-    if (!dragItem) return;
+    if (!dragItem && !isDraggingCanvas) return;
     
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - dragOffset.x;
-    const y = e.clientY - rect.top - dragOffset.y;
-    
-    if (dragItem.type === 'actor') {
-      const updatedActors = actors.map(actor => 
-        actor.id === dragItem.id ? { ...actor, x, y } : actor
-      );
-      onUpdateUseCaseDiagram({
-        ...useCaseDiagram,
-        actors: updatedActors
-      });
-    } else if (dragItem.type === 'useCase') {
-      const updatedUseCases = useCases.map(useCase => 
-        useCase.id === dragItem.id ? { ...useCase, x, y } : useCase
-      );
-      onUpdateUseCaseDiagram({
-        ...useCaseDiagram,
-        useCases: updatedUseCases
-      });
+    if (isDraggingCanvas) {
+      const deltaX = e.clientX - lastCanvasMousePos.x;
+      const deltaY = e.clientY - lastCanvasMousePos.y;
+      
+      setCanvasOffset(prev => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY
+      }));
+      
+      setLastCanvasMousePos({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
+    if (dragItem) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      let x = (e.clientX - rect.left - canvasOffset.x) / zoom - dragOffset.x;
+      let y = (e.clientY - rect.top - canvasOffset.y) / zoom - dragOffset.y;
+      
+      x = snapToGridIfEnabled(x);
+      y = snapToGridIfEnabled(y);
+      
+      const itemWidth = dragItem.type === 'actor' ? ACTOR_WIDTH : USECASE_WIDTH;
+      const itemHeight = dragItem.type === 'actor' ? ACTOR_HEIGHT : USECASE_HEIGHT;
+      
+      const constrained = constrainToCanvas(x, y, itemWidth, itemHeight);
+      
+      if (dragItem.type === 'actor') {
+        const updatedActors = actors.map(actor => 
+          actor.id === dragItem.id ? { ...actor, x: constrained.x, y: constrained.y } : actor
+        );
+        onUpdateUseCaseDiagram({
+          ...useCaseDiagram,
+          actors: updatedActors
+        });
+      } else if (dragItem.type === 'useCase') {
+        const updatedUseCases = useCases.map(useCase => 
+          useCase.id === dragItem.id ? { ...useCase, x: constrained.x, y: constrained.y } : useCase
+        );
+        onUpdateUseCaseDiagram({
+          ...useCaseDiagram,
+          useCases: updatedUseCases
+        });
+      }
     }
   };
 
   const handleMouseUp = () => {
     setDragItem(null);
+    setIsDraggingCanvas(false);
+  };
+
+  const handleCanvasMouseDown = (e) => {
+    if (e.target === canvasRef.current) {
+      setIsDraggingCanvas(true);
+      setLastCanvasMousePos({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev * 1.2, 3));
+  };
+
+  const handleZoomOut = () => {
+    setZoom(prev => Math.max(prev / 1.2, 0.3));
+  };
+
+  const resetView = () => {
+    setZoom(1);
+    setCanvasOffset({ x: 0, y: 0 });
+  };
+
+  const autoLayout = () => {
+    const updatedActors = actors.map((actor, index) => ({
+      ...actor,
+      x: 50,
+      y: 100 + index * 120
+    }));
+    
+    const updatedUseCases = useCases.map((useCase, index) => ({
+      ...useCase,
+      x: 400,
+      y: 100 + index * 80
+    }));
+    
+    onUpdateUseCaseDiagram({
+      ...useCaseDiagram,
+      actors: updatedActors,
+      useCases: updatedUseCases
+    });
   };
 
   useEffect(() => {
-    if (dragItem) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+    const handleGlobalMouseMove = (e) => handleMouseMove(e);
+    const handleGlobalMouseUp = () => handleMouseUp();
+    
+    if (dragItem || isDraggingCanvas) {
+      document.addEventListener('mousemove', handleGlobalMouseMove);
+      document.addEventListener('mouseup', handleGlobalMouseUp);
       
       return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('mousemove', handleGlobalMouseMove);
+        document.removeEventListener('mouseup', handleGlobalMouseUp);
       };
     }
-  }, [dragItem, handleMouseMove]);
+  }, [dragItem, isDraggingCanvas, dragOffset, canvasOffset, zoom, actors, useCases, onUpdateUseCaseDiagram, useCaseDiagram, lastCanvasMousePos, snapToGrid]);
 
   const exportToJson = () => {
     const data = { actors, useCases, relationships };
@@ -216,15 +359,77 @@ const UseCaseDiagramMaker = ({
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
-    html2canvas(canvasRef.current, {
-      backgroundColor: '#f8fafc',
-      scale: 2
-    }).then(canvas => {
-      const link = document.createElement('a');
-      link.download = `${useCaseDiagram.name || 'use-case-diagram'}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+    // Temporarily reset zoom and offset for export
+    const originalTransform = canvasRef.current.style.transform;
+    canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
+    
+    import('html2canvas').then(html2canvas => {
+      html2canvas.default(canvasRef.current, {
+        backgroundColor: '#f8fafc',
+        scale: 2,
+        useCORS: true
+      }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${useCaseDiagram.name || 'use-case-diagram'}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        // Restore original transform
+        canvasRef.current.style.transform = originalTransform;
+      });
     });
+  };
+
+  const renderGrid = () => {
+    if (!showGrid) return null;
+    
+    const container = containerRef.current;
+    if (!container) return null;
+    
+    const rect = container.getBoundingClientRect();
+    const width = rect.width / zoom;
+    const height = rect.height / zoom;
+    
+    const startX = Math.floor(-canvasOffset.x / zoom / GRID_SIZE) * GRID_SIZE;
+    const startY = Math.floor(-canvasOffset.y / zoom / GRID_SIZE) * GRID_SIZE;
+    
+    const lines = [];
+    
+    // Vertical lines
+    for (let x = startX; x < width - canvasOffset.x / zoom; x += GRID_SIZE) {
+      lines.push(
+        <line
+          key={`v-${x}`}
+          x1={x}
+          y1={0}
+          x2={x}
+          y2={height}
+          stroke="#e2e8f0"
+          strokeWidth="1"
+        />
+      );
+    }
+    
+    // Horizontal lines
+    for (let y = startY; y < height - canvasOffset.y / zoom; y += GRID_SIZE) {
+      lines.push(
+        <line
+          key={`h-${y}`}
+          x1={0}
+          y1={y}
+          x2={width}
+          y2={y}
+          stroke="#e2e8f0"
+          strokeWidth="1"
+        />
+      );
+    }
+    
+    return (
+      <svg className="grid-overlay">
+        {lines}
+      </svg>
+    );
   };
 
   const renderActor = (actor) => {
@@ -235,12 +440,14 @@ const UseCaseDiagramMaker = ({
         style={{
           left: `${actor.x}px`,
           top: `${actor.y}px`,
+          width: `${ACTOR_WIDTH}px`,
+          height: `${ACTOR_HEIGHT}px`,
           cursor: dragItem?.id === actor.id ? 'grabbing' : 'grab'
         }}
         onMouseDown={(e) => handleMouseDown(e, actor, 'actor')}
       >
         <div className="actor-icon">
-          <Users size={24} />
+          <Users size={20} />
         </div>
         <div className="actor-name">{actor.name}</div>
       </div>
@@ -255,6 +462,8 @@ const UseCaseDiagramMaker = ({
         style={{
           left: `${useCase.x}px`,
           top: `${useCase.y}px`,
+          width: `${USECASE_WIDTH}px`,
+          height: `${USECASE_HEIGHT}px`,
           cursor: dragItem?.id === useCase.id ? 'grabbing' : 'grab'
         }}
         onMouseDown={(e) => handleMouseDown(e, useCase, 'useCase')}
@@ -265,69 +474,92 @@ const UseCaseDiagramMaker = ({
   };
 
   const renderRelationship = (relationship) => {
-    const source = actors.find(a => a.id === relationship.source) || 
-                   useCases.find(uc => uc.id === relationship.source);
-    const target = useCases.find(uc => uc.id === relationship.target) || 
-                  actors.find(a => a.id === relationship.target);
+    const sourceActor = actors.find(a => a.id === relationship.source);
+    const targetUseCase = useCases.find(uc => uc.id === relationship.target);
     
-    if (!source || !target) return null;
+    if (!sourceActor || !targetUseCase) return null;
 
-    const sourceX = source.x + (source.hasOwnProperty('name') ? 25 : 75);
-    const sourceY = source.y + (source.hasOwnProperty('name') ? 50 : 15);
-    const targetX = target.x + (target.hasOwnProperty('name') ? 75 : 25);
-    const targetY = target.y + (target.hasOwnProperty('name') ? 15 : 50);
-
-    // Calculate arrow direction
-    const dx = targetX - sourceX;
-    const dy = targetY - sourceY;
+    const sourceCenter = getElementCenter(sourceActor, true);
+    const targetCenter = getElementCenter(targetUseCase, false);
+    
+    // Calculate angle from source to target
+    const dx = targetCenter.x - sourceCenter.x;
+    const dy = targetCenter.y - sourceCenter.y;
     const angle = Math.atan2(dy, dx);
-    const headLength = 10;
-
-    // Adjust starting point to edge of actor/use case
-    const startX = sourceX + (source.hasOwnProperty('name') ? 0 : 50 * Math.cos(angle));
-    const startY = sourceY + (source.hasOwnProperty('name') ? 0 : 50 * Math.sin(angle));
-    const endX = targetX - (target.hasOwnProperty('name') ? 50 * Math.cos(angle) : 0);
-    const endY = targetY - (target.hasOwnProperty('name') ? 50 * Math.sin(angle) : 0);
-
+    
+    // Get border points
+    const sourcePoint = getElementBorderPoint(sourceActor, true, angle);
+    const targetPoint = getElementBorderPoint(targetUseCase, false, angle + Math.PI);
+    
     // Style based on relationship type
     let lineStyle = {};
+    let arrowStyle = {};
+    
     if (relationship.type === 'include') {
       lineStyle = { strokeDasharray: '5,5', stroke: '#3b82f6' };
+      arrowStyle = { fill: '#3b82f6' };
     } else if (relationship.type === 'extend') {
-      lineStyle = { strokeDasharray: '5,5', stroke: '#10b981' };
+      lineStyle = { strokeDasharray: '8,3', stroke: '#10b981' };
+      arrowStyle = { fill: '#10b981' };
     } else if (relationship.type === 'generalization') {
       lineStyle = { stroke: '#8b5cf6' };
+      arrowStyle = { fill: 'none', stroke: '#8b5cf6', strokeWidth: '2' };
     } else {
       lineStyle = { stroke: '#64748b' };
+      arrowStyle = { fill: '#64748b' };
     }
+
+    const headLength = 8;
+    const headWidth = 6;
+    
+    // Calculate arrowhead points
+    const arrowAngle = Math.atan2(targetPoint.y - sourcePoint.y, targetPoint.x - sourcePoint.x);
+    const arrowPoint1 = {
+      x: targetPoint.x - headLength * Math.cos(arrowAngle - Math.PI / 6),
+      y: targetPoint.y - headLength * Math.sin(arrowAngle - Math.PI / 6)
+    };
+    const arrowPoint2 = {
+      x: targetPoint.x - headLength * Math.cos(arrowAngle + Math.PI / 6),
+      y: targetPoint.y - headLength * Math.sin(arrowAngle + Math.PI / 6)
+    };
 
     return (
       <svg key={relationship.id} className="relationship">
+        <defs>
+          <marker
+            id={`arrowhead-${relationship.id}`}
+            markerWidth="10"
+            markerHeight="7"
+            refX="9"
+            refY="3.5"
+            orient="auto"
+          >
+            <polygon
+              points="0 0, 10 3.5, 0 7"
+              {...arrowStyle}
+            />
+          </marker>
+        </defs>
+        
         <line
-          x1={startX}
-          y1={startY}
-          x2={endX}
-          y2={endY}
+          x1={sourcePoint.x}
+          y1={sourcePoint.y}
+          x2={targetPoint.x}
+          y2={targetPoint.y}
           strokeWidth="2"
+          markerEnd={`url(#arrowhead-${relationship.id})`}
           {...lineStyle}
         />
-        {/* Arrowhead */}
-        <polygon
-          points={`
-            ${endX},${endY}
-            ${endX - headLength * Math.cos(angle - Math.PI / 6)},${endY - headLength * Math.sin(angle - Math.PI / 6)}
-            ${endX - headLength * Math.cos(angle + Math.PI / 6)},${endY - headLength * Math.sin(angle + Math.PI / 6)}
-          `}
-          fill={lineStyle.stroke || '#64748b'}
-        />
+        
         {/* Relationship type label */}
         {relationship.type !== 'association' && (
           <text
-            x={(startX + endX) / 2}
-            y={(startY + endY) / 2 - 10}
+            x={(sourcePoint.x + targetPoint.x) / 2}
+            y={(sourcePoint.y + targetPoint.y) / 2 - 8}
             textAnchor="middle"
-            fontSize="12"
+            fontSize="11"
             fill={lineStyle.stroke || '#64748b'}
+            className="relationship-label"
           >
             {`<<${relationship.type}>>`}
           </text>
@@ -344,6 +576,27 @@ const UseCaseDiagramMaker = ({
         </button>
         <h2>{useCaseDiagram.name}</h2>
         <div className="spacer"></div>
+        <div className="toolbar-controls">
+          <button onClick={() => setShowGrid(!showGrid)} className={`tool-btn ${showGrid ? 'active' : ''}`}>
+            <Grid size={16} />
+          </button>
+          <button onClick={() => setSnapToGrid(!snapToGrid)} className={`tool-btn ${snapToGrid ? 'active' : ''}`}>
+            <Move size={16} />
+          </button>
+          <button onClick={handleZoomOut} className="tool-btn">
+            <ZoomOut size={16} />
+          </button>
+          <span className="zoom-level">{Math.round(zoom * 100)}%</span>
+          <button onClick={handleZoomIn} className="tool-btn">
+            <ZoomIn size={16} />
+          </button>
+          <button onClick={resetView} className="tool-btn">
+            <RotateCcw size={16} />
+          </button>
+          <button onClick={autoLayout} className="tool-btn">
+            Auto Layout
+          </button>
+        </div>
         <div className="export-buttons">
           <button onClick={exportToImage} className="export-btn">
             <Image size={16} /> Export Image
@@ -522,10 +775,24 @@ const UseCaseDiagramMaker = ({
             </div>
           </div>
           
-          <div className="diagram-canvas" ref={canvasRef}>
-            {relationships.map(renderRelationship)}
-            {actors.map(renderActor)}
-            {useCases.map(renderUseCase)}
+          <div 
+            className="diagram-canvas-container" 
+            ref={containerRef}
+            onMouseDown={handleCanvasMouseDown}
+          >
+            <div 
+              className="diagram-canvas" 
+              ref={canvasRef}
+              style={{
+                transform: `scale(${zoom}) translate(${canvasOffset.x / zoom}px, ${canvasOffset.y / zoom}px)`,
+                transformOrigin: '0 0'
+              }}
+            >
+              {renderGrid()}
+              {relationships.map(renderRelationship)}
+              {actors.map(renderActor)}
+              {useCases.map(renderUseCase)}
+            </div>
           </div>
         </div>
       ) : (
@@ -566,25 +833,67 @@ const UseCaseDiagramMaker = ({
           flex-direction: column;
           background: #f8fafc;
           font-family: 'Inter', system-ui, -apple-system, sans-serif;
+          overflow: hidden;
         }
         
         .toolbar {
           display: flex;
           align-items: center;
-          padding: 16px;
+          padding: 12px 16px;
           background: white;
           border-bottom: 1px solid #e2e8f0;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          flex-shrink: 0;
         }
         
         .toolbar h2 {
           margin: 0 16px;
-          font-size: 20px;
+          font-size: 18px;
           color: #1e293b;
         }
         
         .spacer {
           flex: 1;
+        }
+        
+        .toolbar-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-right: 16px;
+        }
+        
+        .tool-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 6px;
+          background: #f1f5f9;
+          color: #64748b;
+          border: 1px solid #e2e8f0;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        
+        .tool-btn:hover {
+          background: #e2e8f0;
+          color: #475569;
+        }
+        
+        .tool-btn.active {
+          background: #3b82f6;
+          color: white;
+          border-color: #3b82f6;
+        }
+        
+        .zoom-level {
+          font-size: 12px;
+          color: #64748b;
+          font-weight: 500;
+          min-width: 40px;
+          text-align: center;
         }
         
         .export-buttons {
@@ -596,11 +905,12 @@ const UseCaseDiagramMaker = ({
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 8px 16px;
+          padding: 8px 12px;
           border-radius: 6px;
           font-weight: 500;
           cursor: pointer;
           transition: all 0.2s;
+          font-size: 14px;
         }
         
         .back-btn {
@@ -627,6 +937,7 @@ const UseCaseDiagramMaker = ({
           display: flex;
           border-bottom: 1px solid #e2e8f0;
           background: white;
+          flex-shrink: 0;
         }
         
         .tab {
@@ -656,7 +967,8 @@ const UseCaseDiagramMaker = ({
           border-right: 1px solid #e2e8f0;
           display: flex;
           flex-direction: column;
-          overflow: auto;
+          overflow-y: auto;
+          flex-shrink: 0;
         }
         
         .sidebar-section {
@@ -690,12 +1002,14 @@ const UseCaseDiagramMaker = ({
           border: 1px solid #e2e8f0;
           border-radius: 6px;
           font-size: 14px;
+          box-sizing: border-box;
         }
         
         .form-group input:focus,
         .form-group select:focus {
           outline: none;
           border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
         
         .add-btn {
@@ -712,6 +1026,7 @@ const UseCaseDiagramMaker = ({
           justify-content: center;
           gap: 8px;
           margin-top: 8px;
+          transition: background 0.2s;
         }
         
         .add-btn:hover {
@@ -721,6 +1036,7 @@ const UseCaseDiagramMaker = ({
         .add-btn:disabled {
           background: #d1fae5;
           cursor: not-allowed;
+          color: #6b7280;
         }
         
         .actor-list,
@@ -744,6 +1060,7 @@ const UseCaseDiagramMaker = ({
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          margin-right: 8px;
         }
         
         .delete-btn {
@@ -757,17 +1074,40 @@ const UseCaseDiagramMaker = ({
           color: #ef4444;
           border: none;
           cursor: pointer;
+          transition: background 0.2s;
         }
         
         .delete-btn:hover {
           background: #fecaca;
         }
         
-        .diagram-canvas {
+        .diagram-canvas-container {
           flex: 1;
           background: #f8fafc;
           position: relative;
           overflow: hidden;
+          cursor: grab;
+        }
+        
+        .diagram-canvas-container:active {
+          cursor: grabbing;
+        }
+        
+        .diagram-canvas {
+          width: 100%;
+          height: 100%;
+          position: relative;
+          background: #f8fafc;
+        }
+        
+        .grid-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          z-index: 0;
         }
         
         .actor {
@@ -775,43 +1115,70 @@ const UseCaseDiagramMaker = ({
           display: flex;
           flex-direction: column;
           align-items: center;
-          width: 50px;
+          z-index: 10;
+          user-select: none;
         }
         
         .actor-icon {
-          width: 50px;
-          height: 50px;
+          width: 40px;
+          height: 40px;
           border-radius: 50%;
           background: white;
           border: 2px solid #64748b;
           display: flex;
           align-items: center;
           justify-content: center;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          transition: all 0.2s;
+        }
+        
+        .actor:hover .actor-icon {
+          border-color: #3b82f6;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
         }
         
         .actor-name {
-          margin-top: 4px;
+          margin-top: 8px;
           font-size: 12px;
           text-align: center;
           font-weight: 500;
           background: white;
-          padding: 2px 6px;
+          padding: 4px 8px;
           border-radius: 4px;
           border: 1px solid #e2e8f0;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+          max-width: 80px;
+          word-wrap: break-word;
+          line-height: 1.2;
         }
         
         .use-case {
           position: absolute;
-          width: 150px;
-          height: 30px;
           background: white;
           border: 2px solid #64748b;
-          border-radius: 15px;
+          border-radius: 20px;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 12px;
           font-weight: 500;
+          z-index: 10;
+          user-select: none;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          transition: all 0.2s;
+          padding: 8px 16px;
+          text-align: center;
+          line-height: 1.2;
+        }
+        
+        .use-case:hover {
+          border-color: #3b82f6;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .use-case-name {
+          word-wrap: break-word;
+          overflow-wrap: break-word;
         }
         
         .relationship {
@@ -821,6 +1188,12 @@ const UseCaseDiagramMaker = ({
           width: 100%;
           height: 100%;
           pointer-events: none;
+          z-index: 5;
+        }
+        
+        .relationship-label {
+          font-family: 'Inter', system-ui, -apple-system, sans-serif;
+          font-weight: 500;
         }
         
         .json-editor {
@@ -829,15 +1202,17 @@ const UseCaseDiagramMaker = ({
           flex: 1;
           padding: 16px;
           background: white;
+          overflow: hidden;
         }
         
         .json-actions {
           display: flex;
           gap: 8px;
           margin-bottom: 12px;
+          flex-shrink: 0;
         }
         
-        .import-btn, .fetch-btn {
+        .import-btn {
           display: flex;
           align-items: center;
           gap: 8px;
@@ -846,24 +1221,13 @@ const UseCaseDiagramMaker = ({
           font-weight: 500;
           cursor: pointer;
           border: none;
-        }
-        
-        .import-btn {
           background: #10b981;
           color: white;
+          transition: background 0.2s;
         }
         
         .import-btn:hover {
           background: #059669;
-        }
-        
-        .fetch-btn {
-          background: #3b82f6;
-          color: white;
-        }
-        
-        .fetch-btn:hover {
-          background: #2563eb;
         }
         
         .json-textarea {
@@ -871,10 +1235,52 @@ const UseCaseDiagramMaker = ({
           padding: 12px;
           border: 1px solid #e2e8f0;
           border-radius: 6px;
-          font-family: monospace;
-          font-size: 14px;
+          font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+          font-size: 13px;
           resize: none;
           margin-bottom: 12px;
+          line-height: 1.5;
+        }
+        
+        .json-textarea:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        /* Scrollbar styles */
+        .actor-list::-webkit-scrollbar,
+        .use-case-list::-webkit-scrollbar,
+        .relationship-list::-webkit-scrollbar,
+        .diagram-sidebar::-webkit-scrollbar,
+        .json-textarea::-webkit-scrollbar {
+          width: 6px;
+        }
+        
+        .actor-list::-webkit-scrollbar-track,
+        .use-case-list::-webkit-scrollbar-track,
+        .relationship-list::-webkit-scrollbar-track,
+        .diagram-sidebar::-webkit-scrollbar-track,
+        .json-textarea::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 3px;
+        }
+        
+        .actor-list::-webkit-scrollbar-thumb,
+        .use-case-list::-webkit-scrollbar-thumb,
+        .relationship-list::-webkit-scrollbar-thumb,
+        .diagram-sidebar::-webkit-scrollbar-thumb,
+        .json-textarea::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 3px;
+        }
+        
+        .actor-list::-webkit-scrollbar-thumb:hover,
+        .use-case-list::-webkit-scrollbar-thumb:hover,
+        .relationship-list::-webkit-scrollbar-thumb:hover,
+        .diagram-sidebar::-webkit-scrollbar-thumb:hover,
+        .json-textarea::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
       `}</style>
     </div>
