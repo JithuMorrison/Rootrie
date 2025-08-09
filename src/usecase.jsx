@@ -594,7 +594,7 @@ const UseCaseDiagramMaker = ({
             <RotateCcw size={16} />
           </button>
           <button onClick={autoLayout} className="tool-btn">
-            Auto Layout
+            Auto
           </button>
         </div>
         <div className="export-buttons">
@@ -1045,6 +1045,7 @@ const UseCaseDiagramMaker = ({
           max-height: 200px;
           overflow-y: auto;
           margin-top: 12px;
+          color: #1e293b;
         }
         
         .list-item {
@@ -1117,6 +1118,7 @@ const UseCaseDiagramMaker = ({
           align-items: center;
           z-index: 10;
           user-select: none;
+          color: #1e293b;
         }
         
         .actor-icon {
@@ -1166,9 +1168,9 @@ const UseCaseDiagramMaker = ({
           user-select: none;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
           transition: all 0.2s;
-          padding: 8px 16px;
           text-align: center;
           line-height: 1.2;
+          color: #1e293b;
         }
         
         .use-case:hover {
