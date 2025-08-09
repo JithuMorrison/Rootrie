@@ -49,29 +49,21 @@ const getStoredData = () => {
   }
 };
 
-const saveToLocalStorage = (data) => {
+const saveToStorage = (data) => {
   localStorage.setItem('evolutionChartData', JSON.stringify(data));
 };
 
 const App = () => {
   const [, forceUpdate] = useReducer(x => x + 1, 0);
-  const { 
-    projects, 
-    currentProject, 
-    flowcharts, 
-    currentFlowchart,
-    ganttCharts,
-    currentGanttChart,
-    useCaseDiagrams,
-    currentUseCaseDiagram,
-    sequenceDiagrams,
-    currentSequenceDiagram
-  } = getStoredData();
   const [activeTab, setActiveTab] = useState(DIAGRAM_TYPES.PROJECT);
   const [jsonInput, setJsonInput] = useState('');
 
-  // Generic diagram creation function
+  // Get current data from storage
+  const getCurrentData = () => getStoredData();
+
+  // Generic diagram creation function - FIXED
   const createDiagram = (type, name, extraData = {}) => {
+    const currentData = getCurrentData();
     const baseDiagram = {
       id: Date.now(),
       name,
@@ -79,97 +71,125 @@ const App = () => {
       ...extraData
     };
 
-    const updateMap = {
-      [DIAGRAM_TYPES.PROJECT]: {
-        projects: [...projects, baseDiagram],
-        currentProject: baseDiagram
-      },
-      [DIAGRAM_TYPES.FLOWCHART]: {
-        flowcharts: [...flowcharts, baseDiagram],
-        currentFlowchart: baseDiagram
-      },
-      [DIAGRAM_TYPES.GANTT]: {
-        ganttCharts: [...ganttCharts, baseDiagram],
-        currentGanttChart: baseDiagram
-      },
-      [DIAGRAM_TYPES.USE_CASE]: {
-        useCaseDiagrams: [...useCaseDiagrams, baseDiagram],
-        currentUseCaseDiagram: baseDiagram
-      },
-      [DIAGRAM_TYPES.SEQUENCE]: {
-        sequenceDiagrams: [...sequenceDiagrams, baseDiagram],
-        currentSequenceDiagram: baseDiagram
-      }
-    };
+    // Create update object that preserves all existing data
+    const updateData = { ...currentData };
+    
+    // Clear all current selections
+    updateData.currentProject = null;
+    updateData.currentFlowchart = null;
+    updateData.currentGanttChart = null;
+    updateData.currentUseCaseDiagram = null;
+    updateData.currentSequenceDiagram = null;
 
-    saveToLocalStorage({
-      ...getInitialData(),
-      ...updateMap[type]
-    });
+    // Add new diagram and set as current
+    switch (type) {
+      case DIAGRAM_TYPES.PROJECT:
+        updateData.projects = [...currentData.projects, baseDiagram];
+        updateData.currentProject = baseDiagram;
+        break;
+      case DIAGRAM_TYPES.FLOWCHART:
+        updateData.flowcharts = [...currentData.flowcharts, baseDiagram];
+        updateData.currentFlowchart = baseDiagram;
+        break;
+      case DIAGRAM_TYPES.GANTT:
+        updateData.ganttCharts = [...currentData.ganttCharts, baseDiagram];
+        updateData.currentGanttChart = baseDiagram;
+        break;
+      case DIAGRAM_TYPES.USE_CASE:
+        updateData.useCaseDiagrams = [...currentData.useCaseDiagrams, baseDiagram];
+        updateData.currentUseCaseDiagram = baseDiagram;
+        break;
+      case DIAGRAM_TYPES.SEQUENCE:
+        updateData.sequenceDiagrams = [...currentData.sequenceDiagrams, baseDiagram];
+        updateData.currentSequenceDiagram = baseDiagram;
+        break;
+    }
+
+    saveToStorage(updateData);
     forceUpdate();
   };
 
-  // Generic diagram deletion function
+  // Generic diagram deletion function - FIXED
   const deleteDiagram = (type, id) => {
-    const updateMap = {
-      [DIAGRAM_TYPES.PROJECT]: {
-        projects: projects.filter(p => p.id !== id),
-        currentProject: currentProject?.id === id ? null : currentProject
-      },
-      [DIAGRAM_TYPES.FLOWCHART]: {
-        flowcharts: flowcharts.filter(f => f.id !== id),
-        currentFlowchart: currentFlowchart?.id === id ? null : currentFlowchart
-      },
-      [DIAGRAM_TYPES.GANTT]: {
-        ganttCharts: ganttCharts.filter(g => g.id !== id),
-        currentGanttChart: currentGanttChart?.id === id ? null : currentGanttChart
-      },
-      [DIAGRAM_TYPES.USE_CASE]: {
-        useCaseDiagrams: useCaseDiagrams.filter(d => d.id !== id),
-        currentUseCaseDiagram: currentUseCaseDiagram?.id === id ? null : currentUseCaseDiagram
-      },
-      [DIAGRAM_TYPES.SEQUENCE]: {
-        sequenceDiagrams: sequenceDiagrams.filter(d => d.id !== id),
-        currentSequenceDiagram: currentSequenceDiagram?.id === id ? null : currentSequenceDiagram
-      }
-    };
+    const currentData = getCurrentData();
+    const updateData = { ...currentData };
 
-    saveToLocalStorage({
-      ...getStoredData(),
-      ...updateMap[type]
-    });
+    switch (type) {
+      case DIAGRAM_TYPES.PROJECT:
+        updateData.projects = currentData.projects.filter(p => p.id !== id);
+        if (currentData.currentProject?.id === id) {
+          updateData.currentProject = null;
+        }
+        break;
+      case DIAGRAM_TYPES.FLOWCHART:
+        updateData.flowcharts = currentData.flowcharts.filter(f => f.id !== id);
+        if (currentData.currentFlowchart?.id === id) {
+          updateData.currentFlowchart = null;
+        }
+        break;
+      case DIAGRAM_TYPES.GANTT:
+        updateData.ganttCharts = currentData.ganttCharts.filter(g => g.id !== id);
+        if (currentData.currentGanttChart?.id === id) {
+          updateData.currentGanttChart = null;
+        }
+        break;
+      case DIAGRAM_TYPES.USE_CASE:
+        updateData.useCaseDiagrams = currentData.useCaseDiagrams.filter(d => d.id !== id);
+        if (currentData.currentUseCaseDiagram?.id === id) {
+          updateData.currentUseCaseDiagram = null;
+        }
+        break;
+      case DIAGRAM_TYPES.SEQUENCE:
+        updateData.sequenceDiagrams = currentData.sequenceDiagrams.filter(d => d.id !== id);
+        if (currentData.currentSequenceDiagram?.id === id) {
+          updateData.currentSequenceDiagram = null;
+        }
+        break;
+    }
+
+    saveToStorage(updateData);
     forceUpdate();
   };
 
-  // Generic diagram update function
+  // Generic diagram update function - FIXED
   const updateDiagram = (type, updatedDiagram) => {
-    const updateMap = {
-      [DIAGRAM_TYPES.PROJECT]: {
-        projects: projects.map(p => p.id === updatedDiagram.id ? updatedDiagram : p),
-        currentProject: updatedDiagram
-      },
-      [DIAGRAM_TYPES.FLOWCHART]: {
-        flowcharts: flowcharts.map(f => f.id === updatedDiagram.id ? updatedDiagram : f),
-        currentFlowchart: updatedDiagram
-      },
-      [DIAGRAM_TYPES.GANTT]: {
-        ganttCharts: ganttCharts.map(g => g.id === updatedDiagram.id ? updatedDiagram : g),
-        currentGanttChart: updatedDiagram
-      },
-      [DIAGRAM_TYPES.USE_CASE]: {
-        useCaseDiagrams: useCaseDiagrams.map(d => d.id === updatedDiagram.id ? updatedDiagram : d),
-        currentUseCaseDiagram: updatedDiagram
-      },
-      [DIAGRAM_TYPES.SEQUENCE]: {
-        sequenceDiagrams: sequenceDiagrams.map(d => d.id === updatedDiagram.id ? updatedDiagram : d),
-        currentSequenceDiagram: updatedDiagram
-      }
-    };
+    const currentData = getCurrentData();
+    const updateData = { ...currentData };
 
-    saveToLocalStorage({
-      ...getStoredData(),
-      ...updateMap[type]
-    });
+    switch (type) {
+      case DIAGRAM_TYPES.PROJECT:
+        updateData.projects = currentData.projects.map(p => 
+          p.id === updatedDiagram.id ? updatedDiagram : p
+        );
+        updateData.currentProject = updatedDiagram;
+        break;
+      case DIAGRAM_TYPES.FLOWCHART:
+        updateData.flowcharts = currentData.flowcharts.map(f => 
+          f.id === updatedDiagram.id ? updatedDiagram : f
+        );
+        updateData.currentFlowchart = updatedDiagram;
+        break;
+      case DIAGRAM_TYPES.GANTT:
+        updateData.ganttCharts = currentData.ganttCharts.map(g => 
+          g.id === updatedDiagram.id ? updatedDiagram : g
+        );
+        updateData.currentGanttChart = updatedDiagram;
+        break;
+      case DIAGRAM_TYPES.USE_CASE:
+        updateData.useCaseDiagrams = currentData.useCaseDiagrams.map(d => 
+          d.id === updatedDiagram.id ? updatedDiagram : d
+        );
+        updateData.currentUseCaseDiagram = updatedDiagram;
+        break;
+      case DIAGRAM_TYPES.SEQUENCE:
+        updateData.sequenceDiagrams = currentData.sequenceDiagrams.map(d => 
+          d.id === updatedDiagram.id ? updatedDiagram : d
+        );
+        updateData.currentSequenceDiagram = updatedDiagram;
+        break;
+    }
+
+    saveToStorage(updateData);
     forceUpdate();
   };
 
@@ -253,36 +273,52 @@ const App = () => {
   };
 
   const handleBack = () => {
-    saveToLocalStorage({
-      ...getStoredData(),
+    const currentData = getCurrentData();
+    const updateData = {
+      ...currentData,
       currentProject: null,
       currentFlowchart: null,
       currentGanttChart: null,
       currentUseCaseDiagram: null,
       currentSequenceDiagram: null
-    });
+    };
+    
+    saveToStorage(updateData);
     forceUpdate();
   };
 
+  // Load diagram function - FIXED
   const loadDiagram = (type, diagram) => {
-    const updateMap = {
-      [DIAGRAM_TYPES.PROJECT]: { currentProject: diagram },
-      [DIAGRAM_TYPES.FLOWCHART]: { currentFlowchart: diagram },
-      [DIAGRAM_TYPES.GANTT]: { currentGanttChart: diagram },
-      [DIAGRAM_TYPES.USE_CASE]: { currentUseCaseDiagram: diagram },
-      [DIAGRAM_TYPES.SEQUENCE]: { currentSequenceDiagram: diagram }
-    };
-
-    saveToLocalStorage({
-      ...getStoredData(),
-      ...updateMap[type],
+    const currentData = getCurrentData();
+    const updateData = {
+      ...currentData,
       currentProject: null,
       currentFlowchart: null,
       currentGanttChart: null,
       currentUseCaseDiagram: null,
-      currentSequenceDiagram: null,
-      ...updateMap[type] // This will override the null with the correct diagram
-    });
+      currentSequenceDiagram: null
+    };
+
+    // Set the specific current diagram
+    switch (type) {
+      case DIAGRAM_TYPES.PROJECT:
+        updateData.currentProject = diagram;
+        break;
+      case DIAGRAM_TYPES.FLOWCHART:
+        updateData.currentFlowchart = diagram;
+        break;
+      case DIAGRAM_TYPES.GANTT:
+        updateData.currentGanttChart = diagram;
+        break;
+      case DIAGRAM_TYPES.USE_CASE:
+        updateData.currentUseCaseDiagram = diagram;
+        break;
+      case DIAGRAM_TYPES.SEQUENCE:
+        updateData.currentSequenceDiagram = diagram;
+        break;
+    }
+
+    saveToStorage(updateData);
     forceUpdate();
   };
 
@@ -372,7 +408,7 @@ const App = () => {
       color: '#4f46e5',
       component: (
         <EvolutionChartMain
-          projects={projects}
+          projects={getCurrentData().projects}
           onCreateProject={createProject}
           onLoadProject={(project) => loadDiagram(DIAGRAM_TYPES.PROJECT, project)}
           onDeleteProject={deleteProject}
@@ -385,7 +421,7 @@ const App = () => {
       color: '#7c3aed',
       component: (
         <FlowchartMain
-          flowcharts={flowcharts}
+          flowcharts={getCurrentData().flowcharts}
           onCreateFlowchart={createFlowchart}
           onLoadFlowchart={(flowchart) => loadDiagram(DIAGRAM_TYPES.FLOWCHART, flowchart)}
           onDeleteFlowchart={deleteFlowchart}
@@ -399,7 +435,7 @@ const App = () => {
       color: '#3b82f6',
       component: (
         <GanttChartMain
-          ganttCharts={ganttCharts}
+          ganttCharts={getCurrentData().ganttCharts}
           onCreateGanttChart={createGanttChart}
           onLoadGanttChart={(ganttChart) => loadDiagram(DIAGRAM_TYPES.GANTT, ganttChart)}
           onDeleteGanttChart={deleteGanttChart}
@@ -412,7 +448,7 @@ const App = () => {
       color: '#10b981',
       component: (
         <UseCaseDiagramMain 
-          useCaseDiagrams={useCaseDiagrams}
+          useCaseDiagrams={getCurrentData().useCaseDiagrams}
           onCreateUseCaseDiagram={createUseCaseDiagram}
           onLoadUseCaseDiagram={(diagram) => loadDiagram(DIAGRAM_TYPES.USE_CASE, diagram)}
           onDeleteUseCaseDiagram={deleteUseCaseDiagram}
@@ -425,7 +461,7 @@ const App = () => {
       color: '#06b6d4',
       component: (
         <SequenceDiagramMain 
-          sequenceDiagrams={sequenceDiagrams}
+          sequenceDiagrams={getCurrentData().sequenceDiagrams}
           onCreateSequenceDiagram={createSequenceDiagram}
           onLoadSequenceDiagram={(diagram) => loadDiagram(DIAGRAM_TYPES.SEQUENCE, diagram)}
           onDeleteSequenceDiagram={deleteSequenceDiagram}
@@ -434,49 +470,52 @@ const App = () => {
     }
   ];
 
+  // Get current data for rendering
+  const currentData = getCurrentData();
+
   return (
     <div style={styles.appContainer}>
       <div style={styles.mainCard}>
-        {currentProject ? (
+        {currentData.currentProject ? (
           <EvolutionChartMaker
-            project={currentProject}
-            nodes={currentProject.nodes || []}
-            connections={currentProject.connections || []}
+            project={currentData.currentProject}
+            nodes={currentData.currentProject.nodes || []}
+            connections={currentData.currentProject.connections || []}
             onUpdateProject={updateProject}
             onBack={handleBack}
           />
-        ) : currentFlowchart ? (
+        ) : currentData.currentFlowchart ? (
           <FlowchartMaker
-            flowchart={currentFlowchart}
-            nodes={currentFlowchart.nodes || []}
-            edges={currentFlowchart.edges || []}
+            flowchart={currentData.currentFlowchart}
+            nodes={currentData.currentFlowchart.nodes || []}
+            edges={currentData.currentFlowchart.edges || []}
             jsonInput={jsonInput}
             onJsonInputChange={setJsonInput}
             onImportJson={importFlowchartFromJson}
             onUpdateFlowchart={updateFlowchart}
             onBack={handleBack}
           />
-        ) : currentGanttChart ? (
+        ) : currentData.currentGanttChart ? (
           <GanttChartMaker
-            ganttChart={currentGanttChart}
-            tasks={currentGanttChart.tasks || []}
+            ganttChart={currentData.currentGanttChart}
+            tasks={currentData.currentGanttChart.tasks || []}
             onUpdateGanttChart={updateGanttChart}
             onBack={handleBack}
           />
-        ) : currentUseCaseDiagram ? (
+        ) : currentData.currentUseCaseDiagram ? (
           <UseCaseDiagramMaker
-            useCaseDiagram={currentUseCaseDiagram}
-            actors={currentUseCaseDiagram.actors || []}
-            useCases={currentUseCaseDiagram.useCases || []}
-            relationships={currentUseCaseDiagram.relationships || []}
+            useCaseDiagram={currentData.currentUseCaseDiagram}
+            actors={currentData.currentUseCaseDiagram.actors || []}
+            useCases={currentData.currentUseCaseDiagram.useCases || []}
+            relationships={currentData.currentUseCaseDiagram.relationships || []}
             onUpdateUseCaseDiagram={updateUseCaseDiagram}
             onBack={handleBack}
           />
-        ) : currentSequenceDiagram ? (
+        ) : currentData.currentSequenceDiagram ? (
           <SequenceDiagramMaker
-            sequenceDiagram={currentSequenceDiagram}
-            participants={currentSequenceDiagram.participants || []}
-            messages={currentSequenceDiagram.messages || []}
+            sequenceDiagram={currentData.currentSequenceDiagram}
+            participants={currentData.currentSequenceDiagram.participants || []}
+            messages={currentData.currentSequenceDiagram.messages || []}
             onUpdateSequenceDiagram={updateSequenceDiagram}
             onBack={handleBack}
           />
