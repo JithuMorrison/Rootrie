@@ -281,17 +281,17 @@ const SequenceDiagramMaker = ({
       arrowStyle = { strokeDasharray: '5,5', stroke: '#3b82f6' };
       arrowPoints = arrowDirection === 'right' ? 
         `${toX - 10},${yPosition - 5} ${toX},${yPosition} ${toX - 10},${yPosition + 5}` :
-        `${fromX + 10},${yPosition - 5} ${fromX},${yPosition} ${fromX + 10},${yPosition + 5}`;
+        `${toX + 10},${yPosition - 5} ${toX},${yPosition} ${toX + 10},${yPosition + 5}`;
     } else if (message.type === 'return') {
       arrowStyle = { stroke: '#10b981' };
       arrowPoints = arrowDirection === 'right' ? 
-        `${fromX + 10},${yPosition - 5} ${fromX},${yPosition} ${fromX + 10},${yPosition + 5}` :
-        `${toX - 10},${yPosition - 5} ${toX},${yPosition} ${toX - 10},${yPosition + 5}`;
+        `${toX - 10},${yPosition - 5} ${toX},${yPosition} ${toX - 10},${yPosition + 5}` :
+        `${toX + 10},${yPosition - 5} ${toX},${yPosition} ${toX + 10},${yPosition + 5}`;
     } else { // sync
       arrowStyle = { stroke: '#64748b' };
       arrowPoints = arrowDirection === 'right' ? 
         `${toX - 10},${yPosition - 5} ${toX},${yPosition} ${toX - 10},${yPosition + 5}` :
-        `${fromX + 10},${yPosition - 5} ${fromX},${yPosition} ${fromX + 10},${yPosition + 5}`;
+        `${toX + 10},${yPosition - 5} ${toX},${yPosition} ${toX + 10},${yPosition + 5}`;
     }
     
     return (
@@ -327,18 +327,18 @@ const SequenceDiagramMaker = ({
               <rect
                 x={fromX - 2}
                 y={yPosition}
-                width="4"
+                width="6"
                 height="40"
-                fill="#64748b"
-                opacity="0.3"
+                fill="#cc841fff"
+                opacity="0.5"
               />
               <rect
                 x={toX - 2}
                 y={yPosition}
-                width="4"
+                width="6"
                 height="40"
-                fill="#64748b"
-                opacity="0.3"
+                fill="#cc841fff"
+                opacity="0.5"
               />
             </svg>
           </React.Fragment>
@@ -739,6 +739,7 @@ const SequenceDiagramMaker = ({
           max-height: 200px;
           overflow-y: auto;
           margin-top: 12px;
+          color: #1e293b;
         }
         
         .list-item {
@@ -786,6 +787,7 @@ const SequenceDiagramMaker = ({
           display: flex;
           flex-direction: column;
           align-items: center;
+          color: #1e293b;
         }
         
         .participant-line {
