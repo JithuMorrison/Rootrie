@@ -41,7 +41,17 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
   };
 
   const handleFetchCurrentJson = () => {
-    onJsonInputChange(handleExportJson());
+    const blob = new Blob([handleExportJson()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${flowchart?.name || 'use-case-diagram'}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    URL.revokeObjectURL(url);
     setActiveTab('json');
   };
 
@@ -1229,7 +1239,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                     transition: 'all 0.2s'
                   }}
                 >
-                  📥 Get JSON
+                  📥 Export JSON
                 </button>
               </div>
             </div>
