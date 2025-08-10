@@ -11,8 +11,8 @@ const UseCaseDiagramMaker = ({
 }) => {
   const [newActor, setNewActor] = useState('');
   const [newUseCase, setNewUseCase] = useState('');
-  const [selectedActor, setSelectedActor] = useState(null);
-  const [selectedUseCase, setSelectedUseCase] = useState(null);
+  const [selectedSource, setSelectedSource] = useState(null);
+  const [selectedTarget, setSelectedTarget] = useState(null);
   const [relationshipType, setRelationshipType] = useState('association');
   const [activeTab, setActiveTab] = useState('editor');
   const [jsonInput, setJsonInput] = useState('');
@@ -33,7 +33,6 @@ const UseCaseDiagramMaker = ({
   const USECASE_WIDTH = 150;
   const USECASE_HEIGHT = 40;
 
-  // Initialize JSON input with current diagram data
   useEffect(() => {
     setJsonInput(JSON.stringify({ actors, useCases, relationships }, null, 2));
   }, [actors, useCases, relationships]);
@@ -111,12 +110,38 @@ const UseCaseDiagramMaker = ({
   };
 
   const addRelationship = () => {
-    if (!selectedActor || !selectedUseCase) return;
+    if (!selectedSource || !selectedTarget) return;
+    
+    // Validate relationship types
+    const sourceIsActor = actors.some(a => a.id === selectedSource);
+    const targetIsActor = actors.some(a => a.id === selectedTarget);
+    const sourceIsUseCase = useCases.some(uc => uc.id === selectedSource);
+    const targetIsUseCase = useCases.some(uc => uc.id === selectedTarget);
+    
+    if (relationshipType === 'include' || relationshipType === 'extend') {
+      // Include/Extend must be between use cases
+      if (!sourceIsUseCase || !targetIsUseCase) {
+        alert('Include and extend relationships must be between use cases');
+        return;
+      }
+    } else if (relationshipType === 'generalization') {
+      // Generalization must be between same types (actor-actor or usecase-usecase)
+      if ((sourceIsActor && !targetIsActor) || (sourceIsUseCase && !targetIsUseCase)) {
+        alert('Generalization must be between two actors or two use cases');
+        return;
+      }
+    } else if (relationshipType === 'association') {
+      // Association must be between actor and use case
+      if (!(sourceIsActor && targetIsUseCase) && !(sourceIsUseCase && targetIsActor)) {
+        alert('Association must be between an actor and a use case');
+        return;
+      }
+    }
     
     const newRelationship = {
       id: Date.now(),
-      source: selectedActor,
-      target: selectedUseCase,
+      source: selectedSource,
+      target: selectedTarget,
       type: relationshipType
     };
     
@@ -125,8 +150,8 @@ const UseCaseDiagramMaker = ({
       relationships: [...relationships, newRelationship]
     });
     
-    setSelectedActor(null);
-    setSelectedUseCase(null);
+    setSelectedSource(null);
+    setSelectedTarget(null);
   };
 
   const deleteRelationship = (relationshipId) => {
@@ -155,18 +180,14 @@ const UseCaseDiagramMaker = ({
     const center = getElementCenter(element, isActor);
     
     if (isActor) {
-      // For actors (represented as stick figures in circles)
-      const radius = 25; // Half of actor icon size
+      const radius = 25;
       return {
         x: center.x + radius * Math.cos(angle),
         y: center.y + radius * Math.sin(angle)
       };
     } else {
-      // For use cases (ellipses)
-      const a = USECASE_WIDTH / 2; // semi-major axis
-      const b = USECASE_HEIGHT / 2; // semi-minor axis
-      
-      // Calculate point on ellipse border
+      const a = USECASE_WIDTH / 2;
+      const b = USECASE_HEIGHT / 2;
       const cos = Math.cos(angle);
       const sin = Math.sin(angle);
       const r = (a * b) / Math.sqrt(b * b * cos * cos + a * a * sin * sin);
@@ -359,7 +380,6 @@ const UseCaseDiagramMaker = ({
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
-    // Temporarily reset zoom and offset for export
     const originalTransform = canvasRef.current.style.transform;
     canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
     
@@ -374,7 +394,6 @@ const UseCaseDiagramMaker = ({
         link.href = canvas.toDataURL('image/png');
         link.click();
         
-        // Restore original transform
         canvasRef.current.style.transform = originalTransform;
       });
     });
@@ -395,7 +414,6 @@ const UseCaseDiagramMaker = ({
     
     const lines = [];
     
-    // Vertical lines
     for (let x = startX; x < width - canvasOffset.x / zoom; x += GRID_SIZE) {
       lines.push(
         <line
@@ -410,7 +428,6 @@ const UseCaseDiagramMaker = ({
       );
     }
     
-    // Horizontal lines
     for (let y = startY; y < height - canvasOffset.y / zoom; y += GRID_SIZE) {
       lines.push(
         <line
@@ -474,24 +491,36 @@ const UseCaseDiagramMaker = ({
   };
 
   const renderRelationship = (relationship) => {
-    const sourceActor = actors.find(a => a.id === relationship.source);
-    const targetUseCase = useCases.find(uc => uc.id === relationship.target);
+    let source, target;
+    let sourceIsActor = false;
+    let targetIsActor = false;
     
-    if (!sourceActor || !targetUseCase) return null;
+    source = actors.find(a => a.id === relationship.source);
+    if (source) {
+      sourceIsActor = true;
+    } else {
+      source = useCases.find(uc => uc.id === relationship.source);
+    }
+    
+    target = actors.find(a => a.id === relationship.target);
+    if (target) {
+      targetIsActor = true;
+    } else {
+      target = useCases.find(uc => uc.id === relationship.target);
+    }
+    
+    if (!source || !target) return null;
 
-    const sourceCenter = getElementCenter(sourceActor, true);
-    const targetCenter = getElementCenter(targetUseCase, false);
+    const sourceCenter = getElementCenter(source, sourceIsActor);
+    const targetCenter = getElementCenter(target, targetIsActor);
     
-    // Calculate angle from source to target
     const dx = targetCenter.x - sourceCenter.x;
     const dy = targetCenter.y - sourceCenter.y;
     const angle = Math.atan2(dy, dx);
     
-    // Get border points
-    const sourcePoint = getElementBorderPoint(sourceActor, true, angle);
-    const targetPoint = getElementBorderPoint(targetUseCase, false, angle + Math.PI);
+    const sourcePoint = getElementBorderPoint(source, sourceIsActor, angle);
+    const targetPoint = getElementBorderPoint(target, targetIsActor, angle + Math.PI);
     
-    // Style based on relationship type
     let lineStyle = {};
     let arrowStyle = {};
     
@@ -512,7 +541,6 @@ const UseCaseDiagramMaker = ({
     const headLength = 8;
     const headWidth = 6;
     
-    // Calculate arrowhead points
     const arrowAngle = Math.atan2(targetPoint.y - sourcePoint.y, targetPoint.x - sourcePoint.x);
     const arrowPoint1 = {
       x: targetPoint.x - headLength * Math.cos(arrowAngle - Math.PI / 6),
@@ -522,6 +550,52 @@ const UseCaseDiagramMaker = ({
       x: targetPoint.x - headLength * Math.cos(arrowAngle + Math.PI / 6),
       y: targetPoint.y - headLength * Math.sin(arrowAngle + Math.PI / 6)
     };
+
+    if (relationship.type === 'generalization') {
+      return (
+        <svg key={relationship.id} className="relationship">
+          <line
+            x1={sourcePoint.x}
+            y1={sourcePoint.y}
+            x2={targetPoint.x}
+            y2={targetPoint.y}
+            strokeWidth="2"
+            {...lineStyle}
+          />
+          <polygon
+            points={`
+              ${targetPoint.x},${targetPoint.y}
+              ${arrowPoint1.x},${arrowPoint1.y}
+              ${arrowPoint2.x},${arrowPoint2.y}
+            `}
+            {...arrowStyle}
+          />
+          <text
+            x={(sourcePoint.x + targetPoint.x) / 2}
+            y={(sourcePoint.y + targetPoint.y) / 2 - 8}
+            textAnchor="middle"
+            fontSize="11"
+            fill={lineStyle.stroke || '#64748b'}
+            className="relationship-label"
+          >
+            {`<<${relationship.type}>>`}
+          </text>
+        </svg>
+      );
+    } else if (relationship.type === 'association') {
+      return (
+        <svg key={relationship.id} className="relationship">
+          <line
+            x1={sourcePoint.x}
+            y1={sourcePoint.y}
+            x2={targetPoint.x}
+            y2={targetPoint.y}
+            strokeWidth="2"
+            {...lineStyle}
+          />
+        </svg>
+      );
+    }
 
     return (
       <svg key={relationship.id} className="relationship">
@@ -551,7 +625,6 @@ const UseCaseDiagramMaker = ({
           {...lineStyle}
         />
         
-        {/* Relationship type label */}
         {relationship.type !== 'association' && (
           <text
             x={(sourcePoint.x + targetPoint.x) / 2}
@@ -702,27 +775,41 @@ const UseCaseDiagramMaker = ({
             <div className="sidebar-section">
               <h3>Relationships</h3>
               <div className="form-group">
-                <label>Actor</label>
+                <label>Source</label>
                 <select 
-                  value={selectedActor || ''}
-                  onChange={(e) => setSelectedActor(e.target.value ? parseInt(e.target.value) : null)}
+                  value={selectedSource || ''}
+                  onChange={(e) => setSelectedSource(e.target.value ? parseInt(e.target.value) : null)}
                 >
-                  <option value="">Select actor</option>
-                  {actors.map(actor => (
-                    <option key={actor.id} value={actor.id}>{actor.name}</option>
-                  ))}
+                  <option value="">Select source</option>
+                  <optgroup label="Actors">
+                    {actors.map(actor => (
+                      <option key={actor.id} value={actor.id}>{actor.name}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Use Cases">
+                    {useCases.map(useCase => (
+                      <option key={useCase.id} value={useCase.id}>{useCase.name}</option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
               <div className="form-group">
-                <label>Use Case</label>
+                <label>Target</label>
                 <select 
-                  value={selectedUseCase || ''}
-                  onChange={(e) => setSelectedUseCase(e.target.value ? parseInt(e.target.value) : null)}
+                  value={selectedTarget || ''}
+                  onChange={(e) => setSelectedTarget(e.target.value ? parseInt(e.target.value) : null)}
                 >
-                  <option value="">Select use case</option>
-                  {useCases.map(useCase => (
-                    <option key={useCase.id} value={useCase.id}>{useCase.name}</option>
-                  ))}
+                  <option value="">Select target</option>
+                  <optgroup label="Actors">
+                    {actors.map(actor => (
+                      <option key={actor.id} value={actor.id}>{actor.name}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Use Cases">
+                    {useCases.map(useCase => (
+                      <option key={useCase.id} value={useCase.id}>{useCase.name}</option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
               <div className="form-group">
@@ -739,7 +826,7 @@ const UseCaseDiagramMaker = ({
               </div>
               <button 
                 onClick={addRelationship}
-                disabled={!selectedActor || !selectedUseCase}
+                disabled={!selectedSource || !selectedTarget}
                 className="add-btn"
               >
                 <GitMerge size={16} /> Add Relationship
@@ -750,17 +837,32 @@ const UseCaseDiagramMaker = ({
               <h3>Current Relationships</h3>
               <div className="relationship-list">
                 {relationships.map(rel => {
-                  const actor = actors.find(a => a.id === rel.source) || 
-                               actors.find(a => a.id === rel.target);
-                  const useCase = useCases.find(uc => uc.id === rel.source) || 
-                                 useCases.find(uc => uc.id === rel.target);
+                  let source, target;
+                  let sourceName = '';
+                  let targetName = '';
                   
-                  if (!actor || !useCase) return null;
+                  source = actors.find(a => a.id === rel.source);
+                  if (source) {
+                    sourceName = source.name;
+                  } else {
+                    source = useCases.find(uc => uc.id === rel.source);
+                    if (source) sourceName = source.name;
+                  }
+                  
+                  target = actors.find(a => a.id === rel.target);
+                  if (target) {
+                    targetName = target.name;
+                  } else {
+                    target = useCases.find(uc => uc.id === rel.target);
+                    if (target) targetName = target.name;
+                  }
+                  
+                  if (!source || !target) return null;
                   
                   return (
                     <div key={rel.id} className="list-item">
                       <div className="item-name">
-                        {actor.name} → {useCase.name} ({rel.type})
+                        {sourceName} → {targetName} ({rel.type})
                       </div>
                       <button 
                         onClick={() => deleteRelationship(rel.id)}

@@ -14,8 +14,51 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [edgeLabel, setEdgeLabel] = useState('');
   const [pendingEdge, setPendingEdge] = useState(null);
+  const [theme, setTheme] = useState('dark'); // 'dark', 'light', or 'blue'
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Theme colors
+  const themes = {
+    dark: {
+      background: '#1a1a1a',
+      panel: '#242424',
+      border: '#444',
+      text: 'rgba(255, 255, 255, 0.87)',
+      nodeFill: '#646cff',
+      nodeStroke: '#a855f7',
+      edgeStroke: '#646cff',
+      highlight: '#a855f7',
+      secondaryText: '#64748b',
+      buttonHover: '#333'
+    },
+    light: {
+      background: '#f5f5f5',
+      panel: '#ffffff',
+      border: '#ddd',
+      text: '#333',
+      nodeFill: '#a2deffff',
+      nodeStroke: '#7c3aed',
+      edgeStroke: '#4f46e5',
+      highlight: '#7c3aed',
+      secondaryText: '#666',
+      buttonHover: '#eee'
+    },
+    blue: {
+      background: '#0f172a',
+      panel: '#1e293b',
+      border: '#334155',
+      text: '#f8fafc',
+      nodeFill: '#3b82f6',
+      nodeStroke: '#6366f1',
+      edgeStroke: '#3b82f6',
+      highlight: '#6366f1',
+      secondaryText: '#94a3b8',
+      buttonHover: '#1e293b'
+    }
+  };
+
+  const colors = themes[theme];
 
   // Handle keyboard events for deletion
   useEffect(() => {
@@ -86,124 +129,117 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     }
   };
 
-  // Calculate the connection path between nodes with proper edge connections
-  const calculateConnectionPath = (fromNode, toNode, edge) => {
-    const fromCenterX = fromNode.x + fromNode.width / 2;
-    const fromCenterY = fromNode.y + fromNode.height / 2;
-    const toCenterX = toNode.x + toNode.width / 2;
-    const toCenterY = toNode.y + toNode.height / 2;
-
-    // Calculate direction vector
-    const dx = toCenterX - fromCenterX;
-    const dy = toCenterY - fromCenterY;
-    const angle = Math.atan2(dy, dx);
-
-    // Find exit point from source node
-    let fromX, fromY;
-    if (fromNode.type === 'circle' || fromNode.type === 'oval') {
-      const radiusX = fromNode.width / 2;
-      const radiusY = fromNode.type === 'oval' ? fromNode.height / 2 : radiusX;
-      fromX = fromCenterX + radiusX * Math.cos(angle);
-      fromY = fromCenterY + radiusY * Math.sin(angle);
-    } else if (fromNode.type === 'diamond') {
-      // Diamond shape connection point
-      const diamondAngle = Math.atan2(fromNode.height, fromNode.width);
+  // Calculate intersection point with shape boundary
+  const getShapeIntersection = (node, x, y) => {
+    const centerX = node.x + node.width / 2;
+    const centerY = node.y + node.height / 2;
+    const angle = Math.atan2(y - centerY, x - centerX);
+    
+    if (node.type === 'circle') {
+      const radius = node.width / 2;
+      return {
+        x: centerX + radius * Math.cos(angle),
+        y: centerY + radius * Math.sin(angle)
+      };
+    } else if (node.type === 'oval') {
+      const radiusX = node.width / 2;
+      const radiusY = node.height / 2;
+      return {
+        x: centerX + radiusX * Math.cos(angle),
+        y: centerY + radiusY * Math.sin(angle)
+      };
+    } else if (node.type === 'diamond') {
+      const diamondAngle = Math.atan2(node.height, node.width);
       if (angle > -diamondAngle && angle <= diamondAngle) {
-        fromX = fromNode.x + fromNode.width;
-        fromY = fromCenterY;
+        return { x: node.x + node.width, y: centerY };
       } else if (angle > diamondAngle && angle <= Math.PI - diamondAngle) {
-        fromX = fromCenterX;
-        fromY = fromNode.y + fromNode.height;
+        return { x: centerX, y: node.y + node.height };
       } else if (angle > Math.PI - diamondAngle || angle <= -Math.PI + diamondAngle) {
-        fromX = fromNode.x;
-        fromY = fromCenterY;
+        return { x: node.x, y: centerY };
       } else {
-        fromX = fromCenterX;
-        fromY = fromNode.y;
+        return { x: centerX, y: node.y };
       }
-    } else if (fromNode.type === 'rhombus') {
-      // Rhombus (slanted rectangle) connection point
-      const slope = fromNode.height / fromNode.width;
-      if (Math.abs(dy/dx) > slope) {
-        fromX = fromCenterX;
-        fromY = dy > 0 ? fromNode.y + fromNode.height : fromNode.y;
+    } else if (node.type === 'rhombus') {
+      // Rhombus with 30° slant (rectangle with slanted sides)
+      const slantAngle = Math.PI / 6; // 30 degrees
+      const halfWidth = node.width / 2;
+      const halfHeight = node.height / 2;
+      const slantOffset = halfHeight / Math.tan(slantAngle);
+      
+      if (angle > -slantAngle && angle <= slantAngle) {
+        // Right side
+        return { x: node.x + node.width, y: centerY };
+      } else if (angle > slantAngle && angle <= Math.PI - slantAngle) {
+        // Bottom side
+        const x = centerX + (angle > Math.PI/2 ? -halfWidth : halfWidth);
+        return { 
+          x: x, 
+          y: node.y + node.height 
+        };
+      } else if (angle > Math.PI - slantAngle || angle <= -Math.PI + slantAngle) {
+        // Left side
+        return { x: node.x, y: centerY };
       } else {
-        fromX = dx > 0 ? fromNode.x + fromNode.width : fromNode.x;
-        fromY = fromCenterY;
-      }
-    } else {
-      // Rectangle connection point
-      if (Math.abs(dx) > Math.abs(dy)) {
-        fromX = dx > 0 ? fromNode.x + fromNode.width : fromNode.x;
-        fromY = fromCenterY;
-      } else {
-        fromX = fromCenterX;
-        fromY = dy > 0 ? fromNode.y + fromNode.height : fromNode.y;
-      }
-    }
-
-    // Find entry point to target node
-    let toX, toY;
-    if (toNode.type === 'circle' || toNode.type === 'oval') {
-      const radiusX = toNode.width / 2;
-      const radiusY = toNode.type === 'oval' ? toNode.height / 2 : radiusX;
-      toX = toCenterX - radiusX * Math.cos(angle);
-      toY = toCenterY - radiusY * Math.sin(angle);
-    } else if (toNode.type === 'diamond') {
-      // Diamond shape connection point
-      const diamondAngle = Math.atan2(toNode.height, toNode.width);
-      const reverseAngle = angle + Math.PI;
-      if (reverseAngle > -diamondAngle && reverseAngle <= diamondAngle) {
-        toX = toNode.x + toNode.width;
-        toY = toCenterY;
-      } else if (reverseAngle > diamondAngle && reverseAngle <= Math.PI - diamondAngle) {
-        toX = toCenterX;
-        toY = toNode.y + toNode.height;
-      } else if (reverseAngle > Math.PI - diamondAngle || reverseAngle <= -Math.PI + diamondAngle) {
-        toX = toNode.x;
-        toY = toCenterY;
-      } else {
-        toX = toCenterX;
-        toY = toNode.y;
-      }
-    } else if (toNode.type === 'rhombus') {
-      // Rhombus (slanted rectangle) connection point
-      const slope = toNode.height / toNode.width;
-      if (Math.abs(dy/dx) > slope) {
-        toX = toCenterX;
-        toY = dy > 0 ? toNode.y + toNode.height : toNode.y;
-      } else {
-        toX = dx > 0 ? toNode.x + toNode.width : toNode.x;
-        toY = toCenterY;
+        // Top side
+        const x = centerX + (angle > -Math.PI/2 ? halfWidth : -halfWidth);
+        return { 
+          x: x, 
+          y: node.y 
+        };
       }
     } else {
-      // Rectangle connection point
-      if (Math.abs(dx) > Math.abs(dy)) {
-        toX = dx > 0 ? toNode.x : toNode.x + toNode.width;
-        toY = toCenterY;
+      // Rectangle
+      const halfWidth = node.width / 2;
+      const halfHeight = node.height / 2;
+      
+      // Calculate which side to intersect with
+      const tanTheta = Math.abs(Math.tan(angle));
+      const tanPhi = halfHeight / halfWidth;
+      
+      if (tanTheta > tanPhi) {
+        // Top or bottom
+        const x = centerX + halfHeight / tanTheta * (angle > 0 ? 1 : -1);
+        return {
+          x: x,
+          y: angle > 0 ? node.y + node.height : node.y
+        };
       } else {
-        toX = toCenterX;
-        toY = dy > 0 ? toNode.y : toNode.y + toNode.height;
+        // Left or right
+        const y = centerY + halfWidth * tanTheta * (Math.abs(angle) > Math.PI/2 ? -1 : 1);
+        return {
+          x: angle > -Math.PI/2 && angle <= Math.PI/2 ? node.x + node.width : node.x,
+          y: y
+        };
       }
     }
+  };
 
-    // Create path with a bend if needed (for better visualization)
-    const midX = (fromX + toX) / 2;
-    const midY = (fromY + toY) / 2;
-
-    // Only add bend if the line isn't straight
-    if (Math.abs(fromX - toX) > 10 && Math.abs(fromY - toY) > 10) {
+  // Calculate the connection path between nodes with straight turning lines
+  const calculateConnectionPath = (fromNode, toNode, edge) => {
+    const fromPoint = getShapeIntersection(fromNode, toNode.x + toNode.width/2, toNode.y + toNode.height/2);
+    const toPoint = getShapeIntersection(toNode, fromNode.x + fromNode.width/2, fromNode.y + fromNode.height/2);
+    
+    // Calculate direction
+    const dx = toPoint.x - fromPoint.x;
+    const dy = toPoint.y - fromPoint.y;
+    
+    // Create path with one turning point (straight lines)
+    const midX = (fromPoint.x + toPoint.x) / 2;
+    const midY = (fromPoint.y + toPoint.y) / 2;
+    
+    // Only add turning point if not a straight line
+    if (Math.abs(dx) > 10 && Math.abs(dy) > 10) {
       return [
-        { x: fromX, y: fromY },
-        { x: midX, y: fromY },
-        { x: midX, y: toY },
-        { x: toX, y: toY }
+        { x: fromPoint.x, y: fromPoint.y },
+        { x: midX, y: fromPoint.y },
+        { x: midX, y: toPoint.y },
+        { x: toPoint.x, y: toPoint.y }
       ];
     }
-
+    
     return [
-      { x: fromX, y: fromY },
-      { x: toX, y: toY }
+      { x: fromPoint.x, y: fromPoint.y },
+      { x: toPoint.x, y: toPoint.y }
     ];
   };
 
@@ -213,24 +249,27 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         x: (path[0].x + path[1].x) / 2,
         y: (path[0].y + path[1].y) / 2
       };
-    }
-    // For paths with bends, return the middle of the longest segment
-    let longestSegment = 0;
-    let maxLength = 0;
-    for (let i = 0; i < path.length - 1; i++) {
-      const length = Math.sqrt(
-        Math.pow(path[i+1].x - path[i].x, 2) + 
-        Math.pow(path[i+1].y - path[i].y, 2)
-      );
-      if (length > maxLength) {
-        maxLength = length;
-        longestSegment = i;
+    } else {
+      // For paths with turns, return the middle of the longest segment
+      let maxLength = 0;
+      let longestSegment = 0;
+      
+      for (let i = 0; i < path.length - 1; i++) {
+        const segmentLength = Math.sqrt(
+          Math.pow(path[i+1].x - path[i].x, 2) + 
+          Math.pow(path[i+1].y - path[i].y, 2)
+        );
+        if (segmentLength > maxLength) {
+          maxLength = segmentLength;
+          longestSegment = i;
+        }
       }
+      
+      return {
+        x: (path[longestSegment].x + path[longestSegment+1].x) / 2,
+        y: (path[longestSegment].y + path[longestSegment+1].y) / 2
+      };
     }
-    return {
-      x: (path[longestSegment].x + path[longestSegment+1].x) / 2,
-      y: (path[longestSegment].y + path[longestSegment+1].y) / 2
-    };
   };
 
   // Check if point is on line segment
@@ -318,14 +357,19 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
           relY >= -diamondSlope * relX - node.height / 2
         );
       } else if (node.type === 'rhombus') {
+        // Rhombus (rectangle with 30° slanted sides)
         const centerX = node.x + node.width / 2;
         const centerY = node.y + node.height / 2;
         const relX = x - centerX;
         const relY = y - centerY;
-        const rhombusSlope = node.height / node.width;
+        const slantAngle = Math.PI / 6; // 30 degrees
+        const slantOffset = (node.height / 2) / Math.tan(slantAngle);
+        
         return (
-          Math.abs(relY) <= rhombusSlope * (node.width / 2) &&
-          Math.abs(relX) <= node.width / 2
+          relY <= (node.height / 2) &&
+          relY >= -(node.height / 2) &&
+          relX <= (node.width / 2) + slantOffset - (relY + node.height/2) / Math.tan(slantAngle) &&
+          relX >= -(node.width / 2) - slantOffset + (relY + node.height/2) / Math.tan(slantAngle)
         );
       } else {
         // Rectangle
@@ -607,7 +651,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     canvas.height = height;
     
     // Set background
-    ctx.fillStyle = '#1a1a1a';
+    ctx.fillStyle = colors.background;
     ctx.fillRect(0, 0, width, height);
     
     // Draw edges first
@@ -624,7 +668,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
           y: p.y - minY
         }));
         
-        ctx.strokeStyle = '#646cff';
+        ctx.strokeStyle = colors.edgeStroke;
         ctx.lineWidth = 2;
         ctx.beginPath();
         
@@ -641,7 +685,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         const angle = Math.atan2(lastSegment.y - secondLast.y, lastSegment.x - secondLast.x);
         const headLength = 10;
         
-        ctx.fillStyle = '#646cff';
+        ctx.fillStyle = colors.edgeStroke;
         ctx.beginPath();
         ctx.moveTo(lastSegment.x, lastSegment.y);
         ctx.lineTo(
@@ -658,7 +702,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         // Draw label if exists
         if (edge.label) {
           const midPoint = getMidPoint(adjustedPath);
-          ctx.fillStyle = 'white';
+          ctx.fillStyle = colors.text;
           ctx.font = '12px Arial';
           ctx.textAlign = 'center';
           ctx.fillText(edge.label, midPoint.x, midPoint.y - 5);
@@ -671,8 +715,8 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       const adjustedX = node.x - minX;
       const adjustedY = node.y - minY;
       
-      ctx.fillStyle = '#646cff';
-      ctx.strokeStyle = '#a855f7';
+      ctx.fillStyle = colors.nodeFill;
+      ctx.strokeStyle = colors.nodeStroke;
       ctx.lineWidth = 2;
       
       if (node.type === 'rectangle') {
@@ -701,11 +745,13 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
           ctx.stroke();
         }
       } else if (node.type === 'rhombus') {
+        // Draw rhombus (rectangle with 30° slanted sides)
+        const slantOffset = node.height / 2 * Math.tan(Math.PI/6);
         ctx.beginPath();
-        ctx.moveTo(adjustedX, adjustedY + node.height/2);
-        ctx.lineTo(adjustedX + node.width/2, adjustedY);
-        ctx.lineTo(adjustedX + node.width, adjustedY + node.height/2);
-        ctx.lineTo(adjustedX + node.width/2, adjustedY + node.height);
+        ctx.moveTo(adjustedX + slantOffset, adjustedY);
+        ctx.lineTo(adjustedX + node.width - slantOffset, adjustedY);
+        ctx.lineTo(adjustedX + node.width + slantOffset, adjustedY + node.height);
+        ctx.lineTo(adjustedX - slantOffset, adjustedY + node.height);
         ctx.closePath();
         ctx.fill();
         if (selectedNode?.id === node.id) {
@@ -727,7 +773,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       }
       
       // Draw text
-      ctx.fillStyle = 'white';
+      ctx.fillStyle = colors.text;
       ctx.font = '12px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -752,11 +798,11 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       top: `${node.y}px`,
       width: `${node.width}px`,
       height: `${node.height}px`,
-      backgroundColor: isSelected ? '#7c3aed' : '#646cff',
+      backgroundColor: isSelected ? colors.highlight : colors.nodeFill,
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',
-      color: 'white',
+      color: colors.text,
       cursor: 'move',
       fontSize: '12px',
       fontWeight: '500',
@@ -764,7 +810,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       wordBreak: 'break-word',
       padding: '8px',
       boxSizing: 'border-box',
-      border: isSelected ? '2px solid #a855f7' : isConnecting ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.2)',
+      border: isSelected ? `2px solid ${colors.nodeStroke}` : isConnecting ? `2px solid #f59e0b` : `1px solid rgba(255,255,255,0.2)`,
       userSelect: 'none',
       transition: 'all 0.2s ease',
       zIndex: isSelected ? 1000 : 1
@@ -778,7 +824,16 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       nodeStyle.clipPath = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
       nodeStyle.borderRadius = '0';
     } else if (node.type === 'rhombus') {
-      nodeStyle.clipPath = 'polygon(0% 50%, 50% 0%, 100% 50%, 50% 100%)';
+      // Rhombus (rectangle with 30° slanted sides)
+      const slantOffset = node.height / 2 * Math.tan(Math.PI/6);
+      nodeStyle.clipPath = `polygon(
+        ${slantOffset}px 0, 
+        calc(100% - ${slantOffset}px) 0, 
+        100% 50%, 
+        calc(100% - ${slantOffset}px) 100%, 
+        ${slantOffset}px 100%, 
+        0 50%
+      )`;
       nodeStyle.borderRadius = '0';
     } else {
       nodeStyle.borderRadius = '8px';
@@ -801,7 +856,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             style={{
               background: 'rgba(255,255,255,0.2)',
               border: 'none',
-              color: 'white',
+              color: colors.text,
               textAlign: 'center',
               fontSize: '12px',
               fontWeight: '500',
@@ -848,7 +903,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                 top: `${point.y}px`,
                 width: `${length}px`,
                 height: isSelected ? '3px' : '2px',
-                backgroundColor: isSelected ? '#a855f7' : '#646cff',
+                backgroundColor: isSelected ? colors.highlight : colors.edgeStroke,
                 transformOrigin: '0 0',
                 transform: `rotate(${angle}deg)`,
                 cursor: 'pointer',
@@ -881,7 +936,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                 top: `${lastSegment.y - 5}px`,
                 width: '0',
                 height: '0',
-                borderLeft: `10px solid ${isSelected ? '#a855f7' : '#646cff'}`,
+                borderLeft: `10px solid ${isSelected ? colors.highlight : colors.edgeStroke}`,
                 borderTop: '6px solid transparent',
                 borderBottom: '6px solid transparent',
                 transform: `rotate(${angle}deg)`,
@@ -909,13 +964,13 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               position: 'absolute',
               left: `${getMidPoint(path).x}px`,
               top: `${getMidPoint(path).y - 12}px`,
-              color: 'white',
+              color: colors.text,
               fontSize: '11px',
               fontWeight: '600',
-              backgroundColor: '#1a1a1a',
+              backgroundColor: colors.panel,
               padding: '4px 8px',
               borderRadius: '12px',
-              border: `1px solid #444`,
+              border: `1px solid ${colors.border}`,
               transform: 'translate(-50%, -50%)',
               cursor: 'pointer',
               zIndex: 4,
@@ -941,7 +996,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: 'white',
+                  color: colors.text,
                   textAlign: 'center',
                   fontSize: '11px',
                   fontWeight: '600',
@@ -962,8 +1017,8 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
   return (
     <div style={{
       minHeight: '100vh',
-      backgroundColor: '#1a1a1a',
-      color: 'rgba(255, 255, 255, 0.87)',
+      backgroundColor: colors.background,
+      color: colors.text,
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
     }}>
       <div style={{
@@ -978,9 +1033,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
           alignItems: 'center',
           marginBottom: '24px',
           padding: '20px',
-          backgroundColor: '#242424',
+          backgroundColor: colors.panel,
           borderRadius: '12px',
-          border: '1px solid #444',
+          border: `1px solid ${colors.border}`,
           boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
         }}>
           <h1 style={{ 
@@ -994,35 +1049,53 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
           }}>
             {flowchart.name}
           </h1>
-          <button 
-            onClick={onBack}
-            style={{
-              padding: '12px 20px',
-              backgroundColor: '#242424',
-              color: 'rgba(255, 255, 255, 0.87)',
-              border: '1px solid #646cff',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            ← Back to List
-          </button>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <select
+              value={theme}
+              onChange={(e) => setTheme(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: colors.panel,
+                color: colors.text,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="dark">Dark Theme</option>
+              <option value="light">Light Theme</option>
+              <option value="blue">Blue Theme</option>
+            </select>
+            <button 
+              onClick={onBack}
+              style={{
+                padding: '12px 20px',
+                backgroundColor: colors.panel,
+                color: colors.text,
+                border: `1px solid ${colors.nodeFill}`,
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              ← Back to List
+            </button>
+          </div>
         </div>
         
         {/* Tabs Navigation */}
         <div style={{
           display: 'flex',
           marginBottom: '24px',
-          backgroundColor: '#242424',
+          backgroundColor: colors.panel,
           borderRadius: '12px',
           padding: '4px',
-          border: '1px solid #444',
+          border: `1px solid ${colors.border}`,
           boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
         }}>
           <button 
@@ -1030,8 +1103,8 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             style={{
               padding: '12px 24px',
               border: 'none',
-              backgroundColor: activeTab === 'editor' ? '#646cff' : 'transparent',
-              color: activeTab === 'editor' ? 'white' : 'rgba(255, 255, 255, 0.87)',
+              backgroundColor: activeTab === 'editor' ? colors.nodeFill : 'transparent',
+              color: activeTab === 'editor' ? 'white' : colors.text,
               cursor: 'pointer',
               fontSize: '14px',
               fontWeight: '600',
@@ -1048,8 +1121,8 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             style={{
               padding: '12px 24px',
               border: 'none',
-              backgroundColor: activeTab === 'json' ? '#646cff' : 'transparent',
-              color: activeTab === 'json' ? 'white' : 'rgba(255, 255, 255, 0.87)',
+              backgroundColor: activeTab === 'json' ? colors.nodeFill : 'transparent',
+              color: activeTab === 'json' ? 'white' : colors.text,
               cursor: 'pointer',
               fontSize: '14px',
               fontWeight: '600',
@@ -1075,9 +1148,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               flexDirection: 'column',
               gap: '16px',
               padding: '20px',
-              backgroundColor: '#242424',
+              backgroundColor: colors.panel,
               borderRadius: '12px',
-              border: '1px solid #444',
+              border: `1px solid ${colors.border}`,
               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
             }}>
               <div style={{
@@ -1104,9 +1177,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                       onClick={() => setSelectedTool(tool)}
                       style={{
                         padding: '10px 16px',
-                        backgroundColor: selectedTool === tool ? '#646cff' : '#1a1a1a',
-                        color: selectedTool === tool ? 'white' : 'rgba(255, 255, 255, 0.87)',
-                        border: '1px solid #444',
+                        backgroundColor: selectedTool === tool ? colors.nodeFill : colors.background,
+                        color: selectedTool === tool ? 'white' : colors.text,
+                        border: `1px solid ${colors.border}`,
                         borderRadius: '8px',
                         cursor: 'pointer',
                         fontSize: '13px',
@@ -1126,9 +1199,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                     onClick={handleArrowTool}
                     style={{
                       padding: '10px 16px',
-                      backgroundColor: connectionMode ? '#646cff' : '#1a1a1a',
-                      color: connectionMode ? 'white' : 'rgba(255, 255, 255, 0.87)',
-                      border: '1px solid #444',
+                      backgroundColor: connectionMode ? colors.nodeFill : colors.background,
+                      color: connectionMode ? 'white' : colors.text,
+                      border: `1px solid ${colors.border}`,
                       borderRadius: '8px',
                       cursor: 'pointer',
                       fontSize: '13px',
@@ -1249,9 +1322,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               <div style={{
                 padding: '16px',
                 backgroundColor: 'rgba(100, 108, 255, 0.1)',
-                border: '1px solid #646cff',
+                border: `1px solid ${colors.nodeFill}`,
                 borderRadius: '8px',
-                color: '#646cff',
+                color: colors.nodeFill,
                 textAlign: 'center',
                 fontSize: '14px',
                 fontWeight: '500'
@@ -1272,9 +1345,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               onClick={handleCanvasClick}
               style={{
                 height: '700px',
-                border: '2px dashed #444',
+                border: `2px dashed ${colors.border}`,
                 borderRadius: '12px',
-                backgroundColor: '#1a1a1a',
+                backgroundColor: colors.background,
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
@@ -1287,7 +1360,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               {nodes.length === 0 && !selectedTool && (
                 <div style={{
                   textAlign: 'center',
-                  color: '#64748b',
+                  color: colors.secondaryText,
                   pointerEvents: 'none'
                 }}>
                   <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎨</div>
@@ -1315,11 +1388,11 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             {/* Help Text */}
             <div style={{
               padding: '16px',
-              backgroundColor: '#242424',
+              backgroundColor: colors.panel,
               borderRadius: '8px',
-              border: '1px solid #444',
+              border: `1px solid ${colors.border}`,
               fontSize: '13px',
-              color: '#64748b',
+              color: colors.secondaryText,
               textAlign: 'center',
               lineHeight: '1.6'
             }}>
@@ -1336,16 +1409,16 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
           }}>
             {/* JSON Input */}
             <div style={{
-              border: '1px solid #444',
+              border: `1px solid ${colors.border}`,
               borderRadius: '12px',
               padding: '20px',
-              backgroundColor: '#242424',
+              backgroundColor: colors.panel,
               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
             }}>
               <h3 style={{ 
                 marginTop: '0',
                 marginBottom: '16px',
-                color: 'rgba(255, 255, 255, 0.87)',
+                color: colors.text,
                 fontSize: '1.2rem',
                 fontWeight: '600'
               }}>
@@ -1359,14 +1432,14 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   width: '100%',
                   minHeight: '400px',
                   padding: '16px',
-                  border: '1px solid #444',
+                  border: `1px solid ${colors.border}`,
                   borderRadius: '8px',
                   fontFamily: '"Fira Code", "Cascadia Code", "SF Mono", Monaco, "Inconsolata", "Roboto Mono", monospace',
                   fontSize: '13px',
                   lineHeight: '1.5',
                   marginBottom: '16px',
-                  backgroundColor: '#1a1a1a',
-                  color: 'rgba(255, 255, 255, 0.87)',
+                  backgroundColor: colors.background,
+                  color: colors.text,
                   resize: 'vertical',
                   outline: 'none',
                   transition: 'border-color 0.2s'
@@ -1397,7 +1470,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   onClick={() => fileInputRef.current.click()}
                   style={{
                     padding: '12px 20px',
-                    backgroundColor: '#646cff',
+                    backgroundColor: colors.nodeFill,
                     color: 'white',
                     border: 'none',
                     borderRadius: '8px',
@@ -1422,32 +1495,32 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             
             {/* JSON Output */}
             <div style={{
-              border: '1px solid #444',
+              border: `1px solid ${colors.border}`,
               borderRadius: '12px',
               padding: '20px',
-              backgroundColor: '#242424',
+              backgroundColor: colors.panel,
               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
             }}>
               <h3 style={{ 
                 marginTop: '0',
                 marginBottom: '16px',
-                color: 'rgba(255, 255, 255, 0.87)',
+                color: colors.text,
                 fontSize: '1.2rem',
                 fontWeight: '600'
               }}>
                 📤 Current Flowchart JSON
               </h3>
               <pre style={{
-                backgroundColor: '#1a1a1a',
+                backgroundColor: colors.background,
                 padding: '16px',
-                border: '1px solid #444',
+                border: `1px solid ${colors.border}`,
                 borderRadius: '8px',
                 overflow: 'auto',
                 maxHeight: '450px',
                 fontFamily: '"Fira Code", "Cascadia Code", "SF Mono", Monaco, "Inconsolata", "Roboto Mono", monospace',
                 fontSize: '12px',
                 lineHeight: '1.5',
-                color: 'rgba(255, 255, 255, 0.87)',
+                color: colors.text,
                 whiteSpace: 'pre-wrap',
                 wordWrap: 'break-word',
                 margin: 0
@@ -1474,25 +1547,25 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             backdropFilter: 'blur(4px)'
           }}>
             <div style={{
-              backgroundColor: '#242424',
+              backgroundColor: colors.panel,
               padding: '24px',
               borderRadius: '12px',
               width: '400px',
-              border: '1px solid #646cff',
+              border: `1px solid ${colors.nodeFill}`,
               boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
               animation: 'slideIn 0.2s ease-out'
             }}>
               <h3 style={{ 
                 marginTop: 0, 
                 marginBottom: '8px',
-                color: 'rgba(255, 255, 255, 0.87)',
+                color: colors.text,
                 fontSize: '1.3rem',
                 fontWeight: '600'
               }}>
                 🏷️ Add Connection Label
               </h3>
               <p style={{ 
-                color: '#64748b', 
+                color: colors.secondaryText, 
                 marginBottom: '20px',
                 fontSize: '14px',
                 lineHeight: '1.5'
@@ -1508,9 +1581,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   width: '100%',
                   padding: '12px',
                   marginBottom: '20px',
-                  backgroundColor: '#1a1a1a',
-                  border: '1px solid #444',
-                  color: 'rgba(255, 255, 255, 0.87)',
+                  backgroundColor: colors.background,
+                  border: `1px solid ${colors.border}`,
+                  color: colors.text,
                   borderRadius: '8px',
                   fontSize: '14px',
                   outline: 'none',
@@ -1534,9 +1607,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   }}
                   style={{
                     padding: '10px 16px',
-                    backgroundColor: '#1a1a1a',
-                    color: 'rgba(255, 255, 255, 0.87)',
-                    border: '1px solid #444',
+                    backgroundColor: colors.background,
+                    color: colors.text,
+                    border: `1px solid ${colors.border}`,
                     borderRadius: '6px',
                     cursor: 'pointer',
                     fontSize: '14px',
@@ -1550,7 +1623,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   onClick={handleLabelSubmit}
                   style={{
                     padding: '10px 16px',
-                    backgroundColor: '#646cff',
+                    backgroundColor: colors.nodeFill,
                     color: 'white',
                     border: 'none',
                     borderRadius: '6px',
