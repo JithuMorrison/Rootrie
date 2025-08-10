@@ -14,7 +14,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [edgeLabel, setEdgeLabel] = useState('');
   const [pendingEdge, setPendingEdge] = useState(null);
-  const [theme, setTheme] = useState('dark'); // 'dark', 'light', or 'blue'
+  const [theme, setTheme] = useState('dark');
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -37,7 +37,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       panel: '#ffffff',
       border: '#ddd',
       text: '#333',
-      nodeFill: '#a2deffff',
+      nodeFill: '#4f46e5',
       nodeStroke: '#7c3aed',
       edgeStroke: '#4f46e5',
       highlight: '#7c3aed',
@@ -129,14 +129,14 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     }
   };
 
-  // Calculate intersection point with shape boundary
-  const getShapeIntersection = (node, x, y) => {
+  // Improved shape connection point calculation
+  const getShapeConnectionPoint = (node, fromX, fromY) => {
     const centerX = node.x + node.width / 2;
     const centerY = node.y + node.height / 2;
-    const angle = Math.atan2(y - centerY, x - centerX);
     
     if (node.type === 'circle') {
       const radius = node.width / 2;
+      const angle = Math.atan2(fromY - centerY, fromX - centerX);
       return {
         x: centerX + radius * Math.cos(angle),
         y: centerY + radius * Math.sin(angle)
@@ -144,136 +144,184 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     } else if (node.type === 'oval') {
       const radiusX = node.width / 2;
       const radiusY = node.height / 2;
+      const angle = Math.atan2(fromY - centerY, fromX - centerX);
+      
+      // Calculate the exact point on ellipse perimeter
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const scale = Math.sqrt(1 / (Math.pow(cos / radiusX, 2) + Math.pow(sin / radiusY, 2)));
+      
       return {
-        x: centerX + radiusX * Math.cos(angle),
-        y: centerY + radiusY * Math.sin(angle)
+        x: centerX + scale * cos,
+        y: centerY + scale * sin
       };
     } else if (node.type === 'diamond') {
-      const diamondAngle = Math.atan2(node.height, node.width);
-      if (angle > -diamondAngle && angle <= diamondAngle) {
-        return { x: node.x + node.width, y: centerY };
-      } else if (angle > diamondAngle && angle <= Math.PI - diamondAngle) {
-        return { x: centerX, y: node.y + node.height };
-      } else if (angle > Math.PI - diamondAngle || angle <= -Math.PI + diamondAngle) {
-        return { x: node.x, y: centerY };
+      const dx = fromX - centerX;
+      const dy = fromY - centerY;
+      const halfWidth = node.width / 2;
+      const halfHeight = node.height / 2;
+      
+      // Determine which edge of diamond to connect to
+      const slope = halfHeight / halfWidth;
+      
+      if (Math.abs(dy) <= slope * Math.abs(dx)) {
+        // Connect to left or right edge
+        const x = dx > 0 ? node.x + node.width : node.x;
+        const y = centerY + (dy / Math.abs(dx)) * halfWidth * slope;
+        return { x, y: Math.max(node.y, Math.min(node.y + node.height, y)) };
       } else {
-        return { x: centerX, y: node.y };
+        // Connect to top or bottom edge
+        const y = dy > 0 ? node.y + node.height : node.y;
+        const x = centerX + (dx / Math.abs(dy)) * halfHeight / slope;
+        return { x: Math.max(node.x, Math.min(node.x + node.width, x)), y };
       }
     } else if (node.type === 'rhombus') {
-      // Rhombus with 30° slant (rectangle with slanted sides)
-      const slantAngle = Math.PI / 6; // 30 degrees
+      const dx = fromX - centerX;
+      const dy = fromY - centerY;
       const halfWidth = node.width / 2;
       const halfHeight = node.height / 2;
-      const slantOffset = halfHeight / Math.tan(slantAngle);
+      const slantOffset = halfHeight * 0.3;
       
-      if (angle > -slantAngle && angle <= slantAngle) {
-        // Right side
-        return { x: node.x + node.width, y: centerY };
-      } else if (angle > slantAngle && angle <= Math.PI - slantAngle) {
-        // Bottom side
-        const x = centerX + (angle > Math.PI/2 ? -halfWidth : halfWidth);
-        return { 
-          x: x, 
-          y: node.y + node.height 
-        };
-      } else if (angle > Math.PI - slantAngle || angle <= -Math.PI + slantAngle) {
-        // Left side
-        return { x: node.x, y: centerY };
+      // For rhombus, we need to check slanted edges
+      if (Math.abs(dx) > Math.abs(dy)) {
+        // Connect to left or right slanted edge
+        const x = dx > 0 ? node.x + node.width : node.x;
+        const edgeSlantY = dy > 0 ? 
+          node.y + halfHeight + (halfHeight * (dx > 0 ? -slantOffset : slantOffset) / halfWidth) :
+          node.y + halfHeight - (halfHeight * (dx > 0 ? -slantOffset : slantOffset) / halfWidth);
+        return { x, y: Math.max(node.y, Math.min(node.y + node.height, edgeSlantY)) };
       } else {
-        // Top side
-        const x = centerX + (angle > -Math.PI/2 ? halfWidth : -halfWidth);
-        return { 
-          x: x, 
-          y: node.y 
-        };
+        // Connect to top or bottom edge
+        const y = dy > 0 ? node.y + node.height : node.y;
+        const edgeSlantX = centerX + (dx * 0.7); // Adjust for slant
+        return { x: Math.max(node.x - slantOffset, Math.min(node.x + node.width + slantOffset, edgeSlantX)), y };
       }
     } else {
-      // Rectangle
+      // Rectangle - find perpendicular connection point to edge
+      const dx = fromX - centerX;
+      const dy = fromY - centerY;
       const halfWidth = node.width / 2;
       const halfHeight = node.height / 2;
       
-      // Calculate which side to intersect with
-      const tanTheta = Math.abs(Math.tan(angle));
-      const tanPhi = halfHeight / halfWidth;
-      
-      if (tanTheta > tanPhi) {
-        // Top or bottom
-        const x = centerX + halfHeight / tanTheta * (angle > 0 ? 1 : -1);
-        return {
-          x: x,
-          y: angle > 0 ? node.y + node.height : node.y
-        };
+      // Determine which edge based on angle
+      if (Math.abs(dx) * halfHeight > Math.abs(dy) * halfWidth) {
+        // Connect to left or right edge
+        const x = dx > 0 ? node.x + node.width : node.x;
+        const y = centerY + (dy / Math.abs(dx)) * halfWidth;
+        return { x, y: Math.max(node.y, Math.min(node.y + node.height, y)) };
       } else {
-        // Left or right
-        const y = centerY + halfWidth * tanTheta * (Math.abs(angle) > Math.PI/2 ? -1 : 1);
-        return {
-          x: angle > -Math.PI/2 && angle <= Math.PI/2 ? node.x + node.width : node.x,
-          y: y
-        };
+        // Connect to top or bottom edge
+        const y = dy > 0 ? node.y + node.height : node.y;
+        const x = centerX + (dx / Math.abs(dy)) * halfHeight;
+        return { x: Math.max(node.x, Math.min(node.x + node.width, x)), y };
       }
     }
   };
 
-  // Calculate the connection path between nodes with straight turning lines
-  const calculateConnectionPath = (fromNode, toNode, edge) => {
-    const fromPoint = getShapeIntersection(fromNode, toNode.x + toNode.width/2, toNode.y + toNode.height/2);
-    const toPoint = getShapeIntersection(toNode, fromNode.x + fromNode.width/2, fromNode.y + fromNode.height/2);
+  // Improved connection path calculation with smart routing
+  const calculateConnectionPath = (fromNode, toNode) => {
+    const fromCenter = { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 };
+    const toCenter = { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 };
     
-    // Calculate direction
+    // Get connection points on shape edges
+    const fromPoint = getShapeConnectionPoint(fromNode, toCenter.x, toCenter.y);
+    const toPoint = getShapeConnectionPoint(toNode, fromCenter.x, fromCenter.y);
+    
     const dx = toPoint.x - fromPoint.x;
     const dy = toPoint.y - fromPoint.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
     
-    // Create path with one turning point (straight lines)
-    const midX = (fromPoint.x + toPoint.x) / 2;
-    const midY = (fromPoint.y + toPoint.y) / 2;
+    // Check if nodes are aligned (within threshold)
+    const alignmentThreshold = 30; // pixels
+    const isHorizontallyAligned = Math.abs(fromCenter.y - toCenter.y) < alignmentThreshold;
+    const isVerticallyAligned = Math.abs(fromCenter.x - toCenter.x) < alignmentThreshold;
     
-    // Only add turning point if not a straight line
-    if (Math.abs(dx) > 10 && Math.abs(dy) > 10) {
-      return [
-        { x: fromPoint.x, y: fromPoint.y },
-        { x: midX, y: fromPoint.y },
-        { x: midX, y: toPoint.y },
-        { x: toPoint.x, y: toPoint.y }
-      ];
+    // For short distances or aligned nodes, use straight line
+    if (distance < 80 || isHorizontallyAligned || isVerticallyAligned) {
+      return [fromPoint, toPoint];
     }
     
-    return [
-      { x: fromPoint.x, y: fromPoint.y },
-      { x: toPoint.x, y: toPoint.y }
-    ];
+    // Check if nodes are close enough to avoid bending
+    const horizontalDistance = Math.abs(dx);
+    const verticalDistance = Math.abs(dy);
+    const bendThreshold = 100; // Only bend if distance is significant
+    
+    if (horizontalDistance < bendThreshold && verticalDistance < bendThreshold) {
+      return [fromPoint, toPoint];
+    }
+    
+    // Create orthogonal routing for better visual clarity
+    if (horizontalDistance > verticalDistance * 1.5) {
+      // Primarily horizontal movement - route horizontally first
+      const midX = fromPoint.x + dx * 0.7;
+      return [
+        fromPoint,
+        { x: midX, y: fromPoint.y },
+        { x: midX, y: toPoint.y },
+        toPoint
+      ];
+    } else if (verticalDistance > horizontalDistance * 1.5) {
+      // Primarily vertical movement - route vertically first  
+      const midY = fromPoint.y + dy * 0.7;
+      return [
+        fromPoint,
+        { x: fromPoint.x, y: midY },
+        { x: toPoint.x, y: midY },
+        toPoint
+      ];
+    } else {
+      // Diagonal movement - choose best routing based on node positions
+      if (Math.abs(dx) > Math.abs(dy)) {
+        const midX = fromPoint.x + dx * 0.6;
+        return [
+          fromPoint,
+          { x: midX, y: fromPoint.y },
+          { x: midX, y: toPoint.y },
+          toPoint
+        ];
+      } else {
+        const midY = fromPoint.y + dy * 0.6;
+        return [
+          fromPoint,
+          { x: fromPoint.x, y: midY },
+          { x: toPoint.x, y: midY },
+          toPoint
+        ];
+      }
+    }
   };
 
   const getMidPoint = (path) => {
-    if (path.length === 2) {
+    if (path.length <= 2) {
       return {
-        x: (path[0].x + path[1].x) / 2,
-        y: (path[0].y + path[1].y) / 2
-      };
-    } else {
-      // For paths with turns, return the middle of the longest segment
-      let maxLength = 0;
-      let longestSegment = 0;
-      
-      for (let i = 0; i < path.length - 1; i++) {
-        const segmentLength = Math.sqrt(
-          Math.pow(path[i+1].x - path[i].x, 2) + 
-          Math.pow(path[i+1].y - path[i].y, 2)
-        );
-        if (segmentLength > maxLength) {
-          maxLength = segmentLength;
-          longestSegment = i;
-        }
-      }
-      
-      return {
-        x: (path[longestSegment].x + path[longestSegment+1].x) / 2,
-        y: (path[longestSegment].y + path[longestSegment+1].y) / 2
+        x: (path[0].x + path[path.length - 1].x) / 2,
+        y: (path[0].y + path[path.length - 1].y) / 2
       };
     }
+    
+    // For multi-segment paths, find middle of longest segment
+    let maxLength = 0;
+    let longestSegment = 0;
+    
+    for (let i = 0; i < path.length - 1; i++) {
+      const segmentLength = Math.sqrt(
+        Math.pow(path[i+1].x - path[i].x, 2) + 
+        Math.pow(path[i+1].y - path[i].y, 2)
+      );
+      if (segmentLength > maxLength) {
+        maxLength = segmentLength;
+        longestSegment = i;
+      }
+    }
+    
+    return {
+      x: (path[longestSegment].x + path[longestSegment+1].x) / 2,
+      y: (path[longestSegment].y + path[longestSegment+1].y) / 2
+    };
   };
 
-  // Check if point is on line segment
-  const isPointOnLineSegment = (point, start, end, tolerance = 5) => {
+  // Improved line click detection
+  const isPointOnLineSegment = (point, start, end, tolerance = 8) => {
     const A = point.x - start.x;
     const B = point.y - start.y;
     const C = end.x - start.x;
@@ -281,29 +329,21 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
 
     const dot = A * C + B * D;
     const lenSq = C * C + D * D;
-    let param = -1;
-    if (lenSq !== 0) {
-      param = dot / lenSq;
-    }
-
-    let xx, yy;
-    if (param < 0) {
-      xx = start.x;
-      yy = start.y;
-    } else if (param > 1) {
-      xx = end.x;
-      yy = end.y;
-    } else {
-      xx = start.x + param * C;
-      yy = start.y + param * D;
-    }
-
+    
+    if (lenSq === 0) return false;
+    
+    const param = dot / lenSq;
+    
+    if (param < 0 || param > 1) return false;
+    
+    const xx = start.x + param * C;
+    const yy = start.y + param * D;
+    
     const dx = point.x - xx;
     const dy = point.y - yy;
     return Math.sqrt(dx * dx + dy * dy) <= tolerance;
   };
 
-  // Check if click is on edge
   const getClickedEdge = (x, y) => {
     for (const edge of edges) {
       const fromNode = nodes.find(n => n.id === edge.from);
@@ -311,9 +351,8 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       
       if (!fromNode || !toNode) continue;
       
-      const path = calculateConnectionPath(fromNode, toNode, edge);
+      const path = calculateConnectionPath(fromNode, toNode);
       
-      // Check each segment of the path
       for (let i = 0; i < path.length - 1; i++) {
         if (isPointOnLineSegment({ x, y }, path[i], path[i + 1])) {
           return edge;
@@ -347,32 +386,21 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       } else if (node.type === 'diamond') {
         const centerX = node.x + node.width / 2;
         const centerY = node.y + node.height / 2;
-        const relX = x - centerX;
-        const relY = y - centerY;
-        const diamondSlope = node.height / node.width;
-        return (
-          relY <= diamondSlope * relX + node.height / 2 &&
-          relY <= -diamondSlope * relX + node.height / 2 &&
-          relY >= diamondSlope * relX - node.height / 2 &&
-          relY >= -diamondSlope * relX - node.height / 2
-        );
+        const relX = Math.abs(x - centerX);
+        const relY = Math.abs(y - centerY);
+        return relX / (node.width / 2) + relY / (node.height / 2) <= 1;
       } else if (node.type === 'rhombus') {
-        // Rhombus (rectangle with 30° slanted sides)
-        const centerX = node.x + node.width / 2;
-        const centerY = node.y + node.height / 2;
-        const relX = x - centerX;
-        const relY = y - centerY;
-        const slantAngle = Math.PI / 6; // 30 degrees
-        const slantOffset = (node.height / 2) / Math.tan(slantAngle);
+        const relX = x - node.x;
+        const relY = y - node.y;
+        const slantOffset = node.height * 0.3;
         
-        return (
-          relY <= (node.height / 2) &&
-          relY >= -(node.height / 2) &&
-          relX <= (node.width / 2) + slantOffset - (relY + node.height/2) / Math.tan(slantAngle) &&
-          relX >= -(node.width / 2) - slantOffset + (relY + node.height/2) / Math.tan(slantAngle)
-        );
+        if (relY < 0 || relY > node.height) return false;
+        
+        const leftBound = -slantOffset + (relY / node.height) * slantOffset * 2;
+        const rightBound = node.width + slantOffset - (relY / node.height) * slantOffset * 2;
+        
+        return relX >= leftBound && relX <= rightBound;
       } else {
-        // Rectangle
         return (
           x >= node.x && x <= node.x + node.width &&
           y >= node.y && y <= node.y + node.height
@@ -380,7 +408,6 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       }
     });
     
-    // Check if clicking on an edge
     const clickedEdge = !clickedNode ? getClickedEdge(x, y) : null;
     
     if (connectionMode && clickedNode) {
@@ -627,7 +654,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    // Calculate canvas dimensions based on node positions
+    // Calculate canvas dimensions
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     
     nodes.forEach(node => {
@@ -637,7 +664,6 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       maxY = Math.max(maxY, node.y + node.height);
     });
     
-    // Add padding
     const padding = 40;
     minX -= padding;
     minY -= padding;
@@ -650,56 +676,47 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     canvas.width = width;
     canvas.height = height;
     
-    // Set background
     ctx.fillStyle = colors.background;
     ctx.fillRect(0, 0, width, height);
     
-    // Draw edges first
+    // Draw edges using same logic
     edges.forEach(edge => {
       const fromNodeData = nodes.find(n => n.id === edge.from);
       const toNodeData = nodes.find(n => n.id === edge.to);
       
       if (fromNodeData && toNodeData) {
-        const path = calculateConnectionPath(fromNodeData, toNodeData, edge);
-        
-        // Adjust coordinates for export
-        const adjustedPath = path.map(p => ({
-          x: p.x - minX,
-          y: p.y - minY
-        }));
+        const path = calculateConnectionPath(fromNodeData, toNodeData);
+        const adjustedPath = path.map(p => ({ x: p.x - minX, y: p.y - minY }));
         
         ctx.strokeStyle = colors.edgeStroke;
         ctx.lineWidth = 2;
         ctx.beginPath();
         
-        // Draw path segments
         ctx.moveTo(adjustedPath[0].x, adjustedPath[0].y);
         for (let i = 1; i < adjustedPath.length; i++) {
           ctx.lineTo(adjustedPath[i].x, adjustedPath[i].y);
         }
         ctx.stroke();
         
-        // Draw arrowhead at the end
-        const lastSegment = adjustedPath[adjustedPath.length - 1];
-        const secondLast = adjustedPath[adjustedPath.length - 2];
-        const angle = Math.atan2(lastSegment.y - secondLast.y, lastSegment.x - secondLast.x);
-        const headLength = 10;
+        // Draw arrowhead at the exact end point
+        const lastPoint = adjustedPath[adjustedPath.length - 1];
+        const secondLastPoint = adjustedPath[adjustedPath.length - 2];
+        const angle = Math.atan2(lastPoint.y - secondLastPoint.y, lastPoint.x - secondLastPoint.x);
         
         ctx.fillStyle = colors.edgeStroke;
         ctx.beginPath();
-        ctx.moveTo(lastSegment.x, lastSegment.y);
+        ctx.moveTo(lastPoint.x, lastPoint.y);
         ctx.lineTo(
-          lastSegment.x - headLength * Math.cos(angle - Math.PI/6),
-          lastSegment.y - headLength * Math.sin(angle - Math.PI/6)
+          lastPoint.x - 12 * Math.cos(angle - Math.PI/6),
+          lastPoint.y - 12 * Math.sin(angle - Math.PI/6)
         );
         ctx.lineTo(
-          lastSegment.x - headLength * Math.cos(angle + Math.PI/6),
-          lastSegment.y - headLength * Math.sin(angle + Math.PI/6)
+          lastPoint.x - 12 * Math.cos(angle + Math.PI/6),
+          lastPoint.y - 12 * Math.sin(angle + Math.PI/6)
         );
         ctx.closePath();
         ctx.fill();
         
-        // Draw label if exists
         if (edge.label) {
           const midPoint = getMidPoint(adjustedPath);
           ctx.fillStyle = colors.text;
@@ -723,16 +740,12 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         ctx.beginPath();
         ctx.roundRect(adjustedX, adjustedY, node.width, node.height, 4);
         ctx.fill();
-        if (selectedNode?.id === node.id) {
-          ctx.stroke();
-        }
+        ctx.stroke();
       } else if (node.type === 'circle') {
         ctx.beginPath();
         ctx.arc(adjustedX + node.width/2, adjustedY + node.height/2, node.width/2, 0, 2 * Math.PI);
         ctx.fill();
-        if (selectedNode?.id === node.id) {
-          ctx.stroke();
-        }
+        ctx.stroke();
       } else if (node.type === 'diamond') {
         ctx.beginPath();
         ctx.moveTo(adjustedX + node.width/2, adjustedY);
@@ -741,38 +754,24 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         ctx.lineTo(adjustedX, adjustedY + node.height/2);
         ctx.closePath();
         ctx.fill();
-        if (selectedNode?.id === node.id) {
-          ctx.stroke();
-        }
+        ctx.stroke();
       } else if (node.type === 'rhombus') {
-        // Draw rhombus (rectangle with 30° slanted sides)
-        const slantOffset = node.height / 2 * Math.tan(Math.PI/6);
+        const slantOffset = node.height * 0.3;
         ctx.beginPath();
-        ctx.moveTo(adjustedX + slantOffset, adjustedY);
+        ctx.moveTo(adjustedX - slantOffset, adjustedY);
         ctx.lineTo(adjustedX + node.width - slantOffset, adjustedY);
         ctx.lineTo(adjustedX + node.width + slantOffset, adjustedY + node.height);
-        ctx.lineTo(adjustedX - slantOffset, adjustedY + node.height);
+        ctx.lineTo(adjustedX + slantOffset, adjustedY + node.height);
         ctx.closePath();
         ctx.fill();
-        if (selectedNode?.id === node.id) {
-          ctx.stroke();
-        }
+        ctx.stroke();
       } else if (node.type === 'oval') {
         ctx.beginPath();
-        ctx.ellipse(
-          adjustedX + node.width/2, 
-          adjustedY + node.height/2, 
-          node.width/2, 
-          node.height/2, 
-          0, 0, 2 * Math.PI
-        );
+        ctx.ellipse(adjustedX + node.width/2, adjustedY + node.height/2, node.width/2, node.height/2, 0, 0, 2 * Math.PI);
         ctx.fill();
-        if (selectedNode?.id === node.id) {
-          ctx.stroke();
-        }
+        ctx.stroke();
       }
       
-      // Draw text
       ctx.fillStyle = colors.text;
       ctx.font = '12px Arial';
       ctx.textAlign = 'center';
@@ -780,7 +779,6 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       ctx.fillText(node.text, adjustedX + node.width/2, adjustedY + node.height/2);
     });
     
-    // Download the image
     const link = document.createElement('a');
     link.download = `${flowchart.name || 'flowchart'}.png`;
     link.href = canvas.toDataURL('image/png');
@@ -824,16 +822,8 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       nodeStyle.clipPath = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
       nodeStyle.borderRadius = '0';
     } else if (node.type === 'rhombus') {
-      // Rhombus (rectangle with 30° slanted sides)
-      const slantOffset = node.height / 2 * Math.tan(Math.PI/6);
-      nodeStyle.clipPath = `polygon(
-        ${slantOffset}px 0, 
-        calc(100% - ${slantOffset}px) 0, 
-        100% 50%, 
-        calc(100% - ${slantOffset}px) 100%, 
-        ${slantOffset}px 100%, 
-        0 50%
-      )`;
+      const slantPercent = 15;
+      nodeStyle.clipPath = `polygon(${slantPercent}% 0%, 100% 0%, ${100 - slantPercent}% 100%, 0% 100%)`;
       nodeStyle.borderRadius = '0';
     } else {
       nodeStyle.borderRadius = '8px';
@@ -880,13 +870,13 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     
     if (!fromNodeData || !toNodeData) return null;
     
-    const path = calculateConnectionPath(fromNodeData, toNodeData, edge);
+    const path = calculateConnectionPath(fromNodeData, toNodeData);
     const isSelected = selectedEdge?.id === edge.id;
     const isEditing = editingEdge === edge.id;
     
     return (
       <div key={edge.id}>
-        {/* Render path segments */}
+        {/* Render improved path segments */}
         {path.map((point, index) => {
           if (index === path.length - 1) return null;
           
@@ -900,14 +890,15 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               style={{
                 position: 'absolute',
                 left: `${point.x}px`,
-                top: `${point.y}px`,
+                top: `${point.y - (isSelected ? 1.5 : 1)}px`,
                 width: `${length}px`,
                 height: isSelected ? '3px' : '2px',
                 backgroundColor: isSelected ? colors.highlight : colors.edgeStroke,
-                transformOrigin: '0 0',
+                transformOrigin: '0 50%',
                 transform: `rotate(${angle}deg)`,
                 cursor: 'pointer',
-                zIndex: 2
+                zIndex: isSelected ? 10 : 2,
+                borderRadius: '1px'
               }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -922,38 +913,44 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
           );
         })}
         
-        {/* Arrow head */}
+        {/* Improved arrow head with correct positioning */}
         {(() => {
-          const lastSegment = path[path.length - 1];
-          const secondLast = path[path.length - 2];
-          const angle = Math.atan2(lastSegment.y - secondLast.y, lastSegment.x - secondLast.x) * 180 / Math.PI;
+          const lastPoint = path[path.length - 1];
+          const secondLastPoint = path[path.length - 2];
+          const angle = Math.atan2(lastPoint.y - secondLastPoint.y, lastPoint.x - secondLastPoint.x);
           
+          // Calculate arrowhead points
+          const arrowSize = 8;
+          const arrowAngle = Math.PI / 6; // 30 degrees
+          
+          const arrowPoint1 = {
+            x: lastPoint.x - arrowSize * Math.cos(angle - arrowAngle),
+            y: lastPoint.y - arrowSize * Math.sin(angle - arrowAngle)
+          };
+          
+          const arrowPoint2 = {
+            x: lastPoint.x - arrowSize * Math.cos(angle + arrowAngle),
+            y: lastPoint.y - arrowSize * Math.sin(angle + arrowAngle)
+          };
+          
+          // Create SVG for better arrow rendering
           return (
-            <div
+            <svg
               style={{
                 position: 'absolute',
-                left: `${lastSegment.x - 8}px`,
-                top: `${lastSegment.y - 5}px`,
-                width: '0',
-                height: '0',
-                borderLeft: `10px solid ${isSelected ? colors.highlight : colors.edgeStroke}`,
-                borderTop: '6px solid transparent',
-                borderBottom: '6px solid transparent',
-                transform: `rotate(${angle}deg)`,
-                transformOrigin: '0 50%',
-                cursor: 'pointer',
-                zIndex: 3
+                left: `${Math.min(lastPoint.x, arrowPoint1.x, arrowPoint2.x) - 2}px`,
+                top: `${Math.min(lastPoint.y, arrowPoint1.y, arrowPoint2.y) - 2}px`,
+                width: `${Math.max(lastPoint.x, arrowPoint1.x, arrowPoint2.x) - Math.min(lastPoint.x, arrowPoint1.x, arrowPoint2.x) + 4}px`,
+                height: `${Math.max(lastPoint.y, arrowPoint1.y, arrowPoint2.y) - Math.min(lastPoint.y, arrowPoint1.y, arrowPoint2.y) + 4}px`,
+                pointerEvents: 'none',
+                zIndex: isSelected ? 11 : 3
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedEdge(edge);
-                setSelectedNode(null);
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                handleEdgeDoubleClick(edge);
-              }}
-            />
+            >
+              <polygon
+                points={`${lastPoint.x - Math.min(lastPoint.x, arrowPoint1.x, arrowPoint2.x) + 2},${lastPoint.y - Math.min(lastPoint.y, arrowPoint1.y, arrowPoint2.y) + 2} ${arrowPoint1.x - Math.min(lastPoint.x, arrowPoint1.x, arrowPoint2.x) + 2},${arrowPoint1.y - Math.min(lastPoint.y, arrowPoint1.y, arrowPoint2.y) + 2} ${arrowPoint2.x - Math.min(lastPoint.x, arrowPoint1.x, arrowPoint2.x) + 2},${arrowPoint2.y - Math.min(lastPoint.y, arrowPoint1.y, arrowPoint2.y) + 2}`}
+                fill={isSelected ? colors.highlight : colors.edgeStroke}
+              />
+            </svg>
           );
         })()}
         
@@ -973,8 +970,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               border: `1px solid ${colors.border}`,
               transform: 'translate(-50%, -50%)',
               cursor: 'pointer',
-              zIndex: 4,
-              minWidth: isEditing ? '80px' : 'auto'
+              zIndex: isSelected ? 12 : 4,
+              minWidth: isEditing ? '80px' : 'auto',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
             }}
             onClick={(e) => {
               e.stopPropagation();
@@ -1049,23 +1047,34 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
           }}>
             {flowchart.name}
           </h1>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <select
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: colors.panel,
-                color: colors.text,
-                border: `1px solid ${colors.border}`,
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="dark">Dark Theme</option>
-              <option value="light">Light Theme</option>
-              <option value="blue">Blue Theme</option>
-            </select>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {/* Theme Selection Buttons */}
+            <div style={{ display: 'flex', gap: '4px', padding: '4px', backgroundColor: colors.background, borderRadius: '8px', border: `1px solid ${colors.border}` }}>
+              {[
+                { key: 'dark', label: '🌙', title: 'Dark Theme' },
+                { key: 'light', label: '☀️', title: 'Light Theme' },
+                { key: 'blue', label: '🌊', title: 'Blue Theme' }
+              ].map(({ key, label, title }) => (
+                <button
+                  key={key}
+                  onClick={() => setTheme(key)}
+                  title={title}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: theme === key ? colors.nodeFill : 'transparent',
+                    color: theme === key ? 'white' : colors.text,
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '16px',
+                    transition: 'all 0.2s',
+                    minWidth: '40px'
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <button 
               onClick={onBack}
               style={{
@@ -1117,7 +1126,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             🎨 Flowchart Editor
           </button>
           <button 
-            onClick={() => {setActiveTab('json'); onJsonInputChange(handleExportJson);}} 
+            onClick={() => {setActiveTab('json'); onJsonInputChange(handleExportJson());}} 
             style={{
               padding: '12px 24px',
               border: 'none',
@@ -1168,7 +1177,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   {[
                     { tool: 'rectangle', icon: '⬜', label: 'Process' },
                     { tool: 'diamond', icon: '◆', label: 'Diamond' },
-                    { tool: 'rhombus', icon: '◊', label: 'Rhombus' },
+                    { tool: 'rhombus', icon: '🔷', label: 'Slanted' },
                     { tool: 'circle', icon: '●', label: 'Circle' },
                     { tool: 'oval', icon: '⬭', label: 'Oval' }
                   ].map(({ tool, icon, label }) => (
@@ -1398,7 +1407,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             }}>
               💡 <strong>Pro Tips:</strong> Single click to select • Double click to edit text • 
               Drag nodes to move • Use Connect tool for arrows • 
-              Press Delete to remove selected items
+              Press Delete to remove selected items • Lines connect to shape edges and avoid bending for aligned nodes
             </div>
           </div>
         ) : (
@@ -1552,8 +1561,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               borderRadius: '12px',
               width: '400px',
               border: `1px solid ${colors.nodeFill}`,
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
-              animation: 'slideIn 0.2s ease-out'
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)'
             }}>
               <h3 style={{ 
                 marginTop: 0, 
