@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import html2canvas from 'html2canvas';
-import { ArrowLeft, Plus, GitMerge, Trash2, Copy, Download, Image, Upload, Save } from 'lucide-react';
+import { ArrowLeft, Plus, GitMerge, Trash2, Copy, Download, Image, Upload, Save, User } from 'lucide-react';
 
 const SequenceDiagramMaker = ({ 
   sequenceDiagram, 
@@ -14,10 +13,10 @@ const SequenceDiagramMaker = ({
   const [fromParticipant, setFromParticipant] = useState('');
   const [toParticipant, setToParticipant] = useState('');
   const [messageType, setMessageType] = useState('sync');
+  const [participantType, setParticipantType] = useState('actor');
   const [activeTab, setActiveTab] = useState('editor');
   const [jsonInput, setJsonInput] = useState('');
-  const [dragItem, setDragItem] = useState(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
   const canvasRef = useRef(null);
 
   // Initialize JSON input with current diagram data
@@ -33,8 +32,7 @@ const SequenceDiagramMaker = ({
       {
         id: Date.now(),
         name: newParticipant,
-        x: 50 + participants.length * 150,
-        y: 50
+        type: participantType
       }
     ];
     
@@ -62,7 +60,9 @@ const SequenceDiagramMaker = ({
         from: from.id,
         to: to.id,
         type: messageType,
-        order: messages.length + 1
+        order: messages.length + 1,
+        activationStart: messageType === 'sync' || messageType === 'create',
+        activationEnd: false
       }
     ];
     
@@ -82,7 +82,6 @@ const SequenceDiagramMaker = ({
       msg => !(msg.from === participantId || msg.to === participantId)
     );
     
-    // Reorder remaining messages
     const reorderedMessages = updatedMessages.map((msg, index) => ({
       ...msg,
       order: index + 1
@@ -98,7 +97,6 @@ const SequenceDiagramMaker = ({
   const deleteMessage = (messageId) => {
     const updatedMessages = messages.filter(msg => msg.id !== messageId);
     
-    // Reorder remaining messages
     const reorderedMessages = updatedMessages.map((msg, index) => ({
       ...msg,
       order: index + 1
@@ -118,7 +116,6 @@ const SequenceDiagramMaker = ({
     [newMessages[messageIndex - 1], newMessages[messageIndex]] = 
       [newMessages[messageIndex], newMessages[messageIndex - 1]];
     
-    // Update orders
     newMessages.forEach((msg, index) => {
       msg.order = index + 1;
     });
@@ -137,7 +134,6 @@ const SequenceDiagramMaker = ({
     [newMessages[messageIndex], newMessages[messageIndex + 1]] = 
       [newMessages[messageIndex + 1], newMessages[messageIndex]];
     
-    // Update orders
     newMessages.forEach((msg, index) => {
       msg.order = index + 1;
     });
@@ -147,51 +143,6 @@ const SequenceDiagramMaker = ({
       messages: newMessages
     });
   };
-
-  const handleMouseDown = (e, participant) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    setDragItem(participant);
-    setDragOffset({
-      x: x - participant.x,
-      y: y - participant.y
-    });
-  };
-
-  const handleMouseMove = (e) => {
-    if (!dragItem) return;
-    
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - dragOffset.x;
-    const y = e.clientY - rect.top - dragOffset.y;
-    
-    const updatedParticipants = participants.map(p => 
-      p.id === dragItem.id ? { ...p, x, y } : p
-    );
-    
-    onUpdateSequenceDiagram({
-      ...sequenceDiagram,
-      participants: updatedParticipants
-    });
-  };
-
-  const handleMouseUp = () => {
-    setDragItem(null);
-  };
-
-  useEffect(() => {
-    if (dragItem) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [dragItem, handleMouseMove]);
 
   const exportToJson = () => {
     const data = { participants, messages };
@@ -233,117 +184,297 @@ const SequenceDiagramMaker = ({
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
-    html2canvas(canvasRef.current, {
-      backgroundColor: '#f8fafc',
-      scale: 2
-    }).then(canvas => {
-      const link = document.createElement('a');
-      link.download = `${sequenceDiagram.name || 'sequence-diagram'}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+    const originalTransform = canvasRef.current.style.transform;
+    canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
+    
+    import('html2canvas').then(html2canvas => {
+      html2canvas.default(canvasRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+        logging: true,
+        allowTaint: true
+      }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${sequenceDiagram.name || 'sequence-diagram'}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        canvasRef.current.style.transform = originalTransform;
+      }).catch(err => {
+        console.error('Error generating image:', err);
+        canvasRef.current.style.transform = originalTransform;
+      });
     });
   };
 
-  const renderParticipant = (participant) => {
+  const calculateParticipantX = (index) => {
+    const baseSpacing = 150;
+    return 100 + index * baseSpacing; // Increased from 50 to 100 for left margin
+  };
+
+  const renderParticipantHeader = (participant, index) => {
+    const x = calculateParticipantX(index);
+    const headerHeight = 60;
+    
     return (
-      <div 
-        key={participant.id}
-        className="participant"
+      <div
+        key={`header-${participant.id}`}
+        className="participant-header"
         style={{
-          left: `${participant.x}px`,
-          top: `${participant.y}px`,
-          cursor: dragItem?.id === participant.id ? 'grabbing' : 'grab'
+          left: `${x - 60}px`,
+          top: '20px',
+          width: '120px',
+          height: `${headerHeight}px`,
+          transform: `scale(${zoom})`
         }}
-        onMouseDown={(e) => handleMouseDown(e, participant)}
       >
-        <div className="participant-line"></div>
-        <div className="participant-name">{participant.name}</div>
+        {participant.type === 'actor' ? (
+          <div className="participant-actor">
+            <div className="actor-circle">
+              <User size={16} />
+            </div>
+            <div className="actor-name">{participant.name}</div>
+          </div>
+        ) : (
+          <div className={`participant-box ${participant.type || 'service'}`}>
+            <span className="participant-name">{participant.name}</span>
+          </div>
+        )}
       </div>
     );
   };
 
-  const renderMessage = (message, index) => {
-    const fromParticipant = participants.find(p => p.id === message.from);
-    const toParticipant = participants.find(p => p.id === message.to);
-    
-    if (!fromParticipant || !toParticipant) return null;
-    
-    const yPosition = 120 + index * 50;
-    const fromX = fromParticipant.x + 25;
-    const toX = toParticipant.x + 25;
-    
-    // Determine arrow direction and style based on message type
-    let arrowStyle = {};
-    let arrowPoints = '';
-    let arrowDirection = fromX < toX ? 'right' : 'left';
-    
-    if (message.type === 'async') {
-      arrowStyle = { strokeDasharray: '5,5', stroke: '#3b82f6' };
-      arrowPoints = arrowDirection === 'right' ? 
-        `${toX - 10},${yPosition - 5} ${toX},${yPosition} ${toX - 10},${yPosition + 5}` :
-        `${toX + 10},${yPosition - 5} ${toX},${yPosition} ${toX + 10},${yPosition + 5}`;
-    } else if (message.type === 'return') {
-      arrowStyle = { stroke: '#10b981' };
-      arrowPoints = arrowDirection === 'right' ? 
-        `${toX - 10},${yPosition - 5} ${toX},${yPosition} ${toX - 10},${yPosition + 5}` :
-        `${toX + 10},${yPosition - 5} ${toX},${yPosition} ${toX + 10},${yPosition + 5}`;
-    } else { // sync
-      arrowStyle = { stroke: '#64748b' };
-      arrowPoints = arrowDirection === 'right' ? 
-        `${toX - 10},${yPosition - 5} ${toX},${yPosition} ${toX - 10},${yPosition + 5}` :
-        `${toX + 10},${yPosition - 5} ${toX},${yPosition} ${toX + 10},${yPosition + 5}`;
-    }
+  const renderLifeline = (participant, index) => {
+    const x = calculateParticipantX(index);
+    const startY = 90;
+    const endY = Math.max(200 + messages.length * 50, 400);
     
     return (
-      <React.Fragment key={message.id}>
-        <svg className="message">
+      <div
+        key={`lifeline-${participant.id}`}
+        className="lifeline"
+        style={{
+          left: `${x - 1}px`,
+          top: `${startY}px`,
+          width: '2px',
+          height: `${endY - startY}px`,
+          transform: `scale(${zoom})`
+        }}
+      />
+    );
+  };
+
+  const getActivationBoxes = (participantId, participantIndex) => {
+    const x = calculateParticipantX(participantIndex);
+    const boxes = [];
+    const activationStack = [];
+    
+    messages
+      .sort((a, b) => a.order - b.order)
+      .forEach((message, index) => {
+        const y = 130 + index * 50;
+        
+        // Start activation when receiving a sync/create message or making a self call
+        if ((message.to === participantId && (message.type === 'sync' || message.type === 'create')) ||
+            (message.from === participantId && message.type === 'self')) {
+          activationStack.push({ start: y, messageId: message.id });
+        }
+        
+        // End activation on return message from this participant
+        if (message.from === participantId && message.type === 'return') {
+          const activation = activationStack.pop();
+          if (activation) {
+            boxes.push({
+              ...activation,
+              end: y + 20,
+              height: (y + 20) - activation.start
+            });
+          }
+        }
+      });
+    
+    // Handle any remaining activations (extend to end)
+    if (activationStack.length > 0) {
+      const lastY = 130 + messages.length * 50;
+      activationStack.forEach(activation => {
+        boxes.push({
+          ...activation,
+          end: lastY,
+          height: lastY - activation.start
+        });
+      });
+    }
+    
+    return boxes.map((box, index) => (
+      <div
+        key={`activation-${participantId}-${index}`}
+        className="activation-box"
+        style={{
+          left: `${x - 8}px`,
+          top: `${box.start}px`,
+          width: '16px',
+          height: `${box.height}px`,
+          transform: `scale(${zoom})`
+        }}
+      />
+    ));
+  };
+
+  const renderMessage = (message, index) => {
+    const fromIndex = participants.findIndex(p => p.id === message.from);
+    const toIndex = participants.findIndex(p => p.id === message.to);
+    
+    if (fromIndex === -1 || toIndex === -1) return null;
+    
+    const y = 130 + index * 50;
+    const fromX = calculateParticipantX(fromIndex);
+    const toX = calculateParticipantX(toIndex);
+    const isSelfCall = message.from === message.to;
+    
+    const getMessageStyle = (type) => {
+      switch (type) {
+        case 'async':
+          return { 
+            stroke: '#3b82f6', 
+            strokeDasharray: '5,5',
+            arrowType: 'open'
+          };
+        case 'return':
+          return { 
+            stroke: '#10b981', 
+            strokeDasharray: '8,4',
+            arrowType: 'open'
+          };
+        case 'create':
+          return { 
+            stroke: '#f59e0b', 
+            strokeDasharray: 'none',
+            arrowType: 'filled'
+          };
+        case 'destroy':
+          return { 
+            stroke: '#ef4444', 
+            strokeDasharray: 'none',
+            arrowType: 'filled'
+          };
+        case 'self':
+          return { 
+            stroke: '#8b5cf6', 
+            strokeDasharray: 'none',
+            arrowType: 'filled'
+          };
+        default: // sync
+          return { 
+            stroke: '#64748b', 
+            strokeDasharray: 'none',
+            arrowType: 'filled'
+          };
+      }
+    };
+
+    const style = getMessageStyle(message.type);
+    
+    if (isSelfCall) {
+      return (
+        <div 
+          key={message.id} 
+          className="message-container"
+          style={{
+            transform: `scale(${zoom})`
+          }}
+        >
+          <svg className="message-svg" style={{ overflow: 'visible' }}>
+            <path
+              d={`M ${fromX} ${y} L ${fromX + 40} ${y} L ${fromX + 40} ${y + 20} L ${fromX} ${y + 20}`}
+              fill="none"
+              stroke={style.stroke}
+              strokeWidth="2"
+              strokeDasharray={style.strokeDasharray}
+            />
+            <polygon
+              points={`${fromX - 8},${y + 10} ${fromX},${y + 20} ${fromX - 8},${y + 30}`}
+              fill={style.stroke}
+            />
+            <text
+              x={fromX + 50}
+              y={y + 15}
+              fontSize="12"
+              fill={style.stroke}
+              className="message-text"
+            >
+              {message.text}
+            </text>
+          </svg>
+        </div>
+      );
+    }
+
+    const direction = fromX < toX ? 1 : -1;
+    const arrowX = direction > 0 ? toX - 8 : toX + 8;
+    
+    return (
+      <div 
+        key={message.id} 
+        className="message-container"
+        style={{
+          transform: `scale(${zoom})`
+        }}
+      >
+        <svg className="message-svg" style={{ overflow: 'visible' }}>
           <line
             x1={fromX}
-            y1={yPosition}
+            y1={y}
             x2={toX}
-            y2={yPosition}
+            y2={y}
+            stroke={style.stroke}
             strokeWidth="2"
-            {...arrowStyle}
+            strokeDasharray={style.strokeDasharray}
           />
-          <polygon
-            points={arrowPoints}
-            fill={arrowStyle.stroke || '#64748b'}
-          />
+          
+          {style.arrowType === 'filled' ? (
+            <polygon
+              points={direction > 0 ? 
+                `${arrowX},${y - 6} ${toX},${y} ${arrowX},${y + 6}` :
+                `${arrowX},${y - 6} ${toX},${y} ${arrowX},${y + 6}`
+              }
+              fill={style.stroke}
+            />
+          ) : (
+            <path
+              d={direction > 0 ? 
+                `M ${arrowX},${y - 6} L ${toX},${y} L ${arrowX},${y + 6}` :
+                `M ${arrowX},${y - 6} L ${toX},${y} L ${arrowX},${y + 6}`
+              }
+              fill="none"
+              stroke={style.stroke}
+              strokeWidth="2"
+            />
+          )}
+          
           <text
             x={(fromX + toX) / 2}
-            y={yPosition - 10}
+            y={y - 8}
             textAnchor="middle"
             fontSize="12"
-            fill={arrowStyle.stroke || '#64748b'}
+            fill={style.stroke}
+            className="message-text"
           >
             {message.text}
           </text>
+          
+          <text
+            x={fromX + (direction > 0 ? -15 : 15)}
+            y={y - 8}
+            textAnchor="middle"
+            fontSize="10"
+            fill="#64748b"
+            className="message-order"
+          >
+            {message.order}
+          </text>
         </svg>
-        
-        {/* Activation bars */}
-        {message.type === 'sync' && (
-          <React.Fragment>
-            <svg className="activation-bar">
-              <rect
-                x={fromX - 2}
-                y={yPosition}
-                width="6"
-                height="40"
-                fill="#cc841fff"
-                opacity="0.5"
-              />
-              <rect
-                x={toX - 2}
-                y={yPosition}
-                width="6"
-                height="40"
-                fill="#cc841fff"
-                opacity="0.5"
-              />
-            </svg>
-          </React.Fragment>
-        )}
-      </React.Fragment>
+      </div>
     );
   };
 
@@ -355,6 +486,23 @@ const SequenceDiagramMaker = ({
         </button>
         <h2>{sequenceDiagram.name}</h2>
         <div className="spacer"></div>
+        <div className="zoom-controls">
+          <button 
+            onClick={() => setZoom(Math.max(0.5, zoom - 0.1))}
+            disabled={zoom <= 0.5}
+            className="zoom-btn"
+          >
+            -
+          </button>
+          <span className="zoom-level">{Math.round(zoom * 100)}%</span>
+          <button 
+            onClick={() => setZoom(Math.min(2, zoom + 0.1))}
+            disabled={zoom >= 2}
+            className="zoom-btn"
+          >
+            +
+          </button>
+        </div>
         <div className="export-buttons">
           <button onClick={exportToImage} className="export-btn">
             <Image size={16} /> Export Image
@@ -409,14 +557,29 @@ const SequenceDiagramMaker = ({
                   placeholder="New participant name"
                   onKeyPress={(e) => e.key === 'Enter' && addParticipant()}
                 />
-                <button onClick={addParticipant} className="add-btn">
-                  <Plus size={16} /> Add Participant
-                </button>
               </div>
+              <div className="form-group">
+                <label>Type</label>
+                <select 
+                  value={participantType}
+                  onChange={(e) => setParticipantType(e.target.value)}
+                >
+                  <option value="actor">Actor (User)</option>
+                  <option value="service">Service</option>
+                  <option value="database">Database</option>
+                  <option value="external">External System</option>
+                </select>
+              </div>
+              <button onClick={addParticipant} className="add-btn">
+                <Plus size={16} /> Add Participant
+              </button>
               <div className="participant-list">
                 {participants.map(participant => (
                   <div key={participant.id} className="list-item">
-                    <div className="item-name">{participant.name}</div>
+                    <div className="item-info">
+                      <div className="item-name">{participant.name}</div>
+                      <div className="item-type">{participant.type}</div>
+                    </div>
                     <button 
                       onClick={() => deleteParticipant(participant.id)}
                       className="delete-btn"
@@ -469,9 +632,12 @@ const SequenceDiagramMaker = ({
                   value={messageType}
                   onChange={(e) => setMessageType(e.target.value)}
                 >
-                  <option value="sync">Synchronous</option>
-                  <option value="async">Asynchronous</option>
-                  <option value="return">Return</option>
+                  <option value="sync">Synchronous Call</option>
+                  <option value="async">Asynchronous Call</option>
+                  <option value="return">Return Message</option>
+                  <option value="create">Create Message</option>
+                  <option value="destroy">Destroy Message</option>
+                  <option value="self">Self Call</option>
                 </select>
               </div>
               <button 
@@ -501,7 +667,7 @@ const SequenceDiagramMaker = ({
                           <div className="message-text">
                             {from.name} → {to.name}: {message.text}
                           </div>
-                          <div className="message-type">{message.type}</div>
+                          <div className={`message-type ${message.type}`}>{message.type}</div>
                         </div>
                         <div className="message-actions">
                           <button 
@@ -532,11 +698,27 @@ const SequenceDiagramMaker = ({
             </div>
           </div>
           
-          <div className="diagram-canvas" ref={canvasRef}>
+          <div 
+            className="diagram-canvas" 
+            ref={canvasRef}
+            style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: 'top left'
+            }}
+          >
+            {/* Participant Headers */}
+            {participants.map((participant, index) => renderParticipantHeader(participant, index))}
+            
+            {/* Lifelines */}
+            {participants.map((participant, index) => renderLifeline(participant, index))}
+            
+            {/* Activation Boxes */}
+            {participants.map((participant, index) => getActivationBoxes(participant.id, index))}
+            
+            {/* Messages */}
             {messages
               .sort((a, b) => a.order - b.order)
               .map((message, index) => renderMessage(message, index))}
-            {participants.map(renderParticipant)}
           </div>
         </div>
       ) : (
@@ -582,7 +764,7 @@ const SequenceDiagramMaker = ({
         .toolbar {
           display: flex;
           align-items: center;
-          padding: 16px;
+          padding: 12px 16px;
           background: white;
           border-bottom: 1px solid #e2e8f0;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -590,12 +772,50 @@ const SequenceDiagramMaker = ({
         
         .toolbar h2 {
           margin: 0 16px;
-          font-size: 20px;
+          font-size: 18px;
           color: #1e293b;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 200px;
         }
         
         .spacer {
           flex: 1;
+        }
+        
+        .zoom-controls {
+          display: flex;
+          align-items: center;
+          margin-right: 16px;
+          background: #f1f5f9;
+          border-radius: 6px;
+          padding: 2px;
+        }
+        
+        .zoom-btn {
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          background: none;
+          cursor: pointer;
+          font-weight: 600;
+          color: #475569;
+        }
+        
+        .zoom-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        
+        .zoom-level {
+          font-size: 12px;
+          font-weight: 500;
+          padding: 0 8px;
+          color: #475569;
         }
         
         .export-buttons {
@@ -607,8 +827,9 @@ const SequenceDiagramMaker = ({
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 8px 16px;
+          padding: 8px 12px;
           border-radius: 6px;
+          font-size: 14px;
           font-weight: 500;
           cursor: pointer;
           transition: all 0.2s;
@@ -648,6 +869,7 @@ const SequenceDiagramMaker = ({
           font-weight: 500;
           color: #64748b;
           border-bottom: 2px solid transparent;
+          font-size: 14px;
         }
         
         .tab.active {
@@ -662,7 +884,7 @@ const SequenceDiagramMaker = ({
         }
         
         .diagram-sidebar {
-          width: 300px;
+          width: 320px;
           background: white;
           border-right: 1px solid #e2e8f0;
           display: flex;
@@ -707,6 +929,7 @@ const SequenceDiagramMaker = ({
         .form-group select:focus {
           outline: none;
           border-color: #3b82f6;
+          box-shadow: 0 0 0 1px #3b82f6;
         }
         
         .add-btn {
@@ -723,6 +946,7 @@ const SequenceDiagramMaker = ({
           justify-content: center;
           gap: 8px;
           margin-top: 8px;
+          font-size: 14px;
         }
         
         .add-btn:hover {
@@ -749,12 +973,24 @@ const SequenceDiagramMaker = ({
           border-bottom: 1px solid #f1f5f9;
         }
         
-        .item-name {
+        .item-info {
           flex: 1;
+          display: flex;
+          flex-direction: column;
+        }
+        
+        .item-name {
           font-size: 14px;
+          font-weight: 500;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+        
+        .item-type {
+          font-size: 12px;
+          color: #64748b;
+          text-transform: capitalize;
         }
         
         .delete-btn {
@@ -776,53 +1012,125 @@ const SequenceDiagramMaker = ({
         
         .diagram-canvas {
           flex: 1;
-          background: #f8fafc;
+          background: white;
           position: relative;
           overflow: auto;
+          padding: 20px;
+          min-height: 600px;
         }
         
-        .participant {
+        .participant-header {
           position: absolute;
-          width: 50px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          transform-origin: top left;
+        }
+        
+        .participant-actor {
           display: flex;
           flex-direction: column;
           align-items: center;
-          color: #1e293b;
+          gap: 8px;
         }
         
-        .participant-line {
-          width: 2px;
-          height: 500px;
-          background: #64748b;
+        .actor-circle {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: #3b82f6;
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .actor-name {
+          font-size: 12px;
+          font-weight: 600;
+          color: #1e293b;
+          text-align: center;
+        }
+        
+        .participant-box {
+          padding: 8px 16px;
+          border: 2px solid #64748b;
+          border-radius: 8px;
+          background: white;
+          text-align: center;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .participant-box.service {
+          border-color: #10b981;
+          background: #ecfdf5;
+        }
+        
+        .participant-box.database {
+          border-color: #f59e0b;
+          background: #fffbeb;
+        }
+        
+        .participant-box.external {
+          border-color: #8b5cf6;
+          background: #f3e8ff;
         }
         
         .participant-name {
-          margin-top: 4px;
+          font-weight: 600;
           font-size: 12px;
-          text-align: center;
+          color: #1e293b;
+        }
+        
+        .lifeline {
+          position: absolute;
+          background: #94a3b8;
+          background-image: repeating-linear-gradient(
+            to bottom,
+            transparent,
+            transparent 8px,
+            #94a3b8 8px,
+            #94a3b8 12px
+          );
+          transform-origin: top left;
+        }
+        
+        .activation-box {
+          position: absolute;
+          background: #fbbf24;
+          border: 1px solid #f59e0b;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+          transform-origin: top left;
+        }
+        
+        .message-container {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          transform-origin: top left;
+        }
+        
+        .message-svg {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+        }
+        
+        .message-text {
+          font-family: 'Inter', system-ui, -apple-system, sans-serif;
           font-weight: 500;
-          background: white;
-          padding: 2px 6px;
-          border-radius: 4px;
-          border: 1px solid #e2e8f0;
         }
         
-        .message {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          pointer-events: none;
-        }
-        
-        .activation-bar {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          pointer-events: none;
+        .message-order {
+          font-family: 'Inter', system-ui, -apple-system, sans-serif;
+          font-weight: 600;
         }
         
         .message-item {
@@ -855,11 +1163,41 @@ const SequenceDiagramMaker = ({
         
         .message-type {
           font-size: 10px;
-          background: #e2e8f0;
-          padding: 2px 4px;
+          padding: 2px 6px;
           border-radius: 4px;
           margin-left: 8px;
+          font-weight: 500;
+          text-transform: uppercase;
+        }
+        
+        .message-type.sync {
+          background: #e2e8f0;
           color: #475569;
+        }
+        
+        .message-type.async {
+          background: #dbeafe;
+          color: #1e40af;
+        }
+        
+        .message-type.return {
+          background: #d1fae5;
+          color: #065f46;
+        }
+        
+        .message-type.create {
+          background: #fef3c7;
+          color: #92400e;
+        }
+        
+        .message-type.destroy {
+          background: #fecaca;
+          color: #991b1b;
+        }
+        
+        .message-type.self {
+          background: #e9d5ff;
+          color: #6b21a8;
         }
         
         .message-actions {
@@ -917,6 +1255,7 @@ const SequenceDiagramMaker = ({
           border: none;
           background: #10b981;
           color: white;
+          font-size: 14px;
         }
         
         .import-btn:hover {
@@ -928,10 +1267,17 @@ const SequenceDiagramMaker = ({
           padding: 12px;
           border: 1px solid #e2e8f0;
           border-radius: 6px;
-          font-family: monospace;
-          font-size: 14px;
+          font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+          font-size: 13px;
           resize: none;
           margin-bottom: 12px;
+          line-height: 1.5;
+        }
+        
+        .json-textarea:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 1px #3b82f6;
         }
       `}</style>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   ArrowLeft, Save, Plus, Trash2, Layers, GitMerge, 
   Download, Upload, Image as ImageIcon, Copy, 
@@ -23,12 +23,12 @@ const componentTypes = [
 ];
 
 const ArchitectureDiagramMaker = ({ 
-  architectureDiagram, 
+  architectureDiagram = { name: 'Architecture Diagram', components: [], connections: [], groups: [] }, 
   components = [], 
   connections = [],
   groups = [],
-  onUpdateArchitectureDiagram,
-  onBack 
+  onUpdateArchitectureDiagram = () => {},
+  onBack = () => {}
 }) => {
   const [newComponent, setNewComponent] = useState('');
   const [newConnection, setNewConnection] = useState('');
@@ -43,7 +43,7 @@ const ArchitectureDiagramMaker = ({
   const [selectedType, setSelectedType] = useState('service');
   const [showImageUpload, setShowImageUpload] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
-  const [imageSource, setImageSource] = useState('file'); // 'file' or 'url'
+  const [imageSource, setImageSource] = useState('file');
   const [editingComponent, setEditingComponent] = useState(null);
   const [editText, setEditText] = useState('');
   const [newGroupName, setNewGroupName] = useState('');
@@ -51,9 +51,18 @@ const ArchitectureDiagramMaker = ({
   const [selectedGroups, setSelectedGroups] = useState([]);
   const canvasRef = useRef(null);
 
+  // Ensure we have the data from props or defaults
+  const currentComponents = components.length > 0 ? components : architectureDiagram.components || [];
+  const currentConnections = connections.length > 0 ? connections : architectureDiagram.connections || [];
+  const currentGroups = groups.length > 0 ? groups : architectureDiagram.groups || [];
+
   useEffect(() => {
-    setJsonInput(JSON.stringify({ components, connections, groups }, null, 2));
-  }, [components, connections, groups]);
+    setJsonInput(JSON.stringify({ 
+      components: currentComponents, 
+      connections: currentConnections, 
+      groups: currentGroups 
+    }, null, 2));
+  }, [currentComponents, currentConnections, currentGroups]);
 
   const addComponent = () => {
     if (!newComponent.trim()) return;
@@ -61,7 +70,7 @@ const ArchitectureDiagramMaker = ({
     const typeConfig = componentTypes.find(t => t.id === selectedType) || componentTypes[0];
     
     const updatedComponents = [
-      ...components,
+      ...currentComponents,
       {
         id: Date.now(),
         name: newComponent,
@@ -77,7 +86,9 @@ const ArchitectureDiagramMaker = ({
     
     onUpdateArchitectureDiagram({
       ...architectureDiagram,
-      components: updatedComponents
+      components: updatedComponents,
+      connections: currentConnections,
+      groups: currentGroups
     });
     
     setNewComponent('');
@@ -88,12 +99,15 @@ const ArchitectureDiagramMaker = ({
   const addGroup = () => {
     if (!newGroupName.trim()) return;
     
-    const allSelectedItems = [...selectedComponents, ...selectedGroups];
-    if (allSelectedItems.length === 0) return;
+    if (selectedComponents.length === 0 && selectedGroups.length === 0) {
+      alert('Please select at least one component or group to create a group.');
+      return;
+    }
     
     // Calculate group dimensions based on selected components and groups
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     
+    // Include selected components in bounds calculation
     selectedComponents.forEach(comp => {
       minX = Math.min(minX, comp.x);
       maxX = Math.max(maxX, comp.x + comp.width);
@@ -101,6 +115,7 @@ const ArchitectureDiagramMaker = ({
       maxY = Math.max(maxY, comp.y + comp.height);
     });
     
+    // Include selected groups in bounds calculation
     selectedGroups.forEach(group => {
       minX = Math.min(minX, group.x);
       maxX = Math.max(maxX, group.x + group.width);
@@ -108,25 +123,34 @@ const ArchitectureDiagramMaker = ({
       maxY = Math.max(maxY, group.y + group.height);
     });
     
-    const padding = 30;
+    // If no valid bounds, set default position
+    if (minX === Infinity) {
+      minX = 100;
+      maxX = 300;
+      minY = 100;
+      maxY = 200;
+    }
     
-    const updatedGroups = [
-      ...groups,
-      {
-        id: Date.now(),
-        name: newGroupName,
-        componentIds: selectedComponents.map(c => c.id),
-        groupIds: selectedGroups.map(g => g.id),
-        x: minX - padding,
-        y: minY - padding,
-        width: (maxX - minX) + padding * 2,
-        height: (maxY - minY) + padding * 2,
-        color: '#e2e8f0'
-      }
-    ];
+    const padding = 40;
+    
+    const newGroup = {
+      id: Date.now(),
+      name: newGroupName,
+      componentIds: selectedComponents.map(c => c.id),
+      groupIds: selectedGroups.map(g => g.id),
+      x: minX - padding,
+      y: minY - padding,
+      width: Math.max(200, (maxX - minX) + padding * 2),
+      height: Math.max(150, (maxY - minY) + padding * 2),
+      color: '#e2e8f0'
+    };
+    
+    const updatedGroups = [...currentGroups, newGroup];
     
     onUpdateArchitectureDiagram({
       ...architectureDiagram,
+      components: currentComponents,
+      connections: currentConnections,
       groups: updatedGroups
     });
     
@@ -138,13 +162,13 @@ const ArchitectureDiagramMaker = ({
   const addConnection = () => {
     if (!fromComponent || !toComponent) return;
     
-    const from = components.find(c => c.id === parseInt(fromComponent));
-    const to = components.find(c => c.id === parseInt(toComponent));
+    const from = currentComponents.find(c => c.id === parseInt(fromComponent));
+    const to = currentComponents.find(c => c.id === parseInt(toComponent));
     
     if (!from || !to) return;
     
     const updatedConnections = [
-      ...connections,
+      ...currentConnections,
       {
         id: Date.now(),
         from: from.id,
@@ -158,7 +182,9 @@ const ArchitectureDiagramMaker = ({
     
     onUpdateArchitectureDiagram({
       ...architectureDiagram,
-      connections: updatedConnections
+      components: currentComponents,
+      connections: updatedConnections,
+      groups: currentGroups
     });
     
     setNewConnection('');
@@ -167,14 +193,14 @@ const ArchitectureDiagramMaker = ({
   };
 
   const deleteComponent = (componentId) => {
-    const updatedComponents = components.filter(c => c.id !== componentId);
-    const updatedConnections = connections.filter(
+    const updatedComponents = currentComponents.filter(c => c.id !== componentId);
+    const updatedConnections = currentConnections.filter(
       conn => !(conn.from === componentId || conn.to === componentId)
     );
-    const updatedGroups = groups.map(group => ({
+    const updatedGroups = currentGroups.map(group => ({
       ...group,
       componentIds: group.componentIds.filter(id => id !== componentId)
-    })).filter(group => group.componentIds.length > 0 || group.groupIds.length > 0);
+    })).filter(group => group.componentIds.length > 0 || (group.groupIds && group.groupIds.length > 0));
     
     onUpdateArchitectureDiagram({
       ...architectureDiagram,
@@ -185,22 +211,29 @@ const ArchitectureDiagramMaker = ({
   };
 
   const deleteConnection = (connectionId) => {
-    const updatedConnections = connections.filter(conn => conn.id !== connectionId);
+    const updatedConnections = currentConnections.filter(conn => conn.id !== connectionId);
     onUpdateArchitectureDiagram({
       ...architectureDiagram,
-      connections: updatedConnections
+      components: currentComponents,
+      connections: updatedConnections,
+      groups: currentGroups
     });
   };
 
   const deleteGroup = (groupId) => {
-    const updatedGroups = groups.filter(g => g.id !== groupId);
+    const updatedGroups = currentGroups.filter(g => g.id !== groupId);
     onUpdateArchitectureDiagram({
       ...architectureDiagram,
+      components: currentComponents,
+      connections: currentConnections,
       groups: updatedGroups
     });
   };
 
   const handleMouseDown = (e, item, isGroup = false) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -210,15 +243,10 @@ const ArchitectureDiagramMaker = ({
       x: x - item.x,
       y: y - item.y
     });
-    
-    // If not holding shift, clear selection
-    if (!e.shiftKey) {
-      setSelectedComponents([]);
-      setSelectedGroups([]);
-    }
   };
 
   const handleComponentClick = (e, component) => {
+    e.stopPropagation();
     if (e.shiftKey) {
       setSelectedComponents(prev => {
         const exists = prev.some(c => c.id === component.id);
@@ -226,10 +254,14 @@ const ArchitectureDiagramMaker = ({
           ? prev.filter(c => c.id !== component.id)
           : [...prev, component];
       });
+    } else {
+      setSelectedComponents([component]);
+      setSelectedGroups([]);
     }
   };
 
   const handleGroupClick = (e, group) => {
+    e.stopPropagation();
     if (e.shiftKey) {
       setSelectedGroups(prev => {
         const exists = prev.some(g => g.id === group.id);
@@ -237,33 +269,36 @@ const ArchitectureDiagramMaker = ({
           ? prev.filter(g => g.id !== group.id)
           : [...prev, group];
       });
+    } else {
+      setSelectedGroups([group]);
+      setSelectedComponents([]);
     }
   };
 
-  const handleMouseMove = (e) => {
+  const handleMouseMove = useCallback((e) => {
     if (!dragItem) return;
     
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - dragOffset.x;
-    const y = e.clientY - rect.top - dragOffset.y;
+    const x = Math.max(0, e.clientX - rect.left - dragOffset.x);
+    const y = Math.max(0, e.clientY - rect.top - dragOffset.y);
     
     if (dragItem.isGroup) {
       // Move group and all its components and nested groups
       const dx = x - dragItem.x;
       const dy = y - dragItem.y;
       
-      const updatedComponents = components.map(comp => {
-        if (dragItem.componentIds.includes(comp.id)) {
-          return { ...comp, x: comp.x + dx, y: comp.y + dy };
+      const updatedComponents = currentComponents.map(comp => {
+        if (dragItem.componentIds && dragItem.componentIds.includes(comp.id)) {
+          return { ...comp, x: Math.max(0, comp.x + dx), y: Math.max(0, comp.y + dy) };
         }
         return comp;
       });
       
-      const updatedGroups = groups.map(group => {
+      const updatedGroups = currentGroups.map(group => {
         if (group.id === dragItem.id) {
           return { ...group, x, y };
         } else if (dragItem.groupIds && dragItem.groupIds.includes(group.id)) {
-          return { ...group, x: group.x + dx, y: group.y + dy };
+          return { ...group, x: Math.max(0, group.x + dx), y: Math.max(0, group.y + dy) };
         }
         return group;
       });
@@ -271,24 +306,27 @@ const ArchitectureDiagramMaker = ({
       onUpdateArchitectureDiagram({
         ...architectureDiagram,
         components: updatedComponents,
+        connections: currentConnections,
         groups: updatedGroups
       });
     } else {
       // Move single component
-      const updatedComponents = components.map(comp => 
+      const updatedComponents = currentComponents.map(comp => 
         comp.id === dragItem.id ? { ...comp, x, y } : comp
       );
       
       onUpdateArchitectureDiagram({
         ...architectureDiagram,
-        components: updatedComponents
+        components: updatedComponents,
+        connections: currentConnections,
+        groups: currentGroups
       });
     }
-  };
+  }, [dragItem, dragOffset, currentComponents, currentConnections, currentGroups, architectureDiagram, onUpdateArchitectureDiagram]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setDragItem(null);
-  };
+  }, []);
 
   useEffect(() => {
     if (dragItem) {
@@ -300,7 +338,7 @@ const ArchitectureDiagramMaker = ({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [dragItem, handleMouseMove]);
+  }, [dragItem, handleMouseMove, handleMouseUp]);
 
   const startEditing = (component) => {
     setEditingComponent(component.id);
@@ -310,21 +348,34 @@ const ArchitectureDiagramMaker = ({
   const saveEditing = () => {
     if (!editingComponent || !editText.trim()) return;
     
-    const updatedComponents = components.map(comp => 
+    const updatedComponents = currentComponents.map(comp => 
       comp.id === editingComponent ? { ...comp, name: editText } : comp
     );
     
     onUpdateArchitectureDiagram({
       ...architectureDiagram,
-      components: updatedComponents
+      components: updatedComponents,
+      connections: currentConnections,
+      groups: currentGroups
     });
     
     setEditingComponent(null);
     setEditText('');
   };
 
+  const handleCanvasClick = (e) => {
+    if (e.target === canvasRef.current) {
+      setSelectedComponents([]);
+      setSelectedGroups([]);
+    }
+  };
+
   const exportToJson = () => {
-    const data = { components, connections, groups };
+    const data = { 
+      components: currentComponents, 
+      connections: currentConnections, 
+      groups: currentGroups 
+    };
     return JSON.stringify(data, null, 2);
   };
 
@@ -377,17 +428,29 @@ const ArchitectureDiagramMaker = ({
   };
 
   const exportToImage = () => {
-    // Since html2canvas is not available, we'll create a download link with SVG content
-    const data = { components, connections, groups };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${architectureDiagram.name || 'architecture-diagram'}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (!canvasRef.current) return;
+    
+    // Create a temporary canvas for export
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Set canvas size
+    const canvasRect = canvasRef.current.getBoundingClientRect();
+    canvas.width = canvasRect.width * 2; // Higher resolution
+    canvas.height = canvasRect.height * 2;
+    
+    // Scale context for higher resolution
+    ctx.scale(2, 2);
+    
+    // Fill background
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, canvas.width / 2, canvas.height / 2);
+    
+    // Export as image
+    const link = document.createElement('a');
+    link.download = `${architectureDiagram.name || 'architecture_diagram'}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
   };
 
   const getConnectionPath = (from, to) => {
@@ -437,6 +500,7 @@ const ArchitectureDiagramMaker = ({
         key={component.id}
         className="component"
         style={{
+          position: 'absolute',
           left: `${component.x}px`,
           top: `${component.y}px`,
           width: `${component.width}px`,
@@ -444,33 +508,69 @@ const ArchitectureDiagramMaker = ({
           cursor: dragItem?.id === component.id ? 'grabbing' : 'grab',
           outline: isSelected ? '3px dashed #3b82f6' : 'none',
           outlineOffset: '2px',
-          zIndex: 10
+          zIndex: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'white',
+          borderRadius: '12px',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+          border: '2px solid #e2e8f0',
+          overflow: 'hidden',
+          textAlign: 'center',
+          fontSize: '12px'
         }}
         onMouseDown={(e) => handleMouseDown(e, component)}
         onClick={(e) => handleComponentClick(e, component)}
         onDoubleClick={() => startEditing(component)}
       >
-        <div className="component-image-container">
+        <div style={{
+          width: '100%',
+          height: '70%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          background: '#f8fafc',
+          borderRadius: '10px 10px 0 0'
+        }}>
           {component.imageUrl ? (
             <img 
               src={component.imageUrl} 
               alt={component.name}
-              className="component-image"
+              style={{
+                maxWidth: '90%',
+                maxHeight: '90%',
+                objectFit: 'contain',
+                borderRadius: '6px'
+              }}
             />
           ) : (
-            <div 
-              className="component-icon"
-              style={{ color: component.color || typeConfig.color }}
-            >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '100%',
+              height: '100%',
+              color: component.color || typeConfig.color
+            }}>
               {React.cloneElement(typeConfig.icon, { size: 48 })}
             </div>
           )}
         </div>
         
-        <div 
-          className="component-text"
-          style={{ backgroundColor: component.color || typeConfig.color }}
-        >
+        <div style={{
+          width: '100%',
+          height: '30%',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '6px 8px',
+          color: 'white',
+          fontWeight: '600',
+          borderRadius: '0 0 10px 10px',
+          backgroundColor: component.color || typeConfig.color
+        }}>
           {isEditing ? (
             <input
               type="text"
@@ -479,12 +579,36 @@ const ArchitectureDiagramMaker = ({
               onBlur={saveEditing}
               onKeyPress={(e) => e.key === 'Enter' && saveEditing()}
               autoFocus
-              className="component-edit-input"
+              style={{
+                width: '100%',
+                border: 'none',
+                background: 'rgba(255, 255, 255, 0.2)',
+                color: 'white',
+                textAlign: 'center',
+                fontWeight: '600',
+                outline: 'none',
+                fontSize: '11px'
+              }}
             />
           ) : (
             <>
-              <div className="component-name">{component.name}</div>
-              <div className="component-type">{typeConfig.name}</div>
+              <div style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                lineHeight: '1.2',
+                marginBottom: '2px',
+                wordBreak: 'break-word',
+                maxWidth: '100%'
+              }}>
+                {component.name}
+              </div>
+              <div style={{
+                fontSize: '9px',
+                opacity: '0.9',
+                fontWeight: '500'
+              }}>
+                {typeConfig.name}
+              </div>
             </>
           )}
         </div>
@@ -493,11 +617,15 @@ const ArchitectureDiagramMaker = ({
   };
 
   const renderGroup = (group) => {
-    const groupComponents = components.filter(c => group.componentIds.includes(c.id));
-    const nestedGroups = groups.filter(g => group.groupIds && group.groupIds.includes(g.id));
+    if (!group.componentIds && !group.groupIds) return null;
     
-    if (groupComponents.length === 0 && nestedGroups.length === 0) return null;
-
+    const groupComponents = currentComponents.filter(c => 
+      group.componentIds && group.componentIds.includes(c.id)
+    );
+    const nestedGroups = currentGroups.filter(g => 
+      group.groupIds && group.groupIds.includes(g.id)
+    );
+    
     const isSelected = selectedGroups.some(g => g.id === group.id);
 
     return (
@@ -505,41 +633,76 @@ const ArchitectureDiagramMaker = ({
         key={group.id}
         className="group"
         style={{
+          position: 'absolute',
           left: `${group.x}px`,
           top: `${group.y}px`,
           width: `${group.width}px`,
           height: `${group.height}px`,
-          backgroundColor: group.color,
+          backgroundColor: 'rgba(226, 232, 240, 0.3)',
+          border: '2px dashed #94a3b8',
+          borderRadius: '12px',
           cursor: dragItem?.id === group.id ? 'grabbing' : 'grab',
           outline: isSelected ? '3px dashed #8b5cf6' : 'none',
           outlineOffset: '2px',
-          zIndex: 5
+          zIndex: 5,
+          paddingTop: '40px',
+          boxSizing: 'border-box',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
         }}
         onMouseDown={(e) => handleMouseDown(e, group, true)}
         onClick={(e) => handleGroupClick(e, group)}
       >
-        <div className="group-header">
+        <div style={{
+          position: 'absolute',
+          top: '8px',
+          left: '12px',
+          right: '12px',
+          fontWeight: '700',
+          fontSize: '14px',
+          color: '#1e293b',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
           {group.name}
           <button 
             onClick={(e) => {
               e.stopPropagation();
               deleteGroup(group.id);
             }}
-            className="group-delete-btn"
+            style={{
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: '#ef4444',
+              cursor: 'pointer',
+              padding: '4px',
+              borderRadius: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
           >
             <Trash2 size={14} />
           </button>
         </div>
-        <div className="group-caption">
-          {groupComponents.length} components{nestedGroups.length > 0 && `, ${nestedGroups.length} groups`}
+        <div style={{
+          position: 'absolute',
+          bottom: '8px',
+          left: '12px',
+          fontSize: '11px',
+          color: '#64748b',
+          fontStyle: 'italic'
+        }}>
+          {groupComponents.length} component{groupComponents.length !== 1 ? 's' : ''}
+          {nestedGroups.length > 0 && `, ${nestedGroups.length} group${nestedGroups.length !== 1 ? 's' : ''}`}
         </div>
       </div>
     );
   };
 
   const renderConnection = (connection) => {
-    const from = components.find(c => c.id === connection.from);
-    const to = components.find(c => c.id === connection.to);
+    const from = currentComponents.find(c => c.id === connection.from);
+    const to = currentComponents.find(c => c.id === connection.to);
     
     if (!from || !to) return null;
 
@@ -562,7 +725,18 @@ const ArchitectureDiagramMaker = ({
     }
 
     return (
-      <svg key={connection.id} className="connection">
+      <svg 
+        key={connection.id} 
+        style={{
+          position: 'absolute',
+          top: '0',
+          left: '0',
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          zIndex: 1
+        }}
+      >
         <line
           x1={fromX}
           y1={fromY}
@@ -599,18 +773,84 @@ const ArchitectureDiagramMaker = ({
   };
 
   return (
-    <div className="architecture-maker">
-      <div className="toolbar">
-        <button onClick={onBack} className="back-btn">
+    <div style={{
+      width: '100%',
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      background: '#f8fafc',
+      fontFamily: 'Inter, system-ui, -apple-system, sans-serif'
+    }}>
+      {/* Toolbar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        padding: '16px',
+        background: 'white',
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+      }}>
+        <button 
+          onClick={onBack}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            borderRadius: '6px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            background: '#f1f5f9',
+            color: '#64748b',
+            border: '1px solid #e2e8f0'
+          }}
+        >
           <ArrowLeft size={16} /> Back
         </button>
-        <h2>{architectureDiagram.name}</h2>
-        <div className="spacer"></div>
-        <div className="export-buttons">
-          <button onClick={exportToImage} className="export-btn">
+        <h2 style={{
+          margin: '0 16px',
+          fontSize: '20px',
+          color: '#1e293b'
+        }}>
+          {architectureDiagram.name}
+        </h2>
+        <div style={{ flex: 1 }}></div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button 
+            onClick={exportToImage}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              background: '#8b5cf6',
+              color: 'white',
+              border: '1px solid #8b5cf6'
+            }}
+          >
             <ImageIcon size={16} /> Export Image
           </button>
-          <button onClick={copyToClipboard} className="export-btn">
+          <button 
+            onClick={copyToClipboard}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              background: '#8b5cf6',
+              color: 'white',
+              border: '1px solid #8b5cf6'
+            }}
+          >
             <Copy size={16} /> Copy JSON
           </button>
           <button 
@@ -624,23 +864,56 @@ const ArchitectureDiagramMaker = ({
               a.click();
               document.body.removeChild(a);
               URL.revokeObjectURL(url);
-            }} 
-            className="export-btn"
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              background: '#8b5cf6',
+              color: 'white',
+              border: '1px solid #8b5cf6'
+            }}
           >
             <Download size={16} /> Export JSON
           </button>
         </div>
       </div>
 
-      <div className="tabs">
+      {/* Tabs */}
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid #e2e8f0',
+        background: 'white'
+      }}>
         <button 
-          className={`tab ${activeTab === 'editor' ? 'active' : ''}`}
+          style={{
+            padding: '12px 24px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontWeight: '500',
+            color: activeTab === 'editor' ? '#8b5cf6' : '#64748b',
+            borderBottom: activeTab === 'editor' ? '2px solid #8b5cf6' : '2px solid transparent'
+          }}
           onClick={() => setActiveTab('editor')}
         >
           Diagram Editor
         </button>
         <button 
-          className={`tab ${activeTab === 'json' ? 'active' : ''}`}
+          style={{
+            padding: '12px 24px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            fontWeight: '500',
+            color: activeTab === 'json' ? '#8b5cf6' : '#64748b',
+            borderBottom: activeTab === 'json' ? '2px solid #8b5cf6' : '2px solid transparent'
+          }}
           onClick={() => setActiveTab('json')}
         >
           JSON Editor
@@ -648,30 +921,79 @@ const ArchitectureDiagramMaker = ({
       </div>
 
       {activeTab === 'editor' ? (
-        <div className="diagram-container">
-          <div className="diagram-sidebar">
-            <div className="sidebar-section">
-              <h3>Components</h3>
-              <div className="form-group">
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+          {/* Sidebar */}
+          <div style={{
+            width: '320px',
+            background: 'white',
+            borderRight: '1px solid #e2e8f0',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'auto'
+          }}>
+            {/* Components Section */}
+            <div style={{
+              padding: '16px',
+              borderBottom: '1px solid #f1f5f9'
+            }}>
+              <h3 style={{
+                marginTop: '0',
+                marginBottom: '12px',
+                fontSize: '16px',
+                color: '#1e293b'
+              }}>Components</h3>
+              
+              <div style={{ marginBottom: '12px' }}>
                 <input
                   type="text"
                   value={newComponent}
                   onChange={(e) => setNewComponent(e.target.value)}
                   placeholder="Component name"
                   onKeyPress={(e) => e.key === 'Enter' && addComponent()}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px'
+                  }}
                 />
               </div>
               
-              <div className="form-group">
-                <label>Component Type</label>
-                <div className="component-type-grid">
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  color: '#64748b'
+                }}>Component Type</label>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '8px',
+                  marginTop: '8px'
+                }}>
                   {componentTypes.map(type => (
                     <button
                       key={type.id}
-                      className={`type-btn ${selectedType === type.id ? 'active' : ''}`}
                       onClick={() => setSelectedType(type.id)}
-                      style={{ backgroundColor: type.color }}
                       title={type.name}
+                      style={{
+                        width: '100%',
+                        aspectRatio: '1',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        color: 'white',
+                        transition: 'all 0.2s',
+                        backgroundColor: type.color,
+                        outline: selectedType === type.id ? '2px solid #1e293b' : 'none',
+                        outlineOffset: '2px'
+                      }}
                     >
                       {type.icon}
                     </button>
@@ -679,26 +1001,60 @@ const ArchitectureDiagramMaker = ({
                 </div>
               </div>
               
-              <div className="form-group">
+              <div style={{ marginBottom: '12px' }}>
                 <button 
                   onClick={() => setShowImageUpload(!showImageUpload)}
-                  className="image-upload-btn"
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    background: '#e2e8f0',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    fontSize: '14px'
+                  }}
                 >
                   <ImageIcon size={16} /> {imageUrl ? 'Change Image' : 'Add Image (Optional)'}
                 </button>
                 
                 {showImageUpload && (
-                  <div className="image-upload-container">
-                    <div className="image-source-tabs">
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{
+                      display: 'flex',
+                      marginBottom: '8px',
+                      borderBottom: '1px solid #e2e8f0'
+                    }}>
                       <button
-                        className={`source-tab ${imageSource === 'file' ? 'active' : ''}`}
                         onClick={() => setImageSource('file')}
+                        style={{
+                          flex: 1,
+                          padding: '6px',
+                          border: 'none',
+                          background: 'none',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          color: imageSource === 'file' ? '#8b5cf6' : '#64748b',
+                          borderBottom: imageSource === 'file' ? '2px solid #8b5cf6' : '2px solid transparent'
+                        }}
                       >
                         Upload File
                       </button>
                       <button
-                        className={`source-tab ${imageSource === 'url' ? 'active' : ''}`}
                         onClick={() => setImageSource('url')}
+                        style={{
+                          flex: 1,
+                          padding: '6px',
+                          border: 'none',
+                          background: 'none',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          color: imageSource === 'url' ? '#8b5cf6' : '#64748b',
+                          borderBottom: imageSource === 'url' ? '2px solid #8b5cf6' : '2px solid transparent'
+                        }}
                       >
                         URL
                       </button>
@@ -709,7 +1065,10 @@ const ArchitectureDiagramMaker = ({
                         type="file"
                         accept="image/*"
                         onChange={handleImageUpload}
-                        className="image-upload-input"
+                        style={{
+                          width: '100%',
+                          marginBottom: '8px'
+                        }}
                       />
                     ) : (
                       <input
@@ -717,16 +1076,50 @@ const ArchitectureDiagramMaker = ({
                         value={imageUrl}
                         onChange={handleImageUrlChange}
                         placeholder="Enter image URL"
-                        className="image-url-input"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          marginBottom: '8px'
+                        }}
                       />
                     )}
                     
                     {imageUrl && (
-                      <div className="image-preview">
-                        <img src={imageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '60px' }} />
+                      <div style={{
+                        position: 'relative',
+                        marginTop: '8px',
+                        display: 'flex',
+                        justifyContent: 'center'
+                      }}>
+                        <img 
+                          src={imageUrl} 
+                          alt="Preview" 
+                          style={{ 
+                            maxWidth: '100%', 
+                            maxHeight: '60px',
+                            borderRadius: '4px'
+                          }} 
+                        />
                         <button 
                           onClick={() => setImageUrl('')}
-                          className="remove-image-btn"
+                          style={{
+                            position: 'absolute',
+                            top: '-8px',
+                            right: '-8px',
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            background: '#fee2e2',
+                            color: '#ef4444',
+                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer'
+                          }}
                         >
                           <Trash2 size={12} />
                         </button>
@@ -739,18 +1132,66 @@ const ArchitectureDiagramMaker = ({
               <button 
                 onClick={addComponent}
                 disabled={!newComponent.trim()}
-                className="add-btn"
+                style={{
+                  width: '100%',
+                  padding: '8px 16px',
+                  background: !newComponent.trim() ? '#ddd6fe' : '#8b5cf6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '500',
+                  cursor: !newComponent.trim() ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  marginTop: '8px'
+                }}
               >
                 <Plus size={16} /> Add Component
               </button>
               
-              <div className="component-list">
-                {components.map(component => (
-                  <div key={component.id} className="list-item">
-                    <div className="item-name">{component.name}</div>
+              <div style={{
+                maxHeight: '200px',
+                overflowY: 'auto',
+                marginTop: '12px'
+              }}>
+                {currentComponents.map(component => (
+                  <div 
+                    key={component.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '8px 0',
+                      borderBottom: '1px solid #f1f5f9'
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {component.name}
+                      </div>
+                    </div>
                     <button 
                       onClick={() => deleteComponent(component.id)}
-                      className="delete-btn"
+                      style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: '#fee2e2',
+                        color: '#ef4444',
+                        border: 'none',
+                        cursor: 'pointer',
+                        marginLeft: '8px'
+                      }}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -759,30 +1200,66 @@ const ArchitectureDiagramMaker = ({
               </div>
             </div>
 
-            <div className="sidebar-section">
-              <h3>Groups</h3>
-              <div className="form-group">
+            {/* Groups Section */}
+            <div style={{
+              padding: '16px',
+              borderBottom: '1px solid #f1f5f9'
+            }}>
+              <h3 style={{
+                marginTop: '0',
+                marginBottom: '12px',
+                fontSize: '16px',
+                color: '#1e293b'
+              }}>Groups</h3>
+              
+              <div style={{ marginBottom: '12px' }}>
                 <input
                   type="text"
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
                   placeholder="Group name"
                   onKeyPress={(e) => e.key === 'Enter' && addGroup()}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px'
+                  }}
                 />
               </div>
               
               <button 
                 onClick={addGroup}
                 disabled={!newGroupName.trim() || (selectedComponents.length === 0 && selectedGroups.length === 0)}
-                className="add-btn"
+                style={{
+                  width: '100%',
+                  padding: '8px 16px',
+                  background: (!newGroupName.trim() || (selectedComponents.length === 0 && selectedGroups.length === 0)) ? '#ddd6fe' : '#8b5cf6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '500',
+                  cursor: (!newGroupName.trim() || (selectedComponents.length === 0 && selectedGroups.length === 0)) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
               >
                 <Box size={16} /> Create Group
               </button>
               
-              <div className="selected-info">
-                {(selectedComponents.length > 0 || selectedGroups.length > 0) && (
+              <div style={{
+                marginTop: '12px',
+                padding: '12px',
+                background: '#f1f5f9',
+                borderRadius: '6px',
+                fontSize: '12px'
+              }}>
+                {(selectedComponents.length > 0 || selectedGroups.length > 0) ? (
                   <>
-                    <div className="selected-count">
+                    <div style={{ marginBottom: '8px', fontWeight: '500' }}>
                       {selectedComponents.length} component(s), {selectedGroups.length} group(s) selected
                     </div>
                     <button 
@@ -790,30 +1267,83 @@ const ArchitectureDiagramMaker = ({
                         setSelectedComponents([]);
                         setSelectedGroups([]);
                       }}
-                      className="clear-selection-btn"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        background: 'none',
+                        border: 'none',
+                        color: '#64748b',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        padding: '4px 8px',
+                        borderRadius: '4px'
+                      }}
                     >
-                      <Minus size={14} /> Clear
+                      <Minus size={14} /> Clear Selection
                     </button>
                   </>
+                ) : (
+                  <div>No items selected</div>
                 )}
-                <div className="selection-hint">
+                <div style={{
+                  marginTop: '8px',
+                  color: '#64748b',
+                  fontStyle: 'italic'
+                }}>
                   Hold Shift + Click to select multiple items
                 </div>
               </div>
               
-              <div className="group-list">
-                {groups.map(group => (
-                  <div key={group.id} className="list-item">
-                    <div className="item-details">
-                      <div className="item-name">{group.name}</div>
-                      <div className="item-count">
-                        {group.componentIds.length} components
+              <div style={{
+                maxHeight: '200px',
+                overflowY: 'auto',
+                marginTop: '12px'
+              }}>
+                {currentGroups.map(group => (
+                  <div 
+                    key={group.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '8px 0',
+                      borderBottom: '1px solid #f1f5f9'
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {group.name}
+                      </div>
+                      <div style={{
+                        fontSize: '12px',
+                        color: '#64748b',
+                        marginTop: '2px'
+                      }}>
+                        {group.componentIds ? group.componentIds.length : 0} components
                         {group.groupIds && group.groupIds.length > 0 && `, ${group.groupIds.length} groups`}
                       </div>
                     </div>
                     <button 
                       onClick={() => deleteGroup(group.id)}
-                      className="delete-btn"
+                      style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: '#fee2e2',
+                        color: '#ef4444',
+                        border: 'none',
+                        cursor: 'pointer',
+                        marginLeft: '8px'
+                      }}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -822,49 +1352,105 @@ const ArchitectureDiagramMaker = ({
               </div>
             </div>
 
-            <div className="sidebar-section">
-              <h3>Connections</h3>
-              <div className="form-group">
+            {/* Connections Section */}
+            <div style={{
+              padding: '16px',
+              borderBottom: '1px solid #f1f5f9'
+            }}>
+              <h3 style={{
+                marginTop: '0',
+                marginBottom: '12px',
+                fontSize: '16px',
+                color: '#1e293b'
+              }}>Connections</h3>
+              
+              <div style={{ marginBottom: '12px' }}>
                 <input
                   type="text"
                   value={newConnection}
                   onChange={(e) => setNewConnection(e.target.value)}
                   placeholder="Connection label (optional)"
                   onKeyPress={(e) => e.key === 'Enter' && addConnection()}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px'
+                  }}
                 />
               </div>
               
-              <div className="form-group">
-                <label>From Component</label>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  color: '#64748b'
+                }}>From Component</label>
                 <select 
                   value={fromComponent || ''}
                   onChange={(e) => setFromComponent(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px'
+                  }}
                 >
                   <option value="">Select component</option>
-                  {components.map(component => (
+                  {currentComponents.map(component => (
                     <option key={component.id} value={component.id}>{component.name}</option>
                   ))}
                 </select>
               </div>
               
-              <div className="form-group">
-                <label>To Component</label>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  color: '#64748b'
+                }}>To Component</label>
                 <select 
                   value={toComponent || ''}
                   onChange={(e) => setToComponent(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px'
+                  }}
                 >
                   <option value="">Select component</option>
-                  {components.map(component => (
+                  {currentComponents.map(component => (
                     <option key={component.id} value={component.id}>{component.name}</option>
                   ))}
                 </select>
               </div>
               
-              <div className="form-group">
-                <label>Connection Type</label>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  color: '#64748b'
+                }}>Connection Type</label>
                 <select 
                   value={connectionType}
                   onChange={(e) => setConnectionType(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px'
+                  }}
                 >
                   <option value="solid">Solid Line</option>
                   <option value="dashed">Dashed Line</option>
@@ -872,11 +1458,24 @@ const ArchitectureDiagramMaker = ({
                 </select>
               </div>
               
-              <div className="form-group">
-                <label>Direction</label>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  color: '#64748b'
+                }}>Direction</label>
                 <select 
                   value={connectionDirection}
                   onChange={(e) => setConnectionDirection(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px'
+                  }}
                 >
                   <option value="directed">Directed (with arrow)</option>
                   <option value="undirected">Undirected</option>
@@ -886,30 +1485,87 @@ const ArchitectureDiagramMaker = ({
               <button 
                 onClick={addConnection}
                 disabled={!fromComponent || !toComponent}
-                className="add-btn"
+                style={{
+                  width: '100%',
+                  padding: '8px 16px',
+                  background: (!fromComponent || !toComponent) ? '#ddd6fe' : '#8b5cf6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '500',
+                  cursor: (!fromComponent || !toComponent) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
               >
                 <GitMerge size={16} /> Add Connection
               </button>
               
-              <div className="connection-list">
-                {connections.map(conn => {
-                  const from = components.find(c => c.id === conn.from);
-                  const to = components.find(c => c.id === conn.to);
+              <div style={{
+                maxHeight: '200px',
+                overflowY: 'auto',
+                marginTop: '12px'
+              }}>
+                {currentConnections.map(conn => {
+                  const from = currentComponents.find(c => c.id === conn.from);
+                  const to = currentComponents.find(c => c.id === conn.to);
                   
                   if (!from || !to) return null;
                   
                   return (
-                    <div key={conn.id} className="list-item">
-                      <div className="item-details">
-                        <div className="item-name">
+                    <div 
+                      key={conn.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '8px 0',
+                        borderBottom: '1px solid #f1f5f9'
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
                           {from.name} → {to.name}
                         </div>
-                        <div className="item-count">{conn.type}</div>
-                        {conn.label && <div className="item-label">{conn.label}</div>}
+                        <div style={{
+                          fontSize: '12px',
+                          color: '#64748b',
+                          marginTop: '2px'
+                        }}>
+                          {conn.type}
+                        </div>
+                        {conn.label && (
+                          <div style={{
+                            fontSize: '12px',
+                            color: '#64748b',
+                            marginTop: '2px'
+                          }}>
+                            {conn.label}
+                          </div>
+                        )}
                       </div>
                       <button 
                         onClick={() => deleteConnection(conn.id)}
-                        className="delete-btn"
+                        style={{
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: '#fee2e2',
+                          color: '#ef4444',
+                          border: 'none',
+                          cursor: 'pointer',
+                          marginLeft: '8px'
+                        }}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -920,19 +1576,44 @@ const ArchitectureDiagramMaker = ({
             </div>
           </div>
           
+          {/* Canvas */}
           <div 
-            className="diagram-canvas" 
             ref={canvasRef}
-            style={{ backgroundImage: 'linear-gradient(to right, #f1f5f9 1px, transparent 1px), linear-gradient(to bottom, #f1f5f9 1px, transparent 1px)', backgroundSize: '20px 20px' }}
+            onClick={handleCanvasClick}
+            style={{
+              flex: 1,
+              background: 'white',
+              position: 'relative',
+              overflow: 'auto',
+              backgroundImage: 'linear-gradient(to right, #f1f5f9 1px, transparent 1px), linear-gradient(to bottom, #f1f5f9 1px, transparent 1px)',
+              backgroundSize: '20px 20px',
+              minHeight: '600px'
+            }}
           >
-            {groups.map(renderGroup)}
-            {connections.map(renderConnection)}
-            {components.map(renderComponent)}
+            {/* Render groups first (behind components) */}
+            {currentGroups.map(renderGroup)}
+            
+            {/* Render connections */}
+            {currentConnections.map(renderConnection)}
+            
+            {/* Render components last (on top) */}
+            {currentComponents.map(renderComponent)}
           </div>
         </div>
       ) : (
-        <div className="json-editor">
-          <div className="json-actions">
+        /* JSON Editor */
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          padding: '16px',
+          background: 'white'
+        }}>
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '12px'
+          }}>
             <button 
               onClick={() => {
                 const input = document.createElement('input');
@@ -941,7 +1622,18 @@ const ArchitectureDiagramMaker = ({
                 input.onchange = handleFileUpload;
                 input.click();
               }}
-              className="import-btn"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                border: 'none',
+                background: '#8b5cf6',
+                color: 'white'
+              }}
             >
               <Upload size={16} /> Import JSON File
             </button>
@@ -949,578 +1641,37 @@ const ArchitectureDiagramMaker = ({
           <textarea
             value={jsonInput}
             onChange={(e) => setJsonInput(e.target.value)}
-            className="json-textarea"
+            style={{
+              flex: 1,
+              padding: '12px',
+              border: '1px solid #e2e8f0',
+              borderRadius: '6px',
+              fontFamily: 'monospace',
+              fontSize: '14px',
+              resize: 'none',
+              marginBottom: '12px'
+            }}
           />
           <button 
             onClick={importFromJson}
-            className="import-btn"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              border: 'none',
+              background: '#8b5cf6',
+              color: 'white',
+              alignSelf: 'flex-start'
+            }}
           >
             <Save size={16} /> Apply JSON
           </button>
         </div>
       )}
-
-      <style jsx>{`
-        .architecture-maker {
-          width: 100%;
-          height: 100vh;
-          display: flex;
-          flex-direction: column;
-          background: #f8fafc;
-          font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        }
-        
-        .toolbar {
-          display: flex;
-          align-items: center;
-          padding: 16px;
-          background: white;
-          border-bottom: 1px solid #e2e8f0;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-        
-        .toolbar h2 {
-          margin: 0 16px;
-          font-size: 20px;
-          color: #1e293b;
-        }
-        
-        .spacer {
-          flex: 1;
-        }
-        
-        .export-buttons {
-          display: flex;
-          gap: 8px;
-        }
-        
-        .back-btn, .export-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 16px;
-          border-radius: 6px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        
-        .back-btn {
-          background: #f1f5f9;
-          color: #64748b;
-          border: 1px solid #e2e8f0;
-        }
-        
-        .back-btn:hover {
-          background: #e2e8f0;
-        }
-        
-        .export-btn {
-          background: #8b5cf6;
-          color: white;
-          border: 1px solid #8b5cf6;
-        }
-        
-        .export-btn:hover {
-          background: #7c3aed;
-        }
-        
-        .tabs {
-          display: flex;
-          border-bottom: 1px solid #e2e8f0;
-          background: white;
-        }
-        
-        .tab {
-          padding: 12px 24px;
-          border: none;
-          background: none;
-          cursor: pointer;
-          font-weight: 500;
-          color: #64748b;
-          border-bottom: 2px solid transparent;
-        }
-        
-        .tab.active {
-          color: #8b5cf6;
-          border-bottom-color: #8b5cf6;
-        }
-        
-        .diagram-container {
-          display: flex;
-          flex: 1;
-          overflow: hidden;
-        }
-        
-        .diagram-sidebar {
-          width: 320px;
-          background: white;
-          border-right: 1px solid #e2e8f0;
-          display: flex;
-          flex-direction: column;
-          overflow: auto;
-        }
-        
-        .sidebar-section {
-          padding: 16px;
-          border-bottom: 1px solid #f1f5f9;
-        }
-        
-        .sidebar-section h3 {
-          margin-top: 0;
-          margin-bottom: 12px;
-          font-size: 16px;
-          color: #1e293b;
-        }
-        
-        .form-group {
-          margin-bottom: 12px;
-        }
-        
-        .form-group label {
-          display: block;
-          margin-bottom: 4px;
-          font-size: 12px;
-          font-weight: 500;
-          color: #64748b;
-        }
-        
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-          width: 100%;
-          padding: 8px 12px;
-          border: 1px solid #e2e8f0;
-          border-radius: 6px;
-          font-size: 14px;
-        }
-        
-        .form-group input:focus,
-        .form-group select:focus {
-          outline: none;
-          border-color: #8b5cf6;
-        }
-        
-        .component-type-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 8px;
-          margin-top: 8px;
-        }
-        
-        .type-btn {
-          width: 100%;
-          aspect-ratio: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-          color: white;
-          transition: all 0.2s;
-        }
-        
-        .type-btn:hover {
-          opacity: 0.9;
-          transform: scale(1.05);
-        }
-        
-        .type-btn.active {
-          outline: 2px solid #1e293b;
-          outline-offset: 2px;
-        }
-        
-        .image-upload-btn {
-          width: 100%;
-          padding: 8px;
-          background: #e2e8f0;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          font-size: 14px;
-        }
-        
-        .image-upload-btn:hover {
-          background: #cbd5e1;
-        }
-        
-        .image-upload-container {
-          margin-top: 8px;
-        }
-        
-        .image-source-tabs {
-          display: flex;
-          margin-bottom: 8px;
-          border-bottom: 1px solid #e2e8f0;
-        }
-        
-        .source-tab {
-          flex: 1;
-          padding: 6px;
-          border: none;
-          background: none;
-          cursor: pointer;
-          font-size: 12px;
-          color: #64748b;
-          border-bottom: 2px solid transparent;
-        }
-        
-        .source-tab.active {
-          color: #8b5cf6;
-          border-bottom-color: #8b5cf6;
-        }
-        
-        .image-upload-input,
-        .image-url-input {
-          width: 100%;
-          margin-bottom: 8px;
-        }
-        
-        .image-preview {
-          position: relative;
-          margin-top: 8px;
-          display: flex;
-          justify-content: center;
-        }
-        
-        .remove-image-btn {
-          position: absolute;
-          top: -8px;
-          right: -8px;
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: #fee2e2;
-          color: #ef4444;
-          border: none;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-        }
-        
-        .add-btn {
-          width: 100%;
-          padding: 8px 16px;
-          background: #8b5cf6;
-          color: white;
-          border: none;
-          border-radius: 6px;
-          font-weight: 500;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          margin-top: 8px;
-        }
-        
-        .add-btn:hover {
-          background: #7c3aed;
-        }
-        
-        .add-btn:disabled {
-          background: #ddd6fe;
-          cursor: not-allowed;
-        }
-        
-        .component-list,
-        .connection-list,
-        .group-list {
-          max-height: 200px;
-          overflow-y: auto;
-          margin-top: 12px;
-        }
-        
-        .list-item {
-          display: flex;
-          align-items: center;
-          padding: 8px 0;
-          border-bottom: 1px solid #f1f5f9;
-        }
-        
-        .item-details {
-          flex: 1;
-        }
-        
-        .item-name {
-          font-size: 14px;
-          font-weight: 500;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        
-        .item-count {
-          font-size: 12px;
-          color: #64748b;
-          margin-top: 2px;
-        }
-        
-        .item-label {
-          font-size: 12px;
-          color: #64748b;
-          margin-top: 2px;
-        }
-        
-        .delete-btn {
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #fee2e2;
-          color: #ef4444;
-          border: none;
-          cursor: pointer;
-          margin-left: 8px;
-        }
-        
-        .delete-btn:hover {
-          background: #fecaca;
-        }
-        
-        .selected-info {
-          margin-top: 12px;
-          padding: 12px;
-          background: #f1f5f9;
-          border-radius: 6px;
-          font-size: 12px;
-        }
-        
-        .selected-count {
-          margin-bottom: 8px;
-          font-weight: 500;
-        }
-        
-        .selection-hint {
-          margin-top: 8px;
-          color: #64748b;
-          font-style: italic;
-        }
-        
-        .clear-selection-btn {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          background: none;
-          border: none;
-          color: #64748b;
-          cursor: pointer;
-          font-size: 12px;
-          padding: 4px 8px;
-          border-radius: 4px;
-        }
-        
-        .clear-selection-btn:hover {
-          background: #e2e8f0;
-        }
-        
-        .diagram-canvas {
-          flex: 1;
-          background: white;
-          position: relative;
-          overflow: auto;
-        }
-        
-        .component {
-          position: absolute;
-          display: flex;
-          flex-direction: column;
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          box-sizing: border-box;
-          text-align: center;
-          font-size: 12px;
-          overflow: hidden;
-          border: 2px solid #e2e8f0;
-        }
-        
-        .component:hover {
-          box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-          transform: translateY(-2px);
-          transition: all 0.2s ease;
-        }
-        
-        .component-image-container {
-          width: 100%;
-          height: 70%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-          background: #f8fafc;
-          border-radius: 10px 10px 0 0;
-        }
-        
-        .component-image {
-          max-width: 90%;
-          max-height: 90%;
-          object-fit: contain;
-          border-radius: 6px;
-        }
-        
-        .component-icon {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100%;
-          height: 100%;
-        }
-        
-        .component-text {
-          width: 100%;
-          height: 30%;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          padding: 6px 8px;
-          color: white;
-          font-weight: 600;
-          border-radius: 0 0 10px 10px;
-          position: relative;
-        }
-        
-        .component-name {
-          font-size: 11px;
-          font-weight: 600;
-          line-height: 1.2;
-          margin-bottom: 2px;
-          word-break: break-word;
-          max-width: 100%;
-        }
-        
-        .component-type {
-          font-size: 9px;
-          opacity: 0.9;
-          font-weight: 500;
-        }
-        
-        .component-edit-input {
-          width: 100%;
-          border: none;
-          background: rgba(255, 255, 255, 0.2);
-          color: white;
-          text-align: center;
-          font-weight: 600;
-          outline: none;
-          font-size: 11px;
-        }
-        
-        .group {
-          position: absolute;
-          border-radius: 12px;
-          border: 2px dashed #94a3b8;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          padding-top: 40px;
-          box-sizing: border-box;
-          background: rgba(226, 232, 240, 0.3);
-        }
-        
-        .group:hover {
-          border-color: #6366f1;
-          background: rgba(99, 102, 241, 0.1);
-          transition: all 0.2s ease;
-        }
-        
-        .group-header {
-          position: absolute;
-          top: 8px;
-          left: 12px;
-          right: 12px;
-          font-weight: 700;
-          font-size: 14px;
-          color: #1e293b;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        
-        .group-caption {
-          position: absolute;
-          bottom: 8px;
-          left: 12px;
-          font-size: 11px;
-          color: #64748b;
-          font-style: italic;
-        }
-        
-        .group-delete-btn {
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.3);
-          color: #ef4444;
-          cursor: pointer;
-          padding: 4px;
-          border-radius: 4px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        
-        .group-delete-btn:hover {
-          background: rgba(239, 68, 68, 0.2);
-        }
-        
-        .connection {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          pointer-events: none;
-          z-index: 1;
-        }
-        
-        .json-editor {
-          display: flex;
-          flex-direction: column;
-          flex: 1;
-          padding: 16px;
-          background: white;
-        }
-        
-        .json-actions {
-          display: flex;
-          gap: 8px;
-          margin-bottom: 12px;
-        }
-        
-        .import-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 16px;
-          border-radius: 6px;
-          font-weight: 500;
-          cursor: pointer;
-          border: none;
-          background: #8b5cf6;
-          color: white;
-        }
-        
-        .import-btn:hover {
-          background: #7c3aed;
-        }
-        
-        .json-textarea {
-          flex: 1;
-          padding: 12px;
-          border: 1px solid #e2e8f0;
-          border-radius: 6px;
-          font-family: monospace;
-          font-size: 14px;
-          resize: none;
-          margin-bottom: 12px;
-        }
-      `}</style>
     </div>
   );
 };
