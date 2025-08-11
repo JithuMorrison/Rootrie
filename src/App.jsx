@@ -11,15 +11,18 @@ import SequenceDiagramMain from './sequencemain';
 import SequenceDiagramMaker from './sequence';
 import ArchitectureDiagramMain from './architecturemain';
 import ArchitectureDiagramMaker from './architecture';
+import ClassDiagramMain from './classmain';
+import ClassDiagramMaker from './class';
 
-// Diagram type constants for better maintainability
+// Diagram type constants
 const DIAGRAM_TYPES = {
   PROJECT: 'projects',
   FLOWCHART: 'flowcharts',
   GANTT: 'gantt',
   USE_CASE: 'usecase',
   SEQUENCE: 'sequence',
-  ARCHITECTURE: 'architecture'
+  ARCHITECTURE: 'architecture',
+  CLASS: 'class'
 };
 
 // Initial data structure
@@ -35,7 +38,9 @@ const getInitialData = () => ({
   sequenceDiagrams: [],
   currentSequenceDiagram: null,
   architectureDiagrams: [],
-  currentArchitectureDiagram: null
+  currentArchitectureDiagram: null,
+  classDiagrams: [],
+  currentClassDiagram: null
 });
 
 const getStoredData = () => {
@@ -66,7 +71,7 @@ const App = () => {
   // Get current data from storage
   const getCurrentData = () => getStoredData();
 
-  // Generic diagram creation function - FIXED
+  // Generic diagram creation function
   const createDiagram = (type, name, extraData = {}) => {
     const currentData = getCurrentData();
     const baseDiagram = {
@@ -86,6 +91,7 @@ const App = () => {
     updateData.currentUseCaseDiagram = null;
     updateData.currentSequenceDiagram = null;
     updateData.currentArchitectureDiagram = null;
+    updateData.currentClassDiagram = null;
 
     // Add new diagram and set as current
     switch (type) {
@@ -113,13 +119,17 @@ const App = () => {
         updateData.architectureDiagrams = [...currentData.architectureDiagrams, baseDiagram];
         updateData.currentArchitectureDiagram = baseDiagram;
         break;
+      case DIAGRAM_TYPES.CLASS:
+        updateData.classDiagrams = [...currentData.classDiagrams, baseDiagram];
+        updateData.currentClassDiagram = baseDiagram;
+        break;
     }
 
     saveToStorage(updateData);
     forceUpdate();
   };
 
-  // Generic diagram deletion function - FIXED
+  // Generic diagram deletion function
   const deleteDiagram = (type, id) => {
     const currentData = getCurrentData();
     const updateData = { ...currentData };
@@ -161,13 +171,19 @@ const App = () => {
           updateData.currentArchitectureDiagram = null;
         }
         break;
+      case DIAGRAM_TYPES.CLASS:
+        updateData.classDiagrams = currentData.classDiagrams.filter(d => d.id !== id);
+        if (currentData.currentClassDiagram?.id === id) {
+          updateData.currentClassDiagram = null;
+        }
+        break;
     }
 
     saveToStorage(updateData);
     forceUpdate();
   };
 
-  // Generic diagram update function - FIXED
+  // Generic diagram update function
   const updateDiagram = (type, updatedDiagram) => {
     const currentData = getCurrentData();
     const updateData = { ...currentData };
@@ -208,6 +224,12 @@ const App = () => {
           d.id === updatedDiagram.id ? updatedDiagram : d
         );
         updateData.currentArchitectureDiagram = updatedDiagram;
+        break;
+      case DIAGRAM_TYPES.CLASS:
+        updateData.classDiagrams = currentData.classDiagrams.map(d => 
+          d.id === updatedDiagram.id ? updatedDiagram : d
+        );
+        updateData.currentClassDiagram = updatedDiagram;
         break;
     }
 
@@ -273,6 +295,15 @@ const App = () => {
     });
   };
 
+  const createClassDiagram = (name) => {
+    createDiagram(DIAGRAM_TYPES.CLASS, name, {
+      classes: [],
+      relationships: [],
+      zoom: 1,
+      pan: { x: 0, y: 0 }
+    });
+  };
+
   // Specific diagram deletion functions
   const deleteProject = (id) => deleteDiagram(DIAGRAM_TYPES.PROJECT, id);
   const deleteFlowchart = (id) => deleteDiagram(DIAGRAM_TYPES.FLOWCHART, id);
@@ -280,6 +311,7 @@ const App = () => {
   const deleteUseCaseDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.USE_CASE, id);
   const deleteSequenceDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.SEQUENCE, id);
   const deleteArchitectureDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.ARCHITECTURE, id);
+  const deleteClassDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.CLASS, id);
 
   // Specific diagram update functions
   const updateProject = (project) => updateDiagram(DIAGRAM_TYPES.PROJECT, project);
@@ -288,6 +320,7 @@ const App = () => {
   const updateUseCaseDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.USE_CASE, diagram);
   const updateSequenceDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.SEQUENCE, diagram);
   const updateArchitectureDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.ARCHITECTURE, diagram);
+  const updateClassDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.CLASS, diagram);
 
   const importFlowchartFromJson = (jsonString) => {
     try {
@@ -314,14 +347,15 @@ const App = () => {
       currentGanttChart: null,
       currentUseCaseDiagram: null,
       currentSequenceDiagram: null,
-      currentArchitectureDiagram: null
+      currentArchitectureDiagram: null,
+      currentClassDiagram: null
     };
     
     saveToStorage(updateData);
     forceUpdate();
   };
 
-  // Load diagram function - FIXED
+  // Load diagram function
   const loadDiagram = (type, diagram) => {
     const currentData = getCurrentData();
     const updateData = {
@@ -330,7 +364,9 @@ const App = () => {
       currentFlowchart: null,
       currentGanttChart: null,
       currentUseCaseDiagram: null,
-      currentSequenceDiagram: null
+      currentSequenceDiagram: null,
+      currentArchitectureDiagram: null,
+      currentClassDiagram: null
     };
 
     // Set the specific current diagram
@@ -352,6 +388,9 @@ const App = () => {
         break;
       case DIAGRAM_TYPES.ARCHITECTURE:
         updateData.currentArchitectureDiagram = diagram;
+        break;
+      case DIAGRAM_TYPES.CLASS:
+        updateData.currentClassDiagram = diagram;
         break;
     }
 
@@ -402,7 +441,8 @@ const App = () => {
       justifyContent: 'center',
       padding: '30px 30px 0 30px',
       gap: '16px',
-      marginBottom: '25px'
+      marginBottom: '25px',
+      flexWrap: 'wrap'
     },
     tabButton: {
       padding: '16px 32px',
@@ -416,7 +456,8 @@ const App = () => {
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       outline: 'none',
       position: 'relative',
-      backdropFilter: 'blur(10px)'
+      backdropFilter: 'blur(10px)',
+      marginBottom: '10px'
     },
     tabButtonActive: (color) => ({
       background: `linear-gradient(135deg, ${color} 0%, ${color} 100%)`,
@@ -517,6 +558,19 @@ const App = () => {
           onDeleteArchitectureDiagram={deleteArchitectureDiagram}
         />
       )
+    },
+    {
+      type: DIAGRAM_TYPES.CLASS,
+      label: '📐 Class Diagram',
+      color: '#ec4899',
+      component: (
+        <ClassDiagramMain 
+          classDiagrams={getCurrentData().classDiagrams}
+          onCreateClassDiagram={createClassDiagram}
+          onLoadClassDiagram={(diagram) => loadDiagram(DIAGRAM_TYPES.CLASS, diagram)}
+          onDeleteClassDiagram={deleteClassDiagram}
+        />
+      )
     }
   ];
 
@@ -575,6 +629,14 @@ const App = () => {
             components={currentData.currentArchitectureDiagram.components || []}
             connections={currentData.currentArchitectureDiagram.connections || []}
             onUpdateArchitectureDiagram={updateArchitectureDiagram}
+            onBack={handleBack}
+          />
+        ) : currentData.currentClassDiagram ? (
+          <ClassDiagramMaker
+            classDiagram={currentData.currentClassDiagram}
+            classes={currentData.currentClassDiagram.classes || []}
+            relationships={currentData.currentClassDiagram.relationships || []}
+            onUpdateClassDiagram={updateClassDiagram}
             onBack={handleBack}
           />
         ) : (
