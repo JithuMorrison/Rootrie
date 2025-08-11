@@ -430,27 +430,23 @@ const ArchitectureDiagramMaker = ({
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
-    // Create a temporary canvas for export
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const originalTransform = canvasRef.current.style.transform;
+    canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
     
-    // Set canvas size
-    const canvasRect = canvasRef.current.getBoundingClientRect();
-    canvas.width = canvasRect.width * 2; // Higher resolution
-    canvas.height = canvasRect.height * 2;
-    
-    // Scale context for higher resolution
-    ctx.scale(2, 2);
-    
-    // Fill background
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(0, 0, canvas.width / 2, canvas.height / 2);
-    
-    // Export as image
-    const link = document.createElement('a');
-    link.download = `${architectureDiagram.name || 'architecture_diagram'}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    import('html2canvas').then(html2canvas => {
+      html2canvas.default(canvasRef.current, {
+        backgroundColor: '#f8fafc',
+        scale: 2,
+        useCORS: true
+      }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${architectureDiagram.name || 'architecture-diagram'}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        canvasRef.current.style.transform = originalTransform;
+      });
+    });
   };
 
   const getConnectionPath = (from, to) => {
