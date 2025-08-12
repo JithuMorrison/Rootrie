@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Plus, GitMerge, Trash2, Copy, Download, Image, Upload, Save, User } from 'lucide-react';
+import { ArrowLeft, Plus, GitMerge, Trash2, Copy, Download, Image, Upload, Save, User, Minus, MoreHorizontal } from 'lucide-react';
 
 const SequenceDiagramMaker = ({ 
   sequenceDiagram, 
@@ -17,6 +17,7 @@ const SequenceDiagramMaker = ({
   const [activeTab, setActiveTab] = useState('editor');
   const [jsonInput, setJsonInput] = useState('');
   const [zoom, setZoom] = useState(1);
+  const [spacing, setSpacing] = useState(150); // Adjustable spacing between lifelines
   const canvasRef = useRef(null);
 
   // Initialize JSON input with current diagram data
@@ -184,8 +185,15 @@ const SequenceDiagramMaker = ({
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
+    // Temporarily reset zoom for export
     const originalTransform = canvasRef.current.style.transform;
     canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
+    
+    // Create a temporary canvas for export
+    const tempCanvas = document.createElement('canvas');
+    const rect = canvasRef.current.getBoundingClientRect();
+    tempCanvas.width = rect.width * 2; // Higher resolution
+    tempCanvas.height = rect.height * 2;
     
     import('html2canvas').then(html2canvas => {
       html2canvas.default(canvasRef.current, {
@@ -209,8 +217,7 @@ const SequenceDiagramMaker = ({
   };
 
   const calculateParticipantX = (index) => {
-    const baseSpacing = 150;
-    return 100 + index * baseSpacing; // Increased from 50 to 100 for left margin
+    return 60 + index * spacing; // Reduced left margin from 100 to 60
   };
 
   const renderParticipantHeader = (participant, index) => {
@@ -223,10 +230,9 @@ const SequenceDiagramMaker = ({
         className="participant-header"
         style={{
           left: `${x - 60}px`,
-          top: '20px',
+          top: '40px', // Increased top margin from 20px to 40px
           width: '120px',
-          height: `${headerHeight}px`,
-          transform: `scale(${zoom})`
+          height: `${headerHeight}px`
         }}
       >
         {participant.type === 'actor' ? (
@@ -247,8 +253,8 @@ const SequenceDiagramMaker = ({
 
   const renderLifeline = (participant, index) => {
     const x = calculateParticipantX(index);
-    const startY = 90;
-    const endY = Math.max(200 + messages.length * 50, 400);
+    const startY = 110; // Adjusted for new top margin
+    const endY = Math.max(220 + messages.length * 50, 420); // Adjusted for new top margin
     
     return (
       <div
@@ -258,8 +264,7 @@ const SequenceDiagramMaker = ({
           left: `${x - 1}px`,
           top: `${startY}px`,
           width: '2px',
-          height: `${endY - startY}px`,
-          transform: `scale(${zoom})`
+          height: `${endY - startY}px`
         }}
       />
     );
@@ -273,7 +278,7 @@ const SequenceDiagramMaker = ({
     messages
       .sort((a, b) => a.order - b.order)
       .forEach((message, index) => {
-        const y = 130 + index * 50;
+        const y = 150 + index * 50; // Adjusted for new top margin
         
         // Start activation when receiving a sync/create message or making a self call
         if ((message.to === participantId && (message.type === 'sync' || message.type === 'create')) ||
@@ -296,7 +301,7 @@ const SequenceDiagramMaker = ({
     
     // Handle any remaining activations (extend to end)
     if (activationStack.length > 0) {
-      const lastY = 130 + messages.length * 50;
+      const lastY = 150 + messages.length * 50; // Adjusted for new top margin
       activationStack.forEach(activation => {
         boxes.push({
           ...activation,
@@ -314,8 +319,7 @@ const SequenceDiagramMaker = ({
           left: `${x - 8}px`,
           top: `${box.start}px`,
           width: '16px',
-          height: `${box.height}px`,
-          transform: `scale(${zoom})`
+          height: `${box.height - 23}px`
         }}
       />
     ));
@@ -327,7 +331,7 @@ const SequenceDiagramMaker = ({
     
     if (fromIndex === -1 || toIndex === -1) return null;
     
-    const y = 130 + index * 50;
+    const y = 150 + index * 50; // Adjusted for new top margin
     const fromX = calculateParticipantX(fromIndex);
     const toX = calculateParticipantX(toIndex);
     const isSelfCall = message.from === message.to;
@@ -376,17 +380,12 @@ const SequenceDiagramMaker = ({
     const style = getMessageStyle(message.type);
     
     if (isSelfCall) {
+      const selfCallWidth = Math.max(40, spacing * 0.3); // Make self-call width responsive to spacing
       return (
-        <div 
-          key={message.id} 
-          className="message-container"
-          style={{
-            transform: `scale(${zoom})`
-          }}
-        >
+        <div key={message.id} className="message-container">
           <svg className="message-svg" style={{ overflow: 'visible' }}>
             <path
-              d={`M ${fromX} ${y} L ${fromX + 40} ${y} L ${fromX + 40} ${y + 20} L ${fromX} ${y + 20}`}
+              d={`M ${fromX} ${y} L ${fromX + selfCallWidth} ${y} L ${fromX + selfCallWidth} ${y + 20} L ${fromX} ${y + 20}`}
               fill="none"
               stroke={style.stroke}
               strokeWidth="2"
@@ -397,7 +396,7 @@ const SequenceDiagramMaker = ({
               fill={style.stroke}
             />
             <text
-              x={fromX + 50}
+              x={fromX + selfCallWidth + 10}
               y={y + 15}
               fontSize="12"
               fill={style.stroke}
@@ -412,15 +411,10 @@ const SequenceDiagramMaker = ({
 
     const direction = fromX < toX ? 1 : -1;
     const arrowX = direction > 0 ? toX - 8 : toX + 8;
+    const midX = (fromX + toX) / 2;
     
     return (
-      <div 
-        key={message.id} 
-        className="message-container"
-        style={{
-          transform: `scale(${zoom})`
-        }}
-      >
+      <div key={message.id} className="message-container">
         <svg className="message-svg" style={{ overflow: 'visible' }}>
           <line
             x1={fromX}
@@ -453,7 +447,7 @@ const SequenceDiagramMaker = ({
           )}
           
           <text
-            x={(fromX + toX) / 2}
+            x={midX}
             y={y - 8}
             textAnchor="middle"
             fontSize="12"
@@ -486,6 +480,28 @@ const SequenceDiagramMaker = ({
         </button>
         <h2>{sequenceDiagram.name}</h2>
         <div className="spacer"></div>
+        
+        {/* Spacing Control */}
+        <div className="spacing-controls">
+          <label>Spacing:</label>
+          <button 
+            onClick={() => setSpacing(Math.max(100, spacing - 25))}
+            disabled={spacing <= 100}
+            className="spacing-btn"
+          >
+            <Minus size={14} />
+          </button>
+          <span className="spacing-value">{spacing}px</span>
+          <button 
+            onClick={() => setSpacing(Math.min(300, spacing + 25))}
+            disabled={spacing >= 300}
+            className="spacing-btn"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+        
+        {/* Zoom Controls */}
         <div className="zoom-controls">
           <button 
             onClick={() => setZoom(Math.max(0.5, zoom - 0.1))}
@@ -503,6 +519,7 @@ const SequenceDiagramMaker = ({
             +
           </button>
         </div>
+        
         <div className="export-buttons">
           <button onClick={exportToImage} className="export-btn">
             <Image size={16} /> Export Image
@@ -698,27 +715,29 @@ const SequenceDiagramMaker = ({
             </div>
           </div>
           
-          <div 
-            className="diagram-canvas" 
-            ref={canvasRef}
-            style={{
-              transform: `scale(${zoom})`,
-              transformOrigin: 'top left'
-            }}
-          >
-            {/* Participant Headers */}
-            {participants.map((participant, index) => renderParticipantHeader(participant, index))}
-            
-            {/* Lifelines */}
-            {participants.map((participant, index) => renderLifeline(participant, index))}
-            
-            {/* Activation Boxes */}
-            {participants.map((participant, index) => getActivationBoxes(participant.id, index))}
-            
-            {/* Messages */}
-            {messages
-              .sort((a, b) => a.order - b.order)
-              .map((message, index) => renderMessage(message, index))}
+          <div className="diagram-canvas-wrapper">
+            <div 
+              className="diagram-canvas" 
+              ref={canvasRef}
+              style={{
+                transform: `scale(${zoom})`,
+                transformOrigin: 'top left'
+              }}
+            >
+              {/* Participant Headers */}
+              {participants.map((participant, index) => renderParticipantHeader(participant, index))}
+              
+              {/* Lifelines */}
+              {participants.map((participant, index) => renderLifeline(participant, index))}
+              
+              {/* Activation Boxes */}
+              {participants.map((participant, index) => getActivationBoxes(participant.id, index))}
+              
+              {/* Messages */}
+              {messages
+                .sort((a, b) => a.order - b.order)
+                .map((message, index) => renderMessage(message, index))}
+            </div>
           </div>
         </div>
       ) : (
@@ -768,6 +787,7 @@ const SequenceDiagramMaker = ({
           background: white;
           border-bottom: 1px solid #e2e8f0;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          gap: 12px;
         }
         
         .toolbar h2 {
@@ -784,10 +804,57 @@ const SequenceDiagramMaker = ({
           flex: 1;
         }
         
+        .spacing-controls {
+          display: flex;
+          align-items: center;
+          background: #f1f5f9;
+          border-radius: 6px;
+          padding: 2px;
+          gap: 4px;
+        }
+        
+        .spacing-controls label {
+          font-size: 12px;
+          font-weight: 500;
+          color: #475569;
+          padding: 0 8px;
+        }
+        
+        .spacing-btn {
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          background: white;
+          border-radius: 4px;
+          cursor: pointer;
+          color: #475569;
+          transition: all 0.2s;
+        }
+        
+        .spacing-btn:hover:not(:disabled) {
+          background: #e2e8f0;
+        }
+        
+        .spacing-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        
+        .spacing-value {
+          font-size: 11px;
+          font-weight: 500;
+          padding: 0 4px;
+          color: #475569;
+          min-width: 40px;
+          text-align: center;
+        }
+        
         .zoom-controls {
           display: flex;
           align-items: center;
-          margin-right: 16px;
           background: #f1f5f9;
           border-radius: 6px;
           padding: 2px;
@@ -1010,13 +1077,17 @@ const SequenceDiagramMaker = ({
           background: #fecaca;
         }
         
-        .diagram-canvas {
+        .diagram-canvas-wrapper {
           flex: 1;
           background: white;
-          position: relative;
           overflow: auto;
-          padding: 20px;
+        }
+        
+        .diagram-canvas {
+          position: relative;
           min-height: 600px;
+          min-width: 800px;
+          transform-origin: top left;
         }
         
         .participant-header {
@@ -1024,7 +1095,6 @@ const SequenceDiagramMaker = ({
           display: flex;
           justify-content: center;
           align-items: center;
-          transform-origin: top left;
         }
         
         .participant-actor {
@@ -1051,6 +1121,8 @@ const SequenceDiagramMaker = ({
           font-weight: 600;
           color: #1e293b;
           text-align: center;
+          max-width: 100px;
+          word-wrap: break-word;
         }
         
         .participant-box {
@@ -1060,6 +1132,7 @@ const SequenceDiagramMaker = ({
           background: white;
           text-align: center;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          max-width: 120px;
         }
         
         .participant-box.service {
@@ -1081,6 +1154,8 @@ const SequenceDiagramMaker = ({
           font-weight: 600;
           font-size: 12px;
           color: #1e293b;
+          word-wrap: break-word;
+          line-height: 1.2;
         }
         
         .lifeline {
@@ -1093,7 +1168,6 @@ const SequenceDiagramMaker = ({
             #94a3b8 8px,
             #94a3b8 12px
           );
-          transform-origin: top left;
         }
         
         .activation-box {
@@ -1101,7 +1175,6 @@ const SequenceDiagramMaker = ({
           background: #fbbf24;
           border: 1px solid #f59e0b;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-          transform-origin: top left;
         }
         
         .message-container {
@@ -1111,7 +1184,6 @@ const SequenceDiagramMaker = ({
           width: 100%;
           height: 100%;
           pointer-events: none;
-          transform-origin: top left;
         }
         
         .message-svg {
