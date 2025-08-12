@@ -39,16 +39,16 @@ const ClassDiagramMaker = ({
   const [newMethod, setNewMethod] = useState({ visibility: '+', name: '', returnType: 'void' });
   const canvasRef = useRef(null);
 
-  // Beautiful color schemes for class headers and borders
+  // Color schemes for classes (pink theme with variations)
   const colorSchemes = [
-    { header: '#3B82F6', border: '#1D4ED8', background: '#EFF6FF' }, // Blue
-    { header: '#10B981', border: '#047857', background: '#ECFDF5' }, // Green
-    { header: '#F59E0B', border: '#B45309', background: '#FFFBEB' }, // Amber
-    { header: '#EF4444', border: '#B91C1C', background: '#FEF2F2' }, // Red
-    { header: '#8B5CF6', border: '#6D28D9', background: '#F5F3FF' }, // Violet
-    { header: '#EC4899', border: '#BE185D', background: '#FDF2F8' }, // Pink
-    { header: '#14B8A6', border: '#0D9488', background: '#F0FDFA' }, // Teal
-    { header: '#F97316', border: '#C2410C', background: '#FFF7ED' }, // Orange
+    { header: '#EC4899', border: '#BE185D', background: '#FDF2F8' }, // Primary pink
+    { header: '#DB2777', border: '#9D174D', background: '#FCE7F3' }, // Darker pink
+    { header: '#F472B6', border: '#EC4899', background: '#FDF2F8' }, // Lighter pink
+    { header: '#F43F5E', border: '#E11D48', background: '#FFF1F2' }, // Rose
+    { header: '#F97316', border: '#EA580C', background: '#FFEDD5' }, // Orange
+    { header: '#8B5CF6', border: '#7C3AED', background: '#F5F3FF' }, // Violet
+    { header: '#3B82F6', border: '#2563EB', background: '#EFF6FF' }, // Blue
+    { header: '#10B981', border: '#059669', background: '#ECFDF5' }, // Green
   ];
 
   // Common data types for dropdowns
@@ -110,23 +110,22 @@ const ClassDiagramMaker = ({
     
     // Calculate height based on content
     const headerHeight = 40;
-    const sectionTitleHeight = 28;
     const itemHeight = 22;
-    const sectionPadding = 12;
+    const sectionPadding = 4; // Reduced padding between sections
     
     const attributesHeight = cls.attributes.length > 0 
-      ? sectionTitleHeight + (cls.attributes.length * itemHeight) + sectionPadding
-      : sectionTitleHeight + 24 + sectionPadding; // Empty section height
+      ? (cls.attributes.length * itemHeight) + sectionPadding
+      : 0;
       
     const methodsHeight = cls.methods.length > 0
-      ? sectionTitleHeight + (cls.methods.length * itemHeight) + sectionPadding
-      : sectionTitleHeight + 24 + sectionPadding; // Empty section height
+      ? (cls.methods.length * itemHeight) + sectionPadding
+      : 0;
     
-    const calculatedHeight = headerHeight + attributesHeight + methodsHeight;
+    const calculatedHeight = headerHeight + attributesHeight + methodsHeight + (cls.attributes.length > 0 && cls.methods.length > 0 ? 2 : 0); // Add 2px for the divider if both sections exist
     
     return {
       width: Math.min(calculatedWidth, 400), // Cap at 400px to prevent too wide
-      height: calculatedHeight
+      height: Math.max(calculatedHeight, 80) // Minimum height of 80px
     };
   };
 
@@ -422,7 +421,7 @@ const ClassDiagramMaker = ({
       const updatedClasses = classes.map(cls => {
         if (cls.id === resizingItem.id) {
           const newWidth = Math.max(180, cls.width + dx);
-          const newHeight = Math.max(120, cls.height + dy);
+          const newHeight = Math.max(80, cls.height + dy);
           return {
             ...cls,
             width: newWidth,
@@ -624,19 +623,10 @@ const ClassDiagramMaker = ({
           </div>
         </div>
         
-        <div className="class-section attributes-section">
-          <div 
-            className="section-title"
-            style={{
-              backgroundColor: colorScheme.background,
-              color: colorScheme.header
-            }}
-          >
-            Attributes
-          </div>
-          <div className="section-content">
-            {cls.attributes.length > 0 ? (
-              cls.attributes.map((attr, i) => (
+        <div className="class-content">
+          {cls.attributes.length > 0 && (
+            <div className="attributes-section">
+              {cls.attributes.map((attr, i) => (
                 <div 
                   key={i} 
                   className="class-item"
@@ -658,26 +648,17 @@ const ClassDiagramMaker = ({
                     <Trash2 size={10} />
                   </button>
                 </div>
-              ))
-            ) : (
-              <div className="empty-section">No attributes</div>
-            )}
-          </div>
-        </div>
-        
-        <div className="class-section methods-section">
-          <div 
-            className="section-title"
-            style={{
-              backgroundColor: colorScheme.background,
-              color: colorScheme.header
-            }}
-          >
-            Methods
-          </div>
-          <div className="section-content">
-            {cls.methods.length > 0 ? (
-              cls.methods.map((method, i) => (
+              ))}
+            </div>
+          )}
+          
+          {cls.attributes.length > 0 && cls.methods.length > 0 && (
+            <div className="section-divider" style={{ backgroundColor: colorScheme.border }} />
+          )}
+          
+          {cls.methods.length > 0 && (
+            <div className="methods-section">
+              {cls.methods.map((method, i) => (
                 <div 
                   key={i} 
                   className="class-item"
@@ -699,11 +680,9 @@ const ClassDiagramMaker = ({
                     <Trash2 size={10} />
                   </button>
                 </div>
-              ))
-            ) : (
-              <div className="empty-section">No methods</div>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
         
         <div 
@@ -1136,7 +1115,7 @@ const ClassDiagramMaker = ({
       )}
 
       {/* Class Editor Modal */}
-      {editingItem && !editType && (
+      {editingItem && (
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
@@ -1147,22 +1126,7 @@ const ClassDiagramMaker = ({
             </div>
             
             <div className="modal-body">
-              <div className="class-edit-tabs">
-                <button 
-                  className={`edit-tab ${editType === 'attribute' ? 'active' : ''}`}
-                  onClick={() => setEditType('attribute')}
-                >
-                  Attributes
-                </button>
-                <button 
-                  className={`edit-tab ${editType === 'method' ? 'active' : ''}`}
-                  onClick={() => setEditType('method')}
-                >
-                  Methods
-                </button>
-              </div>
-              
-              {editType === 'attribute' ? (
+              <div className="edit-sections-container">
                 <div className="edit-section">
                   <div className="section-header">
                     <h4>Attributes</h4>
@@ -1175,19 +1139,20 @@ const ClassDiagramMaker = ({
                   </div>
                   <div className="items-list">
                     {editingItem.attributes.map((attr, i) => (
-                      <div key={i} className="item-row">
+                      <div 
+                        key={i} 
+                        className="item-row"
+                        onClick={() => openAttributeEditor(editingItem.id, i)}
+                      >
                         <div className="item-text">
                           {attr.visibility} {attr.name} : {attr.type}
                         </div>
                         <div className="item-actions">
                           <button 
-                            onClick={() => openAttributeEditor(editingItem.id, i)}
-                            className="edit-btn"
-                          >
-                            Edit
-                          </button>
-                          <button 
-                            onClick={() => deleteAttribute(editingItem.id, i)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteAttribute(editingItem.id, i);
+                            }}
                             className="delete-btn"
                           >
                             <Trash2 size={12} />
@@ -1200,7 +1165,7 @@ const ClassDiagramMaker = ({
                     )}
                   </div>
                 </div>
-              ) : editType === 'method' ? (
+                
                 <div className="edit-section">
                   <div className="section-header">
                     <h4>Methods</h4>
@@ -1213,19 +1178,20 @@ const ClassDiagramMaker = ({
                   </div>
                   <div className="items-list">
                     {editingItem.methods.map((method, i) => (
-                      <div key={i} className="item-row">
+                      <div 
+                        key={i} 
+                        className="item-row"
+                        onClick={() => openMethodEditor(editingItem.id, i)}
+                      >
                         <div className="item-text">
                           {method.visibility} {method.name} : {method.returnType}
                         </div>
                         <div className="item-actions">
                           <button 
-                            onClick={() => openMethodEditor(editingItem.id, i)}
-                            className="edit-btn"
-                          >
-                            Edit
-                          </button>
-                          <button 
-                            onClick={() => deleteMethod(editingItem.id, i)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteMethod(editingItem.id, i);
+                            }}
                             className="delete-btn"
                           >
                             <Trash2 size={12} />
@@ -1238,11 +1204,7 @@ const ClassDiagramMaker = ({
                     )}
                   </div>
                 </div>
-              ) : (
-                <div className="select-message">
-                  <p>Select a section to edit</p>
-                </div>
-              )}
+              </div>
             </div>
             
             <div className="modal-footer">
@@ -1437,13 +1399,13 @@ const ClassDiagramMaker = ({
         }
         
         .export-btn {
-          background: #3b82f6;
+          background: #EC4899;
           color: white;
-          border: 1px solid #3b82f6;
+          border: 1px solid #EC4899;
         }
         
         .export-btn:hover {
-          background: #2563eb;
+          background: #DB2777;
         }
         
         .tabs {
@@ -1463,8 +1425,8 @@ const ClassDiagramMaker = ({
         }
         
         .tab.active {
-          color: #3b82f6;
-          border-bottom-color: #3b82f6;
+          color: #EC4899;
+          border-bottom-color: #EC4899;
         }
         
         .diagram-container {
@@ -1518,14 +1480,14 @@ const ClassDiagramMaker = ({
         .form-group input:focus,
         .form-group select:focus {
           outline: none;
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+          border-color: #EC4899;
+          box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.1);
         }
         
         .add-btn {
           width: 100%;
           padding: 8px 16px;
-          background: #3b82f6;
+          background: #EC4899;
           color: white;
           border: none;
           border-radius: 6px;
@@ -1540,7 +1502,7 @@ const ClassDiagramMaker = ({
         }
         
         .add-btn:hover {
-          background: #2563eb;
+          background: #DB2777;
         }
         
         .add-btn:disabled {
@@ -1653,7 +1615,6 @@ const ClassDiagramMaker = ({
         .class-header {
           padding: 12px 16px;
           text-align: center;
-          border-bottom: 2px solid;
           font-weight: 700;
           position: relative;
           border-radius: 6px 6px 0 0;
@@ -1667,40 +1628,28 @@ const ClassDiagramMaker = ({
           text-overflow: ellipsis;
         }
         
-        .class-section {
+        .class-content {
           display: flex;
           flex-direction: column;
-          border-bottom: 1px solid #e5e7eb;
           flex: 1;
+          padding: 8px 0;
         }
         
-        .class-section:last-child {
-          border-bottom: none;
-        }
-        
-        .section-title {
-          padding: 8px 16px;
-          font-weight: 600;
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          border-bottom: 1px solid #f3f4f6;
-        }
-        
-        .section-content {
-          padding: 8px 16px;
-          flex: 1;
+        .attributes-section, .methods-section {
           display: flex;
           flex-direction: column;
-          gap: 4px;
-          overflow: hidden;
+        }
+        
+        .section-divider {
+          height: 1px;
+          margin: 4px 16px;
         }
         
         .class-item {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 4px 8px;
+          padding: 4px 16px;
           margin-bottom: 2px;
           border-radius: 4px;
           cursor: pointer;
@@ -1709,7 +1658,7 @@ const ClassDiagramMaker = ({
         }
         
         .class-item:hover {
-          background: rgba(59, 130, 246, 0.1);
+          background: rgba(236, 72, 153, 0.1);
         }
         
         .item-text {
@@ -1721,14 +1670,6 @@ const ClassDiagramMaker = ({
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-        }
-        
-        .empty-section {
-          color: #9ca3af;
-          font-style: italic;
-          font-size: 11px;
-          text-align: center;
-          padding: 8px;
         }
         
         .item-delete-btn {
@@ -1817,13 +1758,13 @@ const ClassDiagramMaker = ({
           font-weight: 500;
           cursor: pointer;
           border: none;
-          background: #3b82f6;
+          background: #EC4899;
           color: white;
           transition: background-color 0.2s;
         }
         
         .import-btn:hover {
-          background: #2563eb;
+          background: #DB2777;
         }
         
         .json-textarea {
@@ -1840,8 +1781,8 @@ const ClassDiagramMaker = ({
         
         .json-textarea:focus {
           outline: none;
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+          border-color: #EC4899;
+          box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.1);
         }
         
         /* Modal styles */
@@ -1862,7 +1803,7 @@ const ClassDiagramMaker = ({
         .modal-content {
           background: white;
           border-radius: 12px;
-          width: 500px;
+          width: 600px;
           max-width: 90%;
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
           overflow: hidden;
@@ -1921,6 +1862,15 @@ const ClassDiagramMaker = ({
           flex: 1;
         }
         
+        .edit-sections-container {
+          display: flex;
+          gap: 24px;
+        }
+        
+        .edit-sections-container > .edit-section {
+          flex: 1;
+        }
+        
         .modal-footer {
           padding: 16px 24px 24px;
           display: flex;
@@ -1946,7 +1896,7 @@ const ClassDiagramMaker = ({
         
         .modal-save-btn {
           padding: 10px 20px;
-          background: #3b82f6;
+          background: #EC4899;
           color: white;
           border: none;
           border-radius: 6px;
@@ -1956,7 +1906,7 @@ const ClassDiagramMaker = ({
         }
         
         .modal-save-btn:hover {
-          background: #2563eb;
+          background: #DB2777;
         }
         
         .modal-save-btn:disabled {
@@ -1969,30 +1919,8 @@ const ClassDiagramMaker = ({
         }
         
         /* Class Editor Modal Styles */
-        .class-edit-tabs {
-          display: flex;
-          border-bottom: 1px solid #e2e8f0;
-          margin-bottom: 16px;
-        }
-        
-        .edit-tab {
-          padding: 8px 16px;
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-weight: 500;
-          color: #64748b;
-          border-bottom: 2px solid transparent;
-          transition: all 0.2s;
-        }
-        
-        .edit-tab.active {
-          color: #3b82f6;
-          border-bottom-color: #3b82f6;
-        }
-        
         .edit-section {
-          margin-top: 16px;
+          margin-top: 0;
         }
         
         .section-header {
@@ -2013,7 +1941,7 @@ const ClassDiagramMaker = ({
           align-items: center;
           gap: 6px;
           padding: 6px 12px;
-          background: #3b82f6;
+          background: #EC4899;
           color: white;
           border: none;
           border-radius: 6px;
@@ -2023,13 +1951,15 @@ const ClassDiagramMaker = ({
         }
         
         .add-item-btn:hover {
-          background: #2563eb;
+          background: #DB2777;
         }
         
         .items-list {
           border: 1px solid #e2e8f0;
           border-radius: 8px;
           overflow: hidden;
+          max-height: 300px;
+          overflow-y: auto;
         }
         
         .item-row {
@@ -2038,6 +1968,11 @@ const ClassDiagramMaker = ({
           align-items: center;
           padding: 8px 12px;
           border-bottom: 1px solid #f1f5f9;
+          cursor: pointer;
+        }
+        
+        .item-row:hover {
+          background: #f8fafc;
         }
         
         .item-row:last-child {
@@ -2049,32 +1984,11 @@ const ClassDiagramMaker = ({
           gap: 8px;
         }
         
-        .edit-btn {
-          padding: 4px 8px;
-          background: #e0e7ff;
-          color: #3b82f6;
-          border: none;
-          border-radius: 4px;
-          font-size: 12px;
-          cursor: pointer;
-          transition: background-color 0.2s;
-        }
-        
-        .edit-btn:hover {
-          background: #d1dbfa;
-        }
-        
         .empty-message {
           padding: 16px;
           text-align: center;
           color: #9ca3af;
           font-style: italic;
-        }
-        
-        .select-message {
-          padding: 32px;
-          text-align: center;
-          color: #64748b;
         }
       `}</style>
     </div>
