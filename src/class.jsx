@@ -497,24 +497,23 @@ const ClassDiagramMaker = ({
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
-    // Create a temporary canvas element
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const rect = canvasRef.current.getBoundingClientRect();
+    const originalTransform = canvasRef.current.style.transform;
+    canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
     
-    canvas.width = rect.width * 2;
-    canvas.height = rect.height * 2;
-    ctx.scale(2, 2);
-    
-    // Set background
-    ctx.fillStyle = '#f1f5f9';
-    ctx.fillRect(0, 0, rect.width, rect.height);
-    
-    // This is a simplified export - in a real app you'd want to use html2canvas or similar
-    const link = document.createElement('a');
-    link.download = `${classDiagram.name || 'class-diagram'}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    import('html2canvas').then(html2canvas => {
+      html2canvas.default(canvasRef.current, {
+        backgroundColor: '#f8fafc',
+        scale: 2,
+        useCORS: true
+      }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${classDiagram.name || 'class-diagram'}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        canvasRef.current.style.transform = originalTransform;
+      });
+    });
   };
 
   // Get nearest edge connection point
@@ -1017,6 +1016,34 @@ const ClassDiagramMaker = ({
             </div>
 
             <div className="sidebar-section">
+              <h3>Current Relationships</h3>
+              <div className="relationship-list">
+                {relationships.map(rel => {
+                  const from = classes.find(c => c.id === rel.from);
+                  const to = classes.find(c => c.id === rel.to);
+                  
+                  if (!from || !to) return null;
+                  
+                  return (
+                    <div key={rel.id} className="list-item">
+                      <div className="item-name">
+                        {from.name} → {to.name}
+                        <div className="item-type">({rel.type})</div>
+                      </div>
+                      {rel.label && <div className="item-label">{rel.label}</div>}
+                      <button 
+                        onClick={() => deleteRelationship(rel.id)}
+                        className="delete-btn"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="sidebar-section">
               <h3>UML Notation Guide</h3>
               <div className="notation-guide">
                 <div className="guide-item">
@@ -1043,34 +1070,6 @@ const ClassDiagramMaker = ({
                   <div>• Drag to move classes</div>
                   <div>• Drag resize handle to resize</div>
                 </div>
-              </div>
-            </div>
-
-            <div className="sidebar-section">
-              <h3>Current Relationships</h3>
-              <div className="relationship-list">
-                {relationships.map(rel => {
-                  const from = classes.find(c => c.id === rel.from);
-                  const to = classes.find(c => c.id === rel.to);
-                  
-                  if (!from || !to) return null;
-                  
-                  return (
-                    <div key={rel.id} className="list-item">
-                      <div className="item-name">
-                        {from.name} → {to.name}
-                        <div className="item-type">({rel.type})</div>
-                      </div>
-                      {rel.label && <div className="item-label">{rel.label}</div>}
-                      <button 
-                        onClick={() => deleteRelationship(rel.id)}
-                        className="delete-btn"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  );
-                })}
               </div>
             </div>
           </div>
