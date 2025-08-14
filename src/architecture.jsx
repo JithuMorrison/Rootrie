@@ -101,6 +101,29 @@ const ArchitectureDiagramMaker = ({
     });
   }, [currentComponents, currentGroups]);
 
+  // Calculate group nesting depth for proper z-index
+  const getGroupDepth = (groupId, visited = new Set()) => {
+    if (visited.has(groupId)) return 0; // Prevent infinite loops
+    visited.add(groupId);
+    
+    let maxDepth = 0;
+    currentGroups.forEach(group => {
+      if (group.groupIds && group.groupIds.includes(groupId)) {
+        maxDepth = Math.max(maxDepth, getGroupDepth(group.id, visited) + 1);
+      }
+    });
+    return maxDepth;
+  };
+
+  // Sort groups by depth (deepest first for rendering order)
+  const getSortedGroups = () => {
+    return [...currentGroups].sort((a, b) => {
+      const depthA = getGroupDepth(a.id);
+      const depthB = getGroupDepth(b.id);
+      return depthB - depthA; // Render deepest groups first
+    });
+  };
+
   const addComponent = () => {
     if (!newComponent.trim()) return;
     
@@ -608,7 +631,7 @@ const ArchitectureDiagramMaker = ({
           cursor: dragItem?.id === component.id ? 'grabbing' : 'grab',
           outline: isSelected ? '3px dashed #3b82f6' : 'none',
           outlineOffset: '2px',
-          zIndex: 20,
+          zIndex: 50, // Higher than all groups
           display: 'flex',
           flexDirection: 'column',
           background: 'white',
@@ -727,6 +750,10 @@ const ArchitectureDiagramMaker = ({
     );
     
     const isSelected = selectedGroups.some(g => g.id === group.id);
+    const depth = getGroupDepth(group.id);
+    // Calculate z-index: deeper groups have higher z-index to stay clickable
+    // Base z-index starts at 10, increases by 5 for each depth level
+    const zIndex = 10 + (depth * 5);
 
     return (
       <div 
@@ -744,10 +771,12 @@ const ArchitectureDiagramMaker = ({
           cursor: dragItem?.id === group.id ? 'grabbing' : 'grab',
           outline: isSelected ? '3px dashed #8b5cf6' : 'none',
           outlineOffset: '2px',
-          zIndex: 5,
+          zIndex: zIndex, // Dynamic z-index based on nesting depth
           paddingTop: '40px',
           boxSizing: 'border-box',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+          // Ensure pointer events work properly
+          pointerEvents: 'auto'
         }}
         onMouseDown={(e) => handleMouseDown(e, group, true)}
         onClick={(e) => handleGroupClick(e, group)}
@@ -762,9 +791,19 @@ const ArchitectureDiagramMaker = ({
           color: '#1e293b',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          // Ensure the header is clickable
+          pointerEvents: 'auto',
+          zIndex: zIndex + 1
         }}>
-          {group.name}
+          <span style={{ 
+            flex: 1, 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap' 
+          }}>
+            {group.name}
+          </span>
           <button 
             onClick={(e) => {
               e.stopPropagation();
@@ -779,7 +818,8 @@ const ArchitectureDiagramMaker = ({
               borderRadius: '4px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              zIndex: zIndex + 2 // Ensure delete button is always on top
             }}
           >
             <Trash2 size={14} />
@@ -791,10 +831,11 @@ const ArchitectureDiagramMaker = ({
           left: '12px',
           fontSize: '11px',
           color: '#64748b',
-          fontStyle: 'italic'
+          fontStyle: 'italic',
+          pointerEvents: 'none' // Don't interfere with group clicking
         }}>
           {groupComponents.length} component{groupComponents.length !== 1 ? 's' : ''}
-          {nestedGroups.length > 0 && `, ${nestedGroups.length} group ${nestedGroups.length !== 1 ? 's' : ''}`}
+          {nestedGroups.length > 0 && `, ${nestedGroups.length} group${nestedGroups.length !== 1 ? 's' : ''}`}
         </div>
       </div>
     );
@@ -834,7 +875,7 @@ const ArchitectureDiagramMaker = ({
           width: '100%',
           height: '100%',
           pointerEvents: 'none',
-          zIndex: 1
+          zIndex: 1 // Behind everything
         }}
       >
         <line
@@ -1605,6 +1646,55 @@ const ArchitectureDiagramMaker = ({
                   {currentComponents.map(component => (
                     <option key={component.id} value={component.id}>{component.name}</option>
                   ))}
+                </select>
+              </div>
+              
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  color: '#64748b'
+                }}>Connection Type</label>
+                <select 
+                  value={connectionType}
+                  onChange={(e) => setConnectionType(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px'
+                  }}
+                >
+                  <option value="solid">Solid Line</option>
+                  <option value="dashed">Dashed Line</option>
+                  <option value="dotted">Dotted Line</option>
+                </select>
+              </div>
+              
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  color: '#64748b'
+                }}>Direction</label>
+                <select 
+                  value={connectionDirection}
+                  onChange={(e) => setConnectionDirection(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    fontSize: '14px'
+                  }}
+                >
+                  <option value="directed">Directed (with arrow)</option>
+                  <option value="undirected">Undirected</option>
                 </select>
               </div>
               
