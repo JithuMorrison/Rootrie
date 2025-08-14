@@ -551,7 +551,6 @@ const ArchitectureDiagramMaker = ({
     const originalWidth = canvasRef.current.style.width;
     const originalHeight = canvasRef.current.style.height;
     
-    canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
     canvasRef.current.style.width = `${canvasSize.width}px`;
     canvasRef.current.style.height = `${canvasSize.height}px`;
     
@@ -1646,55 +1645,6 @@ const ArchitectureDiagramMaker = ({
                   {currentComponents.map(component => (
                     <option key={component.id} value={component.id}>{component.name}</option>
                   ))}
-                </select>
-              </div>
-              
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '4px',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  color: '#64748b'
-                }}>Connection Type</label>
-                <select 
-                  value={connectionType}
-                  onChange={(e) => setConnectionType(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    fontSize: '14px'
-                  }}
-                >
-                  <option value="solid">Solid Line</option>
-                  <option value="dashed">Dashed Line</option>
-                  <option value="dotted">Dotted Line</option>
-                </select>
-              </div>
-              
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '4px',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  color: '#64748b'
-                }}>Direction</label>
-                <select 
-                  value={connectionDirection}
-                  onChange={(e) => setConnectionDirection(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    fontSize: '14px'
-                  }}
-                >
-                  <option value="directed">Directed (with arrow)</option>
-                  <option value="undirected">Undirected</option>
                 </select>
               </div>
               
