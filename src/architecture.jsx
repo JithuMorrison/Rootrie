@@ -3,7 +3,7 @@ import {
   ArrowLeft, Save, Plus, Trash2, Layers, GitMerge, 
   Download, Upload, Image as ImageIcon, Copy, 
   Server, Database, Cpu, HardDrive, Network, Cloud, 
-  Router, Smartphone, Globe, Shield, Users, Box, Minus, Maximize2
+  Router, Smartphone, Globe, Shield, Users, Box, Minus, Maximize2, ZoomIn, ZoomOut
 } from 'lucide-react';
 
 // Predefined component types with icons and shapes
@@ -40,6 +40,7 @@ const ArchitectureDiagramMaker = ({
   const [jsonInput, setJsonInput] = useState('');
   const [dragItem, setDragItem] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [initialPositions, setInitialPositions] = useState({});
   const [selectedType, setSelectedType] = useState('service');
   const [showImageUpload, setShowImageUpload] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
@@ -49,7 +50,10 @@ const ArchitectureDiagramMaker = ({
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedComponents, setSelectedComponents] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [canvasSize, setCanvasSize] = useState({ width: 2000, height: 2000 });
   const canvasRef = useRef(null);
+  const canvasContainerRef = useRef(null);
 
   // Ensure we have the data from props or defaults
   const currentComponents = components.length > 0 ? components : architectureDiagram.components || [];
@@ -63,6 +67,39 @@ const ArchitectureDiagramMaker = ({
       groups: currentGroups 
     }, null, 2));
   }, [currentComponents, currentConnections, currentGroups]);
+
+  // Update canvas size based on content
+  useEffect(() => {
+    if (currentComponents.length === 0 && currentGroups.length === 0) return;
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+    // Check components
+    currentComponents.forEach(comp => {
+      minX = Math.min(minX, comp.x);
+      maxX = Math.max(maxX, comp.x + comp.width);
+      minY = Math.min(minY, comp.y);
+      maxY = Math.max(maxY, comp.y + comp.height);
+    });
+
+    // Check groups
+    currentGroups.forEach(group => {
+      minX = Math.min(minX, group.x);
+      maxX = Math.max(maxX, group.x + group.width);
+      minY = Math.min(minY, group.y);
+      maxY = Math.max(maxY, group.y + group.height);
+    });
+
+    // Add padding
+    const padding = 200;
+    const newWidth = Math.max(2000, maxX - minX + padding * 2);
+    const newHeight = Math.max(2000, maxY - minY + padding * 2);
+
+    setCanvasSize({
+      width: newWidth,
+      height: newHeight
+    });
+  }, [currentComponents, currentGroups]);
 
   const addComponent = () => {
     if (!newComponent.trim()) return;
@@ -235,14 +272,41 @@ const ArchitectureDiagramMaker = ({
     e.stopPropagation();
     
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const x = (e.clientX - rect.left) / zoomLevel;
+    const y = (e.clientY - rect.top) / zoomLevel;
     
     setDragItem({ ...item, isGroup });
     setDragOffset({
       x: x - item.x,
       y: y - item.y
     });
+
+    // Store initial positions for group dragging
+    if (isGroup) {
+      const positions = {};
+      
+      // Store initial positions of all components in the group
+      if (item.componentIds) {
+        item.componentIds.forEach(compId => {
+          const comp = currentComponents.find(c => c.id === compId);
+          if (comp) {
+            positions[`component_${compId}`] = { x: comp.x, y: comp.y };
+          }
+        });
+      }
+      
+      // Store initial positions of all nested groups
+      if (item.groupIds) {
+        item.groupIds.forEach(groupId => {
+          const group = currentGroups.find(g => g.id === groupId);
+          if (group) {
+            positions[`group_${groupId}`] = { x: group.x, y: group.y };
+          }
+        });
+      }
+      
+      setInitialPositions(positions);
+    }
   };
 
   const handleComponentClick = (e, component) => {
@@ -279,26 +343,42 @@ const ArchitectureDiagramMaker = ({
     if (!dragItem) return;
     
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = Math.max(0, e.clientX - rect.left - dragOffset.x);
-    const y = Math.max(0, e.clientY - rect.top - dragOffset.y);
+    const x = Math.max(0, (e.clientX - rect.left) / zoomLevel - dragOffset.x);
+    const y = Math.max(0, (e.clientY - rect.top) / zoomLevel - dragOffset.y);
     
     if (dragItem.isGroup) {
-      // Move group and all its components and nested groups
+      // Calculate the delta from the original position
       const dx = x - dragItem.x;
       const dy = y - dragItem.y;
       
+      // Move all components in the group by the same delta
       const updatedComponents = currentComponents.map(comp => {
         if (dragItem.componentIds && dragItem.componentIds.includes(comp.id)) {
-          return { ...comp, x: Math.max(0, comp.x + dx), y: Math.max(0, comp.y + dy) };
+          const initialPos = initialPositions[`component_${comp.id}`];
+          if (initialPos) {
+            return { 
+              ...comp, 
+              x: Math.max(0, initialPos.x + dx), 
+              y: Math.max(0, initialPos.y + dy) 
+            };
+          }
         }
         return comp;
       });
       
+      // Move all nested groups by the same delta
       const updatedGroups = currentGroups.map(group => {
         if (group.id === dragItem.id) {
-          return { ...group, x, y };
+          return { ...group, x: Math.max(0, x), y: Math.max(0, y) };
         } else if (dragItem.groupIds && dragItem.groupIds.includes(group.id)) {
-          return { ...group, x: Math.max(0, group.x + dx), y: Math.max(0, group.y + dy) };
+          const initialPos = initialPositions[`group_${group.id}`];
+          if (initialPos) {
+            return { 
+              ...group, 
+              x: Math.max(0, initialPos.x + dx), 
+              y: Math.max(0, initialPos.y + dy) 
+            };
+          }
         }
         return group;
       });
@@ -312,7 +392,7 @@ const ArchitectureDiagramMaker = ({
     } else {
       // Move single component
       const updatedComponents = currentComponents.map(comp => 
-        comp.id === dragItem.id ? { ...comp, x, y } : comp
+        comp.id === dragItem.id ? { ...comp, x: Math.max(0, x), y: Math.max(0, y) } : comp
       );
       
       onUpdateArchitectureDiagram({
@@ -322,10 +402,11 @@ const ArchitectureDiagramMaker = ({
         groups: currentGroups
       });
     }
-  }, [dragItem, dragOffset, currentComponents, currentConnections, currentGroups, architectureDiagram, onUpdateArchitectureDiagram]);
+  }, [dragItem, dragOffset, initialPositions, currentComponents, currentConnections, currentGroups, architectureDiagram, onUpdateArchitectureDiagram, zoomLevel]);
 
   const handleMouseUp = useCallback(() => {
     setDragItem(null);
+    setInitialPositions({});
   }, []);
 
   useEffect(() => {
@@ -427,24 +508,47 @@ const ArchitectureDiagramMaker = ({
     setImageUrl(e.target.value);
   };
 
+  const zoomIn = () => {
+    setZoomLevel(prev => Math.min(2, prev + 0.1));
+  };
+
+  const zoomOut = () => {
+    setZoomLevel(prev => Math.max(0.5, prev - 0.1));
+  };
+
+  const resetZoom = () => {
+    setZoomLevel(1);
+  };
+
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
+    // Temporarily reset transform for capture
     const originalTransform = canvasRef.current.style.transform;
+    const originalWidth = canvasRef.current.style.width;
+    const originalHeight = canvasRef.current.style.height;
+    
     canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
+    canvasRef.current.style.width = `${canvasSize.width}px`;
+    canvasRef.current.style.height = `${canvasSize.height}px`;
     
     import('html2canvas').then(html2canvas => {
       html2canvas.default(canvasRef.current, {
         backgroundColor: '#f8fafc',
         scale: 2,
-        useCORS: true
+        useCORS: true,
+        width: canvasSize.width,
+        height: canvasSize.height
       }).then(canvas => {
         const link = document.createElement('a');
         link.download = `${architectureDiagram.name || 'architecture-diagram'}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
         
+        // Restore original styles
         canvasRef.current.style.transform = originalTransform;
+        canvasRef.current.style.width = originalWidth;
+        canvasRef.current.style.height = originalHeight;
       });
     });
   };
@@ -690,7 +794,7 @@ const ArchitectureDiagramMaker = ({
           fontStyle: 'italic'
         }}>
           {groupComponents.length} component{groupComponents.length !== 1 ? 's' : ''}
-          {nestedGroups.length > 0 && `, ${nestedGroups.length} group${nestedGroups.length !== 1 ? 's' : ''}`}
+          {nestedGroups.length > 0 && `, ${nestedGroups.length} group ${nestedGroups.length !== 1 ? 's' : ''}`}
         </div>
       </div>
     );
@@ -813,6 +917,81 @@ const ArchitectureDiagramMaker = ({
         </h2>
         <div style={{ flex: 1 }}></div>
         <div style={{ display: 'flex', gap: '8px' }}>
+          {/* Zoom controls */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            marginRight: '16px',
+            background: '#f1f5f9',
+            borderRadius: '6px',
+            padding: '4px'
+          }}>
+            <button 
+              onClick={zoomOut}
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'none',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: '#64748b'
+              }}
+              title="Zoom Out"
+            >
+              <ZoomOut size={16} />
+            </button>
+            <div style={{
+              minWidth: '60px',
+              textAlign: 'center',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}>
+              {Math.round(zoomLevel * 100)}%
+            </div>
+            <button 
+              onClick={zoomIn}
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'none',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: '#64748b'
+              }}
+              title="Zoom In"
+            >
+              <ZoomIn size={16} />
+            </button>
+            <button 
+              onClick={resetZoom}
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'none',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: '#64748b',
+                marginLeft: '4px'
+              }}
+              title="Reset Zoom"
+            >
+              <Maximize2 size={16} />
+            </button>
+          </div>
+          
           <button 
             onClick={exportToImage}
             style={{
@@ -1542,9 +1721,10 @@ const ArchitectureDiagramMaker = ({
                             fontSize: '12px',
                             color: '#64748b',
                             marginTop: '2px'
-                          }}>
-                            {conn.label}
-                          </div>
+                          }}
+                        >
+                          {conn.label}
+                        </div>
                         )}
                       </div>
                       <button 
@@ -1574,26 +1754,37 @@ const ArchitectureDiagramMaker = ({
           
           {/* Canvas */}
           <div 
-            ref={canvasRef}
-            onClick={handleCanvasClick}
+            ref={canvasContainerRef}
             style={{
               flex: 1,
-              background: 'white',
-              position: 'relative',
               overflow: 'auto',
-              backgroundImage: 'linear-gradient(to right, #f1f5f9 1px, transparent 1px), linear-gradient(to bottom, #f1f5f9 1px, transparent 1px)',
-              backgroundSize: '20px 20px',
-              minHeight: '600px'
+              position: 'relative',
+              background: '#f8fafc'
             }}
           >
-            {/* Render groups first (behind components) */}
-            {currentGroups.map(renderGroup)}
-            
-            {/* Render connections */}
-            {currentConnections.map(renderConnection)}
-            
-            {/* Render components last (on top) */}
-            {currentComponents.map(renderComponent)}
+            <div 
+              ref={canvasRef}
+              onClick={handleCanvasClick}
+              style={{
+                position: 'absolute',
+                width: `${canvasSize.width}px`,
+                height: `${canvasSize.height}px`,
+                background: 'white',
+                backgroundImage: 'linear-gradient(to right, #f1f5f9 1px, transparent 1px), linear-gradient(to bottom, #f1f5f9 1px, transparent 1px)',
+                backgroundSize: `${20}px ${20}px`,
+                transform: `scale(${zoomLevel})`,
+                transformOrigin: '0 0'
+              }}
+            >
+              {/* Render groups first (behind components) */}
+              {currentGroups.map(renderGroup)}
+              
+              {/* Render connections */}
+              {currentConnections.map(renderConnection)}
+              
+              {/* Render components last (on top) */}
+              {currentComponents.map(renderComponent)}
+            </div>
           </div>
         </div>
       ) : (
