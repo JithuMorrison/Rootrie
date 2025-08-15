@@ -691,7 +691,7 @@ const ArchitectureDiagramMaker = ({
           flexDirection: 'column',
           justifyContent: 'center',
           alignItems: 'center',
-          padding: '6px 8px',
+          padding: '6px 0px',
           color: 'white',
           fontWeight: '600',
           borderRadius: '0 0 10px 10px',
