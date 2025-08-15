@@ -3,7 +3,7 @@ import {
   ArrowLeft, Save, Plus, Trash2, Layers, GitMerge, 
   Download, Upload, Image as ImageIcon, Copy, 
   Server, Database, Cpu, HardDrive, Network, Cloud, 
-  Router, Smartphone, Globe, Shield, Users, Box, Minus, Maximize2, ZoomIn, ZoomOut
+  Router, Smartphone, Globe, Shield, Users, Box, Minus, Maximize2, ZoomIn, ZoomOut, AppWindow, Zap
 } from 'lucide-react';
 
 // Predefined component types with icons and shapes
@@ -19,6 +19,10 @@ const componentTypes = [
   { id: 'device', name: 'Device', icon: <Smartphone size={20} />, color: '#f97316' },
   { id: 'internet', name: 'Internet', icon: <Globe size={20} />, color: '#06b6d4' },
   { id: 'security', name: 'Security', icon: <Shield size={20} />, color: '#ef4444' },
+  { id: 'module', name: 'Module', icon: <Box size={20} />, color: '#0ea5e9' },
+  { id: 'application', name: 'Application', icon: <AppWindow size={20} />, color: '#9333ea' },
+  { id: 'layer', name: 'Layer', icon: <Layers size={20} />, color: '#facc15' },
+  { id: 'gateway', name: 'Gateway', icon: <Zap size={20} />, color: '#22d3ee' },
   { id: 'custom', name: 'Custom', icon: <Plus size={20} />, color: '#64748b' }
 ];
 
