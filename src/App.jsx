@@ -13,6 +13,8 @@ import ArchitectureDiagramMain from './architecturemain';
 import ArchitectureDiagramMaker from './architecture';
 import ClassDiagramMain from './classmain';
 import ClassDiagramMaker from './class';
+import DomainModelMain from './domainmodelmain';
+import DomainModelMaker from './domainmodel';
 
 // Diagram type constants
 const DIAGRAM_TYPES = {
@@ -22,7 +24,8 @@ const DIAGRAM_TYPES = {
   USE_CASE: 'usecase',
   SEQUENCE: 'sequence',
   ARCHITECTURE: 'architecture',
-  CLASS: 'class'
+  CLASS: 'class',
+  DOMAIN_MODEL: 'domainmodel'
 };
 
 // Initial data structure
@@ -40,7 +43,9 @@ const getInitialData = () => ({
   architectureDiagrams: [],
   currentArchitectureDiagram: null,
   classDiagrams: [],
-  currentClassDiagram: null
+  currentClassDiagram: null,
+  domainModels: [],
+  currentDomainModel: null
 });
 
 const getStoredData = () => {
@@ -92,6 +97,7 @@ const App = () => {
     updateData.currentSequenceDiagram = null;
     updateData.currentArchitectureDiagram = null;
     updateData.currentClassDiagram = null;
+    updateData.currentDomainModel = null;
 
     // Add new diagram and set as current
     switch (type) {
@@ -122,6 +128,10 @@ const App = () => {
       case DIAGRAM_TYPES.CLASS:
         updateData.classDiagrams = [...currentData.classDiagrams, baseDiagram];
         updateData.currentClassDiagram = baseDiagram;
+        break;
+      case DIAGRAM_TYPES.DOMAIN_MODEL:
+        updateData.domainModels = [...currentData.domainModels, baseDiagram];
+        updateData.currentDomainModel = baseDiagram;
         break;
     }
 
@@ -177,6 +187,12 @@ const App = () => {
           updateData.currentClassDiagram = null;
         }
         break;
+      case DIAGRAM_TYPES.DOMAIN_MODEL:
+        updateData.domainModels = currentData.domainModels.filter(d => d.id !== id);
+        if (currentData.currentDomainModel?.id === id) {
+          updateData.currentDomainModel = null;
+        }
+        break;
     }
 
     saveToStorage(updateData);
@@ -230,6 +246,12 @@ const App = () => {
           d.id === updatedDiagram.id ? updatedDiagram : d
         );
         updateData.currentClassDiagram = updatedDiagram;
+        break;
+      case DIAGRAM_TYPES.DOMAIN_MODEL:
+        updateData.domainModels = currentData.domainModels.map(d => 
+          d.id === updatedDiagram.id ? updatedDiagram : d
+        );
+        updateData.currentDomainModel = updatedDiagram;
         break;
     }
 
@@ -304,6 +326,15 @@ const App = () => {
     });
   };
 
+  const createDomainModel = (name) => {
+    createDiagram(DIAGRAM_TYPES.DOMAIN_MODEL, name, {
+      entities: [],
+      relationships: [],
+      zoom: 1,
+      pan: { x: 0, y: 0 }
+    });
+  };
+
   // Specific diagram deletion functions
   const deleteProject = (id) => deleteDiagram(DIAGRAM_TYPES.PROJECT, id);
   const deleteFlowchart = (id) => deleteDiagram(DIAGRAM_TYPES.FLOWCHART, id);
@@ -312,6 +343,7 @@ const App = () => {
   const deleteSequenceDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.SEQUENCE, id);
   const deleteArchitectureDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.ARCHITECTURE, id);
   const deleteClassDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.CLASS, id);
+  const deleteDomainModel = (id) => deleteDiagram(DIAGRAM_TYPES.DOMAIN_MODEL, id);
 
   // Specific diagram update functions
   const updateProject = (project) => updateDiagram(DIAGRAM_TYPES.PROJECT, project);
@@ -321,6 +353,7 @@ const App = () => {
   const updateSequenceDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.SEQUENCE, diagram);
   const updateArchitectureDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.ARCHITECTURE, diagram);
   const updateClassDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.CLASS, diagram);
+  const updateDomainModel = (diagram) => updateDiagram(DIAGRAM_TYPES.DOMAIN_MODEL, diagram);
 
   const importFlowchartFromJson = (jsonString) => {
     try {
@@ -348,7 +381,8 @@ const App = () => {
       currentUseCaseDiagram: null,
       currentSequenceDiagram: null,
       currentArchitectureDiagram: null,
-      currentClassDiagram: null
+      currentClassDiagram: null,
+      currentDomainModel: null
     };
     
     saveToStorage(updateData);
@@ -366,7 +400,8 @@ const App = () => {
       currentUseCaseDiagram: null,
       currentSequenceDiagram: null,
       currentArchitectureDiagram: null,
-      currentClassDiagram: null
+      currentClassDiagram: null,
+      currentDomainModel: null
     };
 
     // Set the specific current diagram
@@ -391,6 +426,9 @@ const App = () => {
         break;
       case DIAGRAM_TYPES.CLASS:
         updateData.currentClassDiagram = diagram;
+        break;
+      case DIAGRAM_TYPES.DOMAIN_MODEL:
+        updateData.currentDomainModel = diagram;
         break;
     }
 
@@ -571,6 +609,19 @@ const App = () => {
           onDeleteClassDiagram={deleteClassDiagram}
         />
       )
+    },
+    {
+      type: DIAGRAM_TYPES.DOMAIN_MODEL,
+      label: '🏢 Domain Model',
+      color: '#06b6d4',
+      component: (
+        <DomainModelMain 
+          domainModels={getCurrentData().domainModels}
+          onCreateDomainModel={createDomainModel}
+          onLoadDomainModel={(diagram) => loadDiagram(DIAGRAM_TYPES.DOMAIN_MODEL, diagram)}
+          onDeleteDomainModel={deleteDomainModel}
+        />
+      )
     }
   ];
 
@@ -637,6 +688,14 @@ const App = () => {
             classes={currentData.currentClassDiagram.classes || []}
             relationships={currentData.currentClassDiagram.relationships || []}
             onUpdateClassDiagram={updateClassDiagram}
+            onBack={handleBack}
+          />
+        ) : currentData.currentDomainModel ? (
+          <DomainModelMaker
+            domainModel={currentData.currentDomainModel}
+            entities={currentData.currentDomainModel.entities || []}
+            relationships={currentData.currentDomainModel.relationships || []}
+            onUpdateDomainModel={updateDomainModel}
             onBack={handleBack}
           />
         ) : (
