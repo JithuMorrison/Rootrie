@@ -11,7 +11,10 @@ import {
   Copy,
   ChevronDown,
   ChevronRight,
-  X
+  X,
+  ZoomIn,
+  ZoomOut,
+  Palette
 } from 'lucide-react';
 
 const ClassDiagramMaker = ({ 
@@ -37,6 +40,10 @@ const ClassDiagramMaker = ({
   const [editIndex, setEditIndex] = useState(-1); // -1 for new item
   const [newAttribute, setNewAttribute] = useState({ visibility: '+', name: '', type: 'String' });
   const [newMethod, setNewMethod] = useState({ visibility: '+', name: '', returnType: 'void' });
+  const [zoom, setZoom] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const canvasRef = useRef(null);
 
   // Color schemes for classes (pink theme with variations)
@@ -49,6 +56,10 @@ const ClassDiagramMaker = ({
     { header: '#8B5CF6', border: '#7C3AED', background: '#F5F3FF' }, // Violet
     { header: '#3B82F6', border: '#2563EB', background: '#EFF6FF' }, // Blue
     { header: '#10B981', border: '#059669', background: '#ECFDF5' }, // Green
+    { header: '#EF4444', border: '#DC2626', background: '#FEF2F2' }, // Red
+    { header: '#8B5A2B', border: '#A16207', background: '#FFFBEB' }, // Brown
+    { header: '#6B7280', border: '#4B5563', background: '#F9FAFB' }, // Gray
+    { header: '#14B8A6', border: '#0D9488', background: '#F0FDFA' }, // Teal
   ];
 
   // Common data types for dropdowns
@@ -66,6 +77,31 @@ const ClassDiagramMaker = ({
 
   const getRandomColorScheme = () => {
     return colorSchemes[Math.floor(Math.random() * colorSchemes.length)];
+  };
+
+  const randomizeAllColors = () => {
+    const updatedClasses = classes.map(cls => ({
+      ...cls,
+      colorScheme: getRandomColorScheme()
+    }));
+    
+    onUpdateClassDiagram({
+      ...classDiagram,
+      classes: updatedClasses
+    });
+  };
+
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev * 1.2, 3));
+  };
+
+  const handleZoomOut = () => {
+    setZoom(prev => Math.max(prev / 1.2, 0.3));
+  };
+
+  const handleResetZoom = () => {
+    setZoom(1);
+    setPanOffset({ x: 0, y: 0 });
   };
 
   const calculateTextWidth = (text, fontSize = '12px', fontFamily = "'SF Mono', monospace") => {
@@ -386,19 +422,28 @@ const ClassDiagramMaker = ({
     });
   };
 
-  const handleMouseDown = (e, cls, isResize = false) => {
+  const handleMouseDown = (e, cls = null, isResize = false) => {
     e.stopPropagation();
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     
-    if (isResize) {
-      setResizingItem(cls);
-      setResizeStart({ x: e.clientX, y: e.clientY });
+    if (cls) {
+      if (isResize) {
+        setResizingItem(cls);
+        setResizeStart({ x: e.clientX, y: e.clientY });
+      } else {
+        setDragItem(cls);
+        setDragOffset({
+          x: (e.clientX - rect.left) / zoom - panOffset.x - cls.x,
+          y: (e.clientY - rect.top) / zoom - panOffset.y - cls.y
+        });
+      }
     } else {
-      setDragItem(cls);
-      setDragOffset({
-        x: e.clientX - rect.left - cls.x,
-        y: e.clientY - rect.top - cls.y
+      // Start panning
+      setIsPanning(true);
+      setPanStart({
+        x: e.clientX - panOffset.x,
+        y: e.clientY - panOffset.y
       });
     }
   };
@@ -408,8 +453,8 @@ const ClassDiagramMaker = ({
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       
-      const x = Math.max(0, e.clientX - rect.left - dragOffset.x);
-      const y = Math.max(0, e.clientY - rect.top - dragOffset.y);
+      const x = Math.max(0, (e.clientX - rect.left) / zoom - panOffset.x - dragOffset.x);
+      const y = Math.max(0, (e.clientY - rect.top) / zoom - panOffset.y - dragOffset.y);
       
       const updatedClasses = classes.map(cls => 
         cls.id === dragItem.id ? { ...cls, x, y } : cls
@@ -420,8 +465,8 @@ const ClassDiagramMaker = ({
         classes: updatedClasses
       });
     } else if (resizingItem) {
-      const dx = e.clientX - resizeStart.x;
-      const dy = e.clientY - resizeStart.y;
+      const dx = (e.clientX - resizeStart.x) / zoom;
+      const dy = (e.clientY - resizeStart.y) / zoom;
       
       const updatedClasses = classes.map(cls => {
         if (cls.id === resizingItem.id) {
@@ -442,16 +487,28 @@ const ClassDiagramMaker = ({
       });
       
       setResizeStart({ x: e.clientX, y: e.clientY });
+    } else if (isPanning) {
+      setPanOffset({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y
+      });
     }
   };
 
   const handleMouseUp = () => {
     setDragItem(null);
     setResizingItem(null);
+    setIsPanning(false);
+  };
+
+  const handleWheel = (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoom(prev => Math.max(0.3, Math.min(3, prev * delta)));
   };
 
   useEffect(() => {
-    if (dragItem || resizingItem) {
+    if (dragItem || resizingItem || isPanning) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
       
@@ -460,7 +517,7 @@ const ClassDiagramMaker = ({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [dragItem, resizingItem, dragOffset, resizeStart]);
+  }, [dragItem, resizingItem, isPanning, dragOffset, resizeStart, panStart, zoom, panOffset]);
 
   const exportToJson = () => {
     const data = { classes, relationships };
@@ -851,8 +908,8 @@ const ClassDiagramMaker = ({
     if (e.target === canvasRef.current) {
       // Double click on empty canvas - add a new class
       const rect = canvasRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const x = (e.clientX - rect.left) / zoom - panOffset.x;
+      const y = (e.clientY - rect.top) / zoom - panOffset.y;
       
       const className = prompt('Enter class name:');
       if (className && className.trim()) {
@@ -894,29 +951,46 @@ const ClassDiagramMaker = ({
         </button>
         <h2>{classDiagram.name}</h2>
         <div className="spacer"></div>
-        <div className="export-buttons">
-          <button onClick={exportToImage} className="export-btn">
-            <Image size={16} /> Export Image
+        <div className="toolbar-controls">
+          <div className="zoom-controls">
+            <button onClick={handleZoomOut} className="zoom-btn">
+              <ZoomOut size={16} />
+            </button>
+            <span className="zoom-level">{Math.round(zoom * 100)}%</span>
+            <button onClick={handleZoomIn} className="zoom-btn">
+              <ZoomIn size={16} />
+            </button>
+            <button onClick={handleResetZoom} className="zoom-btn reset">
+              Reset
+            </button>
+          </div>
+          <button onClick={randomizeAllColors} className="color-btn">
+            <Palette size={16} /> Randomize Colors
           </button>
-          <button onClick={copyToClipboard} className="export-btn">
-            <Copy size={16} /> Copy JSON
-          </button>
-          <button 
-            onClick={() => {
-              const blob = new Blob([exportToJson()], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${classDiagram.name || 'class-diagram'}.json`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-            }} 
-            className="export-btn"
-          >
-            <Download size={16} /> Export JSON
-          </button>
+          <div className="export-buttons">
+            <button onClick={exportToImage} className="export-btn">
+              <Image size={16} /> Export Image
+            </button>
+            <button onClick={copyToClipboard} className="export-btn">
+              <Copy size={16} /> Copy JSON
+            </button>
+            <button 
+              onClick={() => {
+                const blob = new Blob([exportToJson()], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${classDiagram.name || 'class-diagram'}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }} 
+              className="export-btn"
+            >
+              <Download size={16} /> Export JSON
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1080,6 +1154,8 @@ const ClassDiagramMaker = ({
                   <div>• Double-click class to edit</div>
                   <div>• Drag to move classes</div>
                   <div>• Drag resize handle to resize</div>
+                  <div>• Mouse wheel to zoom</div>
+                  <div>• Drag empty space to pan</div>
                 </div>
               </div>
             </div>
@@ -1089,9 +1165,22 @@ const ClassDiagramMaker = ({
             className="diagram-canvas" 
             ref={canvasRef}
             onDoubleClick={handleCanvasDoubleClick}
+            onMouseDown={(e) => handleMouseDown(e)}
+            onWheel={handleWheel}
           >
-            {relationships.map(renderRelationship)}
-            {classes.map(renderClass)}
+            <div 
+              className="diagram-content"
+              style={{
+                transform: `scale(${zoom}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                transformOrigin: '0 0',
+                width: '5000px',
+                height: '5000px',
+                position: 'relative'
+              }}
+            >
+              {relationships.map(renderRelationship)}
+              {classes.map(renderClass)}
+            </div>
           </div>
         </div>
       ) : (
@@ -1382,6 +1471,74 @@ const ClassDiagramMaker = ({
           flex: 1;
         }
         
+        .toolbar-controls {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+        
+        .zoom-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px;
+          background: #f1f5f9;
+          border-radius: 8px;
+          border: 1px solid #e2e8f0;
+        }
+        
+        .zoom-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border: none;
+          background: transparent;
+          border-radius: 6px;
+          cursor: pointer;
+          color: #64748b;
+          transition: all 0.2s;
+        }
+        
+        .zoom-btn:hover {
+          background: #e2e8f0;
+          color: #1e293b;
+        }
+        
+        .zoom-btn.reset {
+          width: auto;
+          padding: 0 12px;
+          font-size: 12px;
+          font-weight: 500;
+        }
+        
+        .zoom-level {
+          font-size: 12px;
+          color: #64748b;
+          font-weight: 500;
+          min-width: 40px;
+          text-align: center;
+        }
+        
+        .color-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background: #8B5CF6;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        }
+        
+        .color-btn:hover {
+          background: #7C3AED;
+        }
+        
         .export-buttons {
           display: flex;
           gap: 8px;
@@ -1446,7 +1603,7 @@ const ClassDiagramMaker = ({
         }
         
         .diagram-sidebar {
-          width: 320px;
+          width: 280px;
           background: white;
           border-right: 1px solid #e2e8f0;
           display: flex;
@@ -1600,8 +1757,18 @@ const ClassDiagramMaker = ({
           background-size: 20px 20px;
           background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
           position: relative;
-          overflow: auto;
-          cursor: crosshair;
+          overflow: hidden;
+          cursor: grab;
+        }
+        
+        .diagram-canvas:active {
+          cursor: grabbing;
+        }
+        
+        .diagram-content {
+          position: absolute;
+          top: 0;
+          left: 0;
         }
         
         .class-box {
@@ -1647,24 +1814,24 @@ const ClassDiagramMaker = ({
         .attributes-section, .methods-section {
           display: flex;
           flex-direction: column;
-          padding: 3px 0; /* Reduced from 8px to 3px */
+          padding: 3px 0;
         }
         
         .section-divider {
           height: 1px;
-          margin: 0 16px; /* Removed vertical margin */
+          margin: 0 16px;
         }
         
         .class-item {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 0px 16px; /* Reduced from 4px to 2px */
-          margin-bottom: 1px; /* Reduced from 2px to 1px */
+          padding: 0px 16px;
+          margin-bottom: 1px;
           border-radius: 4px;
           cursor: pointer;
           transition: background-color 0.15s;
-          min-height: 18px; /* Reduced from 22px to 18px */
+          min-height: 18px;
         }
         
         .class-item:hover {
@@ -1676,7 +1843,7 @@ const ClassDiagramMaker = ({
           font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
           font-size: 12px;
           color: #374151;
-          line-height: 1.2; /* Reduced from 1.3 to 1.2 */
+          line-height: 1.2;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
