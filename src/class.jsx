@@ -79,7 +79,6 @@ const ClassDiagramMaker = ({
     // Calculate required width based on content
     const minWidth = 180;
     const padding = 32; // 16px on each side
-    const charWidth = 8; // Approximate width per character
     
     // Calculate width based on class name
     const classNameWidth = calculateTextWidth(cls.name, '16px', "'Inter', sans-serif") + padding;
@@ -108,24 +107,30 @@ const ClassDiagramMaker = ({
       maxMethodWidth
     );
     
-    // Calculate height based on content
-    const headerHeight = 40;
-    const itemHeight = 22;
-    const sectionPadding = 4; // Reduced padding between sections
+    // Calculate height based on content with tighter spacing
+    const headerHeight = 40; // Header height
+    const itemHeight = 26; // Reduced from 22 to 18
+    const sectionPadding = 6; // Reduced from 4 to 2 - padding around sections
+    const dividerHeight = 1; // Height of divider line between sections
     
+    // Calculate attributes height
     const attributesHeight = cls.attributes.length > 0 
-      ? (cls.attributes.length * itemHeight) + sectionPadding
+      ? (cls.attributes.length * itemHeight) + sectionPadding * 2 // Top and bottom padding
       : 0;
       
+    // Calculate methods height
     const methodsHeight = cls.methods.length > 0
-      ? (cls.methods.length * itemHeight) + sectionPadding
+      ? (cls.methods.length * itemHeight) + sectionPadding * 2 // Top and bottom padding
       : 0;
     
-    const calculatedHeight = headerHeight + attributesHeight + methodsHeight + (cls.attributes.length > 0 && cls.methods.length > 0 ? 2 : 0); // Add 2px for the divider if both sections exist
+    // Add divider height only if both sections exist
+    const dividerSpace = (cls.attributes.length > 0 && cls.methods.length > 0) ? dividerHeight : 0;
+    
+    const calculatedHeight = headerHeight + attributesHeight + methodsHeight + dividerSpace;
     
     return {
       width: Math.min(calculatedWidth, 400), // Cap at 400px to prevent too wide
-      height: Math.max(calculatedHeight, 80) // Minimum height of 80px
+      height: Math.max(calculatedHeight, 60) // Reduced minimum height from 80 to 60
     };
   };
 
@@ -421,7 +426,7 @@ const ClassDiagramMaker = ({
       const updatedClasses = classes.map(cls => {
         if (cls.id === resizingItem.id) {
           const newWidth = Math.max(180, cls.width + dx);
-          const newHeight = Math.max(80, cls.height + dy);
+          const newHeight = Math.max(90, cls.height + dy);
           return {
             ...cls,
             width: newWidth,
@@ -1631,29 +1636,29 @@ const ClassDiagramMaker = ({
           display: flex;
           flex-direction: column;
           flex: 1;
-          padding: 8px 0;
         }
         
         .attributes-section, .methods-section {
           display: flex;
           flex-direction: column;
+          padding: 3px 0; /* Reduced from 8px to 3px */
         }
         
         .section-divider {
           height: 1px;
-          margin: 4px 16px;
+          margin: 0 16px; /* Removed vertical margin */
         }
         
         .class-item {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 4px 16px;
-          margin-bottom: 2px;
+          padding: 0px 16px; /* Reduced from 4px to 2px */
+          margin-bottom: 1px; /* Reduced from 2px to 1px */
           border-radius: 4px;
           cursor: pointer;
           transition: background-color 0.15s;
-          min-height: 22px;
+          min-height: 18px; /* Reduced from 22px to 18px */
         }
         
         .class-item:hover {
@@ -1665,7 +1670,7 @@ const ClassDiagramMaker = ({
           font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
           font-size: 12px;
           color: #374151;
-          line-height: 1.3;
+          line-height: 1.2; /* Reduced from 1.3 to 1.2 */
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
