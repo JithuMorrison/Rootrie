@@ -25,6 +25,8 @@ const DomainModelMaker = ({
   const [fromEntity, setFromEntity] = useState('');
   const [toEntity, setToEntity] = useState('');
   const [relationshipType, setRelationshipType] = useState('association');
+  const [multiplicityFrom, setMultiplicityFrom] = useState('1');
+  const [multiplicityTo, setMultiplicityTo] = useState('1');
   const [activeTab, setActiveTab] = useState('editor');
   const [jsonInput, setJsonInput] = useState('');
   const [dragItem, setDragItem] = useState(null);
@@ -51,6 +53,9 @@ const DomainModelMaker = ({
 
   // Common data types for dropdowns
   const dataTypes = ['String', 'Integer', 'Number', 'Boolean', 'Date', 'DateTime', 'Money', 'Text', 'ID'];
+  
+  // Multiplicity options
+  const multiplicityOptions = ['1', '*', '0..1', '1..*', '0..*'];
 
   useEffect(() => {
     setJsonInput(JSON.stringify({ entities, relationships }, null, 2));
@@ -90,11 +95,12 @@ const DomainModelMaker = ({
       maxAttributeWidth
     );
     
-    // Calculate height based on content
+    // Calculate height based on content with tighter spacing
     const headerHeight = 40;
-    const itemHeight = 22;
-    const sectionPadding = 4;
+    const itemHeight = 22; // Height for each attribute
+    const sectionPadding = 6; // Padding around sections
     
+    // Calculate attributes height
     const attributesHeight = entity.attributes.length > 0 
       ? (entity.attributes.length * itemHeight) + sectionPadding
       : 0;
@@ -217,8 +223,8 @@ const DomainModelMaker = ({
         to: to.id,
         type: relationshipType,
         label: newRelationship || '',
-        multiplicityFrom: '1',
-        multiplicityTo: '1'
+        multiplicityFrom: multiplicityFrom,
+        multiplicityTo: multiplicityTo
       }
     ];
     
@@ -230,6 +236,8 @@ const DomainModelMaker = ({
     setNewRelationship('');
     setFromEntity('');
     setToEntity('');
+    setMultiplicityFrom('1');
+    setMultiplicityTo('1');
   };
 
   const deleteEntity = (entityId) => {
@@ -367,9 +375,15 @@ const DomainModelMaker = ({
     try {
       const data = JSON.parse(jsonInput);
       if (Array.isArray(data.entities) && Array.isArray(data.relationships)) {
+        // Recalculate dimensions for imported entities
+        const updatedEntities = data.entities.map(entity => ({
+          ...entity,
+          ...calculateEntityDimensions(entity)
+        }));
+
         onUpdateDomainModel({
           ...domainModel,
-          entities: data.entities,
+          entities: updatedEntities,
           relationships: data.relationships
         });
       } else {
@@ -424,43 +438,29 @@ const DomainModelMaker = ({
       y: toRect.y + toRect.height / 2
     };
 
-    // Calculate which edge of 'from' rectangle is closest to 'to' rectangle
+    // Calculate direction vector
     const dx = toCenter.x - fromCenter.x;
     const dy = toCenter.y - fromCenter.y;
     
-    // Determine the closest edge
-    const fromEdge = {
-      x: fromCenter.x + (dx > 0 ? fromRect.width / 2 : -fromRect.width / 2),
-      y: fromCenter.y + (Math.abs(dx) * fromRect.height / fromRect.width > Math.abs(dy) ? 
-          (dy > 0 ? fromRect.height / 2 : -fromRect.height / 2) : 
-          (dy > 0 ? fromRect.height / 2 : -fromRect.height / 2) * (fromRect.width / fromRect.height))
-    };
+    // Determine which edge to connect to based on direction
+    let fromPoint, toPoint;
     
-    const toEdge = {
-      x: toCenter.x + (dx < 0 ? toRect.width / 2 : -toRect.width / 2),
-      y: toCenter.y + (Math.abs(dx) * toRect.height / toRect.width > Math.abs(dy) ?
-          (dy < 0 ? toRect.height / 2 : -toRect.height / 2) :
-          (dy < 0 ? toRect.height / 2 : -toRect.height / 2) * (toRect.width / toRect.height))
-    };
-
-    // Adjust to actual edge boundaries
-    const fromPoint = {
-      x: Math.max(fromRect.x, Math.min(fromRect.x + fromRect.width, 
-          Math.abs(dx) > Math.abs(dy) * (fromRect.width / fromRect.height) ? 
-          fromCenter.x + (dx > 0 ? fromRect.width / 2 : -fromRect.width / 2) : fromCenter.x)),
-      y: Math.max(fromRect.y, Math.min(fromRect.y + fromRect.height,
-          Math.abs(dy) > Math.abs(dx) * (fromRect.height / fromRect.width) ?
-          fromCenter.y + (dy > 0 ? fromRect.height / 2 : -fromRect.height / 2) : fromCenter.y))
-    };
-    
-    const toPoint = {
-      x: Math.max(toRect.x, Math.min(toRect.x + toRect.width,
-          Math.abs(dx) > Math.abs(dy) * (toRect.width / toRect.height) ?
-          toCenter.x + (dx < 0 ? toRect.width / 2 : -toRect.width / 2) : toCenter.x)),
-      y: Math.max(toRect.y, Math.min(toRect.y + toRect.height,
-          Math.abs(dy) > Math.abs(dx) * (toRect.height / toRect.width) ?
-          toCenter.y + (dy < 0 ? toRect.height / 2 : -toRect.height / 2) : toCenter.y))
-    };
+    // Calculate intersection with rectangle edges
+    if (Math.abs(dx) / fromRect.width > Math.abs(dy) / fromRect.height) {
+      // Horizontal connection
+      const fromX = fromCenter.x + (dx > 0 ? fromRect.width / 2 : -fromRect.width / 2);
+      const toX = toCenter.x + (dx > 0 ? -toRect.width / 2 : toRect.width / 2);
+      
+      fromPoint = { x: fromX, y: fromCenter.y };
+      toPoint = { x: toX, y: toCenter.y };
+    } else {
+      // Vertical connection
+      const fromY = fromCenter.y + (dy > 0 ? fromRect.height / 2 : -fromRect.height / 2);
+      const toY = toCenter.y + (dy > 0 ? -toRect.height / 2 : toRect.height / 2);
+      
+      fromPoint = { x: fromCenter.x, y: fromY };
+      toPoint = { x: toCenter.x, y: toY };
+    }
 
     return { fromPoint, toPoint };
   };
@@ -702,8 +702,9 @@ const DomainModelMaker = ({
                   textAnchor="middle"
                   fontSize="10"
                   fill="#475569"
+                  fontWeight="500"
                 >
-                  {relationship.multiplicityFrom}
+                  {relationship.multiplicityFrom || '1'}
                 </text>
                 <text
                   x={fromPoint.x + (toPoint.x - fromPoint.x) * 0.75}
@@ -711,8 +712,9 @@ const DomainModelMaker = ({
                   textAnchor="middle"
                   fontSize="10"
                   fill="#475569"
+                  fontWeight="500"
                 >
-                  {relationship.multiplicityTo}
+                  {relationship.multiplicityTo || '1'}
                 </text>
               </g>
             </>
@@ -882,7 +884,10 @@ const DomainModelMaker = ({
                   onChange={(e) => setRelationshipType(e.target.value)}
                 >
                   <option value="association">Association</option>
+                  <option value="navigable">Navigable Association</option>
                   <option value="inheritance">Inheritance</option>
+                  <option value="realization">Realization</option>
+                  <option value="dependency">Dependency</option>
                   <option value="aggregation">Aggregation</option>
                   <option value="composition">Composition</option>
                 </select>
@@ -890,29 +895,23 @@ const DomainModelMaker = ({
               <div className="form-group">
                 <label>Multiplicity (From)</label>
                 <select 
-                  value={relationshipType === 'association' ? '1' : ''}
-                  onChange={(e) => {
-                    // Update multiplicity logic would go here
-                  }}
+                  value={multiplicityFrom}
+                  onChange={(e) => setMultiplicityFrom(e.target.value)}
                 >
-                  <option value="1">1</option>
-                  <option value="*">* (Many)</option>
-                  <option value="0..1">0..1 (Optional)</option>
-                  <option value="1..*">1..* (One or more)</option>
+                  {multiplicityOptions.map(mult => (
+                    <option key={mult} value={mult}>{mult}</option>
+                  ))}
                 </select>
               </div>
               <div className="form-group">
                 <label>Multiplicity (To)</label>
                 <select 
-                  value={relationshipType === 'association' ? '1' : ''}
-                  onChange={(e) => {
-                    // Update multiplicity logic would go here
-                  }}
+                  value={multiplicityTo}
+                  onChange={(e) => setMultiplicityTo(e.target.value)}
                 >
-                  <option value="1">1</option>
-                  <option value="*">* (Many)</option>
-                  <option value="0..1">0..1 (Optional)</option>
-                  <option value="1..*">1..* (One or more)</option>
+                  {multiplicityOptions.map(mult => (
+                    <option key={mult} value={mult}>{mult}</option>
+                  ))}
                 </select>
               </div>
               <button 
@@ -938,6 +937,11 @@ const DomainModelMaker = ({
                       <div className="item-name">
                         {from.name} → {to.name}
                         <div className="item-type">({rel.type})</div>
+                        {(rel.multiplicityFrom !== '1' || rel.multiplicityTo !== '1') && (
+                          <div className="item-multiplicity">
+                            {rel.multiplicityFrom} to {rel.multiplicityTo}
+                          </div>
+                        )}
                       </div>
                       {rel.label && <div className="item-label">{rel.label}</div>}
                       <button 
@@ -958,7 +962,10 @@ const DomainModelMaker = ({
                 <div className="guide-item">
                   <strong>Relationship Types:</strong>
                   <div>Association: Solid line</div>
+                  <div>Navigable: Solid line with arrow</div>
                   <div>Inheritance: Solid line with triangle</div>
+                  <div>Realization: Dashed line with triangle</div>
+                  <div>Dependency: Dashed line with arrow</div>
                   <div>Aggregation: Line with empty diamond</div>
                   <div>Composition: Line with filled diamond</div>
                 </div>
@@ -968,6 +975,7 @@ const DomainModelMaker = ({
                   <div>*: Zero or more</div>
                   <div>0..1: Zero or one</div>
                   <div>1..*: One or more</div>
+                  <div>0..*: Zero or more</div>
                 </div>
                 <div className="guide-item">
                   <strong>Quick Tips:</strong>
@@ -1362,6 +1370,13 @@ const DomainModelMaker = ({
           font-size: 12px;
           color: #64748b;
           margin-top: 2px;
+        }
+        
+        .item-multiplicity {
+          font-size: 11px;
+          color: #9ca3af;
+          margin-top: 1px;
+          font-style: italic;
         }
         
         .item-label {
