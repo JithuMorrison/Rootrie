@@ -97,7 +97,7 @@ const DomainModelMaker = ({
     
     // Calculate height based on content with tighter spacing
     const headerHeight = 40;
-    const itemHeight = 22; // Height for each attribute
+    const itemHeight = 26; // Height for each attribute
     const sectionPadding = 6; // Padding around sections
     
     // Calculate attributes height
@@ -109,7 +109,7 @@ const DomainModelMaker = ({
     
     return {
       width: Math.min(calculatedWidth, 400), // Cap at 400px to prevent too wide
-      height: Math.max(calculatedHeight, 80) // Minimum height of 80px
+      height: Math.max(calculatedHeight, 50) // Minimum height of 80px
     };
   };
 
@@ -1455,7 +1455,7 @@ const DomainModelMaker = ({
           display: flex;
           flex-direction: column;
           flex: 1;
-          padding: 8px 0;
+          padding: 0px 0;
         }
         
         .attributes-section {
@@ -1467,7 +1467,7 @@ const DomainModelMaker = ({
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 4px 16px;
+          padding: 0px 16px;
           margin-bottom: 2px;
           border-radius: 4px;
           cursor: pointer;
