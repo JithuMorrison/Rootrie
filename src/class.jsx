@@ -474,10 +474,16 @@ const ClassDiagramMaker = ({
   const importFromJson = () => {
     try {
       const data = JSON.parse(jsonInput);
+
       if (Array.isArray(data.classes) && Array.isArray(data.relationships)) {
+        const classo = data.classes.map(cls => ({
+          ...cls,
+          ...calculateClassDimensions(cls) // merges width/height into cls
+        }));
+
         onUpdateClassDiagram({
           ...classDiagram,
-          classes: data.classes,
+          classes: classo,
           relationships: data.relationships
         });
       } else {
