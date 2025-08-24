@@ -10,15 +10,19 @@ import {
   Image, 
   Copy,
   X,
-  BookOpen
+  BookOpen,
+  Palette,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw
 } from 'lucide-react';
 
 const DomainModelMaker = ({ 
-  domainModel, 
+  domainModel = { name: 'Sample Domain Model' }, 
   entities = [], 
   relationships = [],
-  onUpdateDomainModel,
-  onBack
+  onUpdateDomainModel = () => {},
+  onBack = () => {}
 }) => {
   const [newEntityName, setNewEntityName] = useState('');
   const [newRelationship, setNewRelationship] = useState('');
@@ -34,12 +38,16 @@ const DomainModelMaker = ({
   const [resizingItem, setResizingItem] = useState(null);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0 });
   const [editingItem, setEditingItem] = useState(null);
-  const [editType, setEditType] = useState(''); // 'attribute' or 'method'
-  const [editIndex, setEditIndex] = useState(-1); // -1 for new item
+  const [editType, setEditType] = useState('');
+  const [editIndex, setEditIndex] = useState(-1);
   const [newAttribute, setNewAttribute] = useState({ name: '', type: 'String' });
+  const [zoom, setZoom] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const canvasRef = useRef(null);
 
-  // Color schemes for entities (blue theme with variations)
+  // Color schemes for entities (expanded with more vibrant options)
   const colorSchemes = [
     { header: '#3B82F6', border: '#2563EB', background: '#EFF6FF' }, // Primary blue
     { header: '#6366F1', border: '#4F46E5', background: '#EEF2FF' }, // Indigo
@@ -49,6 +57,10 @@ const DomainModelMaker = ({
     { header: '#F59E0B', border: '#D97706', background: '#FFFBEB' }, // Amber
     { header: '#EC4899', border: '#DB2777', background: '#FDF2F8' }, // Pink
     { header: '#64748B', border: '#475569', background: '#F8FAFC' }, // Slate
+    { header: '#EF4444', border: '#DC2626', background: '#FEF2F2' }, // Red
+    { header: '#F97316', border: '#EA580C', background: '#FFF7ED' }, // Orange
+    { header: '#84CC16', border: '#65A30D', background: '#F7FEE7' }, // Lime
+    { header: '#14B8A6', border: '#0D9488', background: '#F0FDFA' }, // Teal
   ];
 
   // Common data types for dropdowns
@@ -65,6 +77,31 @@ const DomainModelMaker = ({
     return colorSchemes[Math.floor(Math.random() * colorSchemes.length)];
   };
 
+  const reassignAllColors = () => {
+    const updatedEntities = entities.map(entity => ({
+      ...entity,
+      colorScheme: getRandomColorScheme()
+    }));
+    
+    onUpdateDomainModel({
+      ...domainModel,
+      entities: updatedEntities
+    });
+  };
+
+  const handleZoomIn = () => {
+    setZoom(prevZoom => Math.min(prevZoom * 1.2, 3));
+  };
+
+  const handleZoomOut = () => {
+    setZoom(prevZoom => Math.max(prevZoom / 1.2, 0.3));
+  };
+
+  const resetView = () => {
+    setZoom(1);
+    setPanOffset({ x: 0, y: 0 });
+  };
+
   const calculateTextWidth = (text, fontSize = '12px', fontFamily = "'SF Mono', monospace") => {
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
@@ -73,14 +110,11 @@ const DomainModelMaker = ({
   };
 
   const calculateEntityDimensions = (entity) => {
-    // Calculate required width based on content
     const minWidth = 180;
-    const padding = 32; // 16px on each side
+    const padding = 32;
     
-    // Calculate width based on entity name
     const entityNameWidth = calculateTextWidth(entity.name, '16px', "'Inter', sans-serif") + padding;
     
-    // Calculate width based on attributes
     let maxAttributeWidth = 0;
     entity.attributes.forEach(attr => {
       const attrText = `${attr.name} : ${attr.type}`;
@@ -88,19 +122,12 @@ const DomainModelMaker = ({
       if (width > maxAttributeWidth) maxAttributeWidth = width;
     });
     
-    // Determine the maximum width needed
-    const calculatedWidth = Math.max(
-      minWidth, 
-      entityNameWidth, 
-      maxAttributeWidth
-    );
+    const calculatedWidth = Math.max(minWidth, entityNameWidth, maxAttributeWidth);
     
-    // Calculate height based on content with tighter spacing
     const headerHeight = 40;
-    const itemHeight = 26; // Height for each attribute
-    const sectionPadding = 6; // Padding around sections
+    const itemHeight = 26;
+    const sectionPadding = 6;
     
-    // Calculate attributes height
     const attributesHeight = entity.attributes.length > 0 
       ? (entity.attributes.length * itemHeight) + sectionPadding
       : 0;
@@ -108,8 +135,8 @@ const DomainModelMaker = ({
     const calculatedHeight = headerHeight + attributesHeight + 4;
     
     return {
-      width: Math.min(calculatedWidth, 400), // Cap at 400px to prevent too wide
-      height: Math.max(calculatedHeight, 50) // Minimum height of 80px
+      width: Math.min(calculatedWidth, 400),
+      height: Math.max(calculatedHeight, 50)
     };
   };
 
@@ -128,8 +155,8 @@ const DomainModelMaker = ({
         id: Date.now(),
         name: newEntityName,
         attributes: [],
-        x: 50 + Math.random() * 200,
-        y: 50 + Math.random() * 200,
+        x: 100 + Math.random() * 300,
+        y: 100 + Math.random() * 300,
         width: dimensions.width,
         height: dimensions.height,
         colorScheme
@@ -177,7 +204,6 @@ const DomainModelMaker = ({
           newAttributes.push({ ...newAttribute });
         }
         
-        // Recalculate dimensions after adding attribute
         const updatedEntity = {
           ...entity,
           attributes: newAttributes
@@ -286,6 +312,30 @@ const DomainModelMaker = ({
     });
   };
 
+  const handleCanvasMouseDown = (e) => {
+    if (e.target === canvasRef.current && e.button === 0) {
+      setIsPanning(true);
+      setPanStart({
+        x: e.clientX - panOffset.x,
+        y: e.clientY - panOffset.y
+      });
+      e.preventDefault();
+    }
+  };
+
+  const handleCanvasMouseMove = (e) => {
+    if (isPanning) {
+      setPanOffset({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y
+      });
+    }
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsPanning(false);
+  };
+
   const handleMouseDown = (e, entity, isResize = false) => {
     e.stopPropagation();
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -296,9 +346,11 @@ const DomainModelMaker = ({
       setResizeStart({ x: e.clientX, y: e.clientY });
     } else {
       setDragItem(entity);
+      const canvasX = (e.clientX - rect.left - panOffset.x) / zoom;
+      const canvasY = (e.clientY - rect.top - panOffset.y) / zoom;
       setDragOffset({
-        x: e.clientX - rect.left - entity.x,
-        y: e.clientY - rect.top - entity.y
+        x: canvasX - entity.x,
+        y: canvasY - entity.y
       });
     }
   };
@@ -308,8 +360,11 @@ const DomainModelMaker = ({
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       
-      const x = Math.max(0, e.clientX - rect.left - dragOffset.x);
-      const y = Math.max(0, e.clientY - rect.top - dragOffset.y);
+      const canvasX = (e.clientX - rect.left - panOffset.x) / zoom;
+      const canvasY = (e.clientY - rect.top - panOffset.y) / zoom;
+      
+      const x = Math.max(0, canvasX - dragOffset.x);
+      const y = Math.max(0, canvasY - dragOffset.y);
       
       const updatedEntities = entities.map(entity => 
         entity.id === dragItem.id ? { ...entity, x, y } : entity
@@ -325,8 +380,8 @@ const DomainModelMaker = ({
       
       const updatedEntities = entities.map(entity => {
         if (entity.id === resizingItem.id) {
-          const newWidth = Math.max(180, entity.width + dx);
-          const newHeight = Math.max(80, entity.height + dy);
+          const newWidth = Math.max(180, entity.width + dx / zoom);
+          const newHeight = Math.max(80, entity.height + dy / zoom);
           return {
             ...entity,
             width: newWidth,
@@ -348,19 +403,20 @@ const DomainModelMaker = ({
   const handleMouseUp = () => {
     setDragItem(null);
     setResizingItem(null);
+    setIsPanning(false);
   };
 
   useEffect(() => {
-    if (dragItem || resizingItem) {
-      document.addEventListener('mousemove', handleMouseMove);
+    if (dragItem || resizingItem || isPanning) {
+      document.addEventListener('mousemove', dragItem || resizingItem ? handleMouseMove : handleCanvasMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
       
       return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mousemove', dragItem || resizingItem ? handleMouseMove : handleCanvasMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [dragItem, resizingItem, dragOffset, resizeStart]);
+  }, [dragItem, resizingItem, isPanning, dragOffset, resizeStart, panStart, panOffset, zoom]);
 
   const exportToJson = () => {
     const data = { entities, relationships };
@@ -375,7 +431,6 @@ const DomainModelMaker = ({
     try {
       const data = JSON.parse(jsonInput);
       if (Array.isArray(data.entities) && Array.isArray(data.relationships)) {
-        // Recalculate dimensions for imported entities
         const updatedEntities = data.entities.map(entity => ({
           ...entity,
           ...calculateEntityDimensions(entity)
@@ -427,7 +482,6 @@ const DomainModelMaker = ({
     });
   };
 
-  // Get nearest edge connection point
   const getNearestEdgePoint = (fromRect, toRect) => {
     const fromCenter = {
       x: fromRect.x + fromRect.width / 2,
@@ -438,23 +492,18 @@ const DomainModelMaker = ({
       y: toRect.y + toRect.height / 2
     };
 
-    // Calculate direction vector
     const dx = toCenter.x - fromCenter.x;
     const dy = toCenter.y - fromCenter.y;
     
-    // Determine which edge to connect to based on direction
     let fromPoint, toPoint;
     
-    // Calculate intersection with rectangle edges
     if (Math.abs(dx) / fromRect.width > Math.abs(dy) / fromRect.height) {
-      // Horizontal connection
       const fromX = fromCenter.x + (dx > 0 ? fromRect.width / 2 : -fromRect.width / 2);
       const toX = toCenter.x + (dx > 0 ? -toRect.width / 2 : toRect.width / 2);
       
       fromPoint = { x: fromX, y: fromCenter.y };
       toPoint = { x: toX, y: toCenter.y };
     } else {
-      // Vertical connection
       const fromY = fromCenter.y + (dy > 0 ? fromRect.height / 2 : -fromRect.height / 2);
       const toY = toCenter.y + (dy > 0 ? -toRect.height / 2 : toRect.height / 2);
       
@@ -465,25 +514,19 @@ const DomainModelMaker = ({
     return { fromPoint, toPoint };
   };
 
-  // Create orthogonal routing path for distant entities
   const createOrthogonalPath = (from, to) => {
     const distance = Math.sqrt(Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2));
     
     if (distance < 300) {
-      // Direct line for close entities
       return `M${from.x},${from.y} L${to.x},${to.y}`;
     }
     
-    // Orthogonal routing for distant entities
     const midX = from.x + (to.x - from.x) * 0.5;
     const midY = from.y + (to.y - from.y) * 0.5;
     
-    // Create 90-degree turns
     if (Math.abs(to.x - from.x) > Math.abs(to.y - from.y)) {
-      // Horizontal preference
       return `M${from.x},${from.y} L${midX},${from.y} L${midX},${to.y} L${to.x},${to.y}`;
     } else {
-      // Vertical preference
       return `M${from.x},${from.y} L${from.x},${midY} L${to.x},${midY} L${to.x},${to.y}`;
     }
   };
@@ -580,7 +623,6 @@ const DomainModelMaker = ({
     const { fromPoint, toPoint } = getNearestEdgePoint(fromRect, toRect);
     const path = createOrthogonalPath(fromPoint, toPoint);
 
-    // Calculate label position (midpoint of the path)
     const labelX = (fromPoint.x + toPoint.x) / 2;
     const labelY = (fromPoint.y + toPoint.y) / 2;
 
@@ -654,7 +696,7 @@ const DomainModelMaker = ({
                   strokeWidth: 2,
                   markerEnd: `url(#arrowhead-${relationship.id})`
                 };
-              default: // association
+              default:
                 return {
                   stroke: '#475569',
                   strokeWidth: 2
@@ -694,7 +736,6 @@ const DomainModelMaker = ({
                   </text>
                 </g>
               )}
-              {/* Multiplicity labels */}
               <g>
                 <text
                   x={fromPoint.x + (toPoint.x - fromPoint.x) * 0.25}
@@ -726,10 +767,9 @@ const DomainModelMaker = ({
 
   const handleCanvasDoubleClick = (e) => {
     if (e.target === canvasRef.current) {
-      // Double click on empty canvas - add a new entity
       const rect = canvasRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const canvasX = (e.clientX - rect.left - panOffset.x) / zoom;
+      const canvasY = (e.clientY - rect.top - panOffset.y) / zoom;
       
       const entityName = prompt('Enter entity name:');
       if (entityName && entityName.trim()) {
@@ -745,8 +785,8 @@ const DomainModelMaker = ({
             id: Date.now(),
             name: entityName.trim(),
             attributes: [],
-            x: x - (dimensions.width / 2), // Center the entity on click point
-            y: y - 40, // Offset to account for header
+            x: canvasX - (dimensions.width / 2),
+            y: canvasY - 40,
             width: dimensions.width,
             height: dimensions.height,
             colorScheme
@@ -769,6 +809,24 @@ const DomainModelMaker = ({
         </button>
         <h2>{domainModel.name}</h2>
         <div className="spacer"></div>
+        
+        {/* Canvas Controls */}
+        <div className="canvas-controls">
+          <button onClick={reassignAllColors} className="control-btn" title="Randomize Colors">
+            <Palette size={16} />
+          </button>
+          <button onClick={handleZoomIn} className="control-btn" title="Zoom In">
+            <ZoomIn size={16} />
+          </button>
+          <button onClick={handleZoomOut} className="control-btn" title="Zoom Out">
+            <ZoomOut size={16} />
+          </button>
+          <button onClick={resetView} className="control-btn" title="Reset View">
+            <RotateCcw size={16} />
+          </button>
+          <span className="zoom-indicator">{Math.round(zoom * 100)}%</span>
+        </div>
+        
         <div className="export-buttons">
           <button onClick={exportToImage} className="export-btn">
             <Image size={16} /> Export Image
@@ -960,6 +1018,13 @@ const DomainModelMaker = ({
               <h3>Domain Model Guide</h3>
               <div className="notation-guide">
                 <div className="guide-item">
+                  <strong>Canvas Controls:</strong>
+                  <div>🎨 Randomize all colors</div>
+                  <div>🔍 Zoom in/out</div>
+                  <div>↺ Reset view</div>
+                  <div>🖱️ Drag to pan canvas</div>
+                </div>
+                <div className="guide-item">
                   <strong>Relationship Types:</strong>
                   <div>Association: Solid line</div>
                   <div>Navigable: Solid line with arrow</div>
@@ -983,6 +1048,7 @@ const DomainModelMaker = ({
                   <div>• Double-click entity to edit</div>
                   <div>• Drag to move entities</div>
                   <div>• Drag resize handle to resize</div>
+                  <div>• Use mouse wheel to zoom</div>
                 </div>
               </div>
             </div>
@@ -992,9 +1058,30 @@ const DomainModelMaker = ({
             className="diagram-canvas" 
             ref={canvasRef}
             onDoubleClick={handleCanvasDoubleClick}
+            onMouseDown={handleCanvasMouseDown}
+            onWheel={(e) => {
+              e.preventDefault();
+              const delta = e.deltaY > 0 ? 0.9 : 1.1;
+              setZoom(prevZoom => Math.max(0.3, Math.min(3, prevZoom * delta)));
+            }}
+            style={{
+              cursor: isPanning ? 'grabbing' : 'grab'
+            }}
           >
-            {relationships.map(renderRelationship)}
-            {entities.map(renderEntity)}
+            <div 
+              className="canvas-content"
+              style={{
+                transform: `scale(${zoom}) translate(${panOffset.x / zoom}px, ${panOffset.y / zoom}px)`,
+                transformOrigin: '0 0',
+                width: '4000px',
+                height: '3000px',
+                minWidth: '100%',
+                minHeight: '100%'
+              }}
+            >
+              {relationships.map(renderRelationship)}
+              {entities.map(renderEntity)}
+            </div>
           </div>
         </div>
       ) : (
@@ -1188,6 +1275,44 @@ const DomainModelMaker = ({
           flex: 1;
         }
         
+        .canvas-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-right: 16px;
+          padding: 8px;
+          background: #f1f5f9;
+          border-radius: 8px;
+          border: 1px solid #e2e8f0;
+        }
+        
+        .control-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 6px;
+          border: 1px solid #e2e8f0;
+          background: white;
+          color: #64748b;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        
+        .control-btn:hover {
+          background: #e2e8f0;
+          color: #1e293b;
+        }
+        
+        .zoom-indicator {
+          font-size: 12px;
+          font-weight: 500;
+          color: #64748b;
+          min-width: 40px;
+          text-align: center;
+        }
+        
         .export-buttons {
           display: flex;
           gap: 8px;
@@ -1252,7 +1377,7 @@ const DomainModelMaker = ({
         }
         
         .diagram-sidebar {
-          width: 320px;
+          width: 280px;
           background: white;
           border-right: 1px solid #e2e8f0;
           display: flex;
@@ -1406,15 +1531,16 @@ const DomainModelMaker = ({
         
         .diagram-canvas {
           flex: 1;
-          background: linear-gradient(45deg, #f1f5f9 25%, transparent 25%), 
-                      linear-gradient(-45deg, #f1f5f9 25%, transparent 25%), 
-                      linear-gradient(45deg, transparent 75%, #f1f5f9 75%), 
-                      linear-gradient(-45deg, transparent 75%, #f1f5f9 75%);
-          background-size: 20px 20px;
-          background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+          background: #f8fafc;
           position: relative;
-          overflow: auto;
-          cursor: crosshair;
+          overflow: hidden;
+        }
+        
+        .canvas-content {
+          position: relative;
+          background: 
+            radial-gradient(circle at 1px 1px, #cbd5e1 1px, transparent 0);
+          background-size: 20px 20px;
         }
         
         .entity-box {
