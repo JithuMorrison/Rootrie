@@ -1593,7 +1593,8 @@ const DomainModelMaker = ({
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 0px 16px;
+          padding: 0px 8px;
+          padding-right: 0px;
           margin-bottom: 2px;
           border-radius: 4px;
           cursor: pointer;
@@ -1623,6 +1624,7 @@ const DomainModelMaker = ({
           cursor: pointer;
           opacity: 0;
           padding: 4px;
+          padding-left: 0;
           border-radius: 3px;
           margin-left: 8px;
           transition: all 0.15s;
