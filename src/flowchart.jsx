@@ -17,6 +17,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
   const [theme, setTheme] = useState('dark');
   const [selectedControlPoint, setSelectedControlPoint] = useState(null);
   const [controlPointDrag, setControlPointDrag] = useState(null);
+  const [isCtrlPressed, setIsCtrlPressed] = useState(false);
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
+  const [connectionStartPoint, setConnectionStartPoint] = useState(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -62,10 +65,14 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
 
   const colors = themes[theme];
 
-  // Handle keyboard events for deletion and control point movement
+  // Handle keyboard events for deletion, control point movement, and modifier keys
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Delete') {
+      if (e.key === 'Control' || e.key === 'Meta') {
+        setIsCtrlPressed(true);
+      } else if (e.key === 'Shift') {
+        setIsShiftPressed(true);
+      } else if (e.key === 'Delete') {
         if (selectedNode) {
           handleDeleteNode();
         } else if (selectedEdge) {
@@ -90,9 +97,19 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       }
     };
 
+    const handleKeyUp = (e) => {
+      if (e.key === 'Control' || e.key === 'Meta') {
+        setIsCtrlPressed(false);
+      } else if (e.key === 'Shift') {
+        setIsShiftPressed(false);
+      }
+    };
+
     document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
     };
   }, [selectedNode, selectedEdge, selectedControlPoint]);
 
@@ -564,6 +581,20 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     
     const clickedEdge = !clickedNode ? getClickedEdge(x, y) : null;
     
+    // Handle shift+click to add control point to selected edge
+    if (isShiftPressed && selectedEdge && clickedEdge && clickedEdge.id === selectedEdge.id) {
+      addControlPoint(selectedEdge.id, x, y);
+      return;
+    }
+    
+    // Handle ctrl+drag connection start
+    if (isCtrlPressed && clickedNode) {
+      setConnectionStartPoint({ x, y, node: clickedNode });
+      setFromNode(clickedNode);
+      setConnectionMode(true);
+      return;
+    }
+    
     if (connectionMode && clickedNode) {
       if (!fromNode) {
         setFromNode(clickedNode);
@@ -592,6 +623,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
           setFromNode(null);
           setConnectionMode(false);
           setSelectedTool(null);
+          setConnectionStartPoint(null);
         }
       }
       return;
@@ -608,11 +640,6 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       setSelectedEdge(clickedEdge);
       setSelectedNode(null);
       setSelectedControlPoint(null);
-      
-      // Add control point on double-click
-      if (e.detail === 2) {
-        addControlPoint(clickedEdge.id, x, y);
-      }
       return;
     }
     
@@ -879,6 +906,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     setSelectedTool('arrow');
     setConnectionMode(true);
     setFromNode(null);
+    setConnectionStartPoint(null);
   };
 
   const handleLabelSubmit = () => {
@@ -901,6 +929,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     setShowLabelModal(false);
     setPendingEdge(null);
     setEdgeLabel('');
+    setConnectionStartPoint(null);
   };
 
   const handleExportImage = () => {
@@ -1657,6 +1686,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   ) :
                   `🎨 Click on canvas to place a ${selectedTool}`
                 }
+                <br />
+                {isCtrlPressed && "🔧 Ctrl pressed: Click on node edge to start connection from specific point"}
+                {isShiftPressed && "➕ Shift pressed: Click on edge to add control point"}
               </div>
             )}
             
@@ -1718,7 +1750,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               lineHeight: '1.6'
             }}>
               💡 <strong>Pro Tips:</strong> Single click to select • Double click to edit text • 
-              Drag nodes to move • Use Connect tool for arrows • Double click on edges to add control points •
+              Drag nodes to move • Use Connect tool for arrows • 
+              Ctrl+Click on node to start connection from specific point • 
+              Shift+Click on edge to add control point •
               Press Delete to remove selected items • Use arrow keys to move control points
             </div>
           </div>
