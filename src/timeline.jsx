@@ -9,12 +9,13 @@ const TIME_UNITS = [
 ];
 
 const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onBack }) => {
-  // Constants
+  // Constants - Reduced node height for more compact design
   const TIMELINE_HEIGHT = 60;
   const NODE_WIDTH = 120;
-  const NODE_HEIGHT = 100;
+  const NODE_HEIGHT = 60; // Reduced from 100 to 60
   const CONNECTION_COLOR = '#ffffff';
   const SELECTED_CONNECTION_COLOR = '#ffeb3b';
+  const CENTRAL_CONNECTION_COLOR = '#4fc3f7'; // Light blue for central connections
 
   // Refs
   const canvasRef = useRef(null);
@@ -195,6 +196,31 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     return markers;
   }, [project, zoom, pan, getTimelineFromX]);
 
+  // Find central node (one with most connections)
+  const getCentralNode = () => {
+    const nodeConnectionCount = {};
+    localNodes.forEach(node => {
+      nodeConnectionCount[node.id] = 0;
+    });
+    
+    localConnections.forEach(conn => {
+      nodeConnectionCount[conn.from] = (nodeConnectionCount[conn.from] || 0) + 1;
+      nodeConnectionCount[conn.to] = (nodeConnectionCount[conn.to] || 0) + 1;
+    });
+    
+    let centralNodeId = null;
+    let maxConnections = 0;
+    
+    Object.entries(nodeConnectionCount).forEach(([nodeId, count]) => {
+      if (count > maxConnections) {
+        maxConnections = count;
+        centralNodeId = nodeId;
+      }
+    });
+    
+    return centralNodeId ? localNodes.find(n => n.id === parseInt(centralNodeId)) : null;
+  };
+
   // Node management
   const createNode = (clientX, clientY) => {
     if (!project) return;
@@ -349,23 +375,42 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     }
   };
 
-  // Calculate curved path for connections that stay properly attached
+  // Improved connection paths with mind map style
   const getConnectionPath = (fromNode, toNode) => {
     if (!fromNode || !toNode) return '';
     
-    // Calculate positions in the canvas space (not zoomed/panned space)
     const fromX = getTimelinePosition(fromNode.timeline) + (NODE_WIDTH / 2);
     const fromY = fromNode.y + (NODE_HEIGHT / 2);
     const toX = getTimelinePosition(toNode.timeline) + (NODE_WIDTH / 2);
     const toY = toNode.y + (NODE_HEIGHT / 2);
     
-    const controlOffset = Math.abs(fromY - toY) * 0.3;
+    const centralNode = getCentralNode();
+    const isCentralConnection = centralNode && (fromNode.id === centralNode.id || toNode.id === centralNode.id);
     
-    // Apply zoom and pan transformations when rendering, not when calculating
-    return `M ${fromX} ${fromY}
-            C ${fromX} ${fromY + controlOffset},
-              ${toX} ${toY - controlOffset},
-              ${toX} ${toY}`;
+    if (isCentralConnection) {
+      // Smoother curves for central connections
+      const dx = toX - fromX;
+      const dy = toY - fromY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const controlOffset = Math.min(distance * 0.4, 100);
+      
+      const midX = (fromX + toX) / 2;
+      const controlX1 = fromX + (dx > 0 ? controlOffset : -controlOffset);
+      const controlX2 = toX + (dx > 0 ? -controlOffset : controlOffset);
+      
+      return `M ${fromX} ${fromY}
+              C ${controlX1} ${fromY},
+                ${controlX2} ${toY},
+                ${toX} ${toY}`;
+    } else {
+      // Standard curved connections for non-central nodes
+      const controlOffset = Math.abs(fromX - toX) * 0.3 + Math.abs(fromY - toY) * 0.2;
+      
+      return `M ${fromX} ${fromY}
+              C ${fromX + controlOffset} ${fromY},
+                ${toX - controlOffset} ${toY},
+                ${toX} ${toY}`;
+    }
   };
 
   const getConnectionMidpoint = (fromNode, toNode) => {
@@ -508,13 +553,16 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     };
   }, [handleMouseMove, handleMouseUp]);
 
+  // Get central node for styling purposes
+  const centralNode = getCentralNode();
+
   return (
     <div className="evolution-chart-maker">
       {/* Header */}
       <div className="header">
         <div className="header-left">
           <h1>🧬 Evolution Chart Maker</h1>
-          <span className="project-name">{project.name}</span>
+          <span className="project-name">{project?.name}</span>
         </div>
         
         <div className="toolbar">
@@ -605,16 +653,18 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
             const midpoint = getConnectionMidpoint(fromNode, toNode);
             const isSelected = selectedConnection === conn.id || 
                               (selectedNode && (selectedNode.id === fromNode.id || selectedNode.id === toNode.id));
+            const isCentralConnection = centralNode && (fromNode.id === centralNode.id || toNode.id === centralNode.id);
             
             return (
               <g key={conn.id}>
                 <path
                   d={getConnectionPath(fromNode, toNode)}
-                  stroke={isSelected ? SELECTED_CONNECTION_COLOR : CONNECTION_COLOR}
-                  strokeWidth={isSelected ? '3' : '2'}
+                  stroke={isSelected ? SELECTED_CONNECTION_COLOR : (isCentralConnection ? CENTRAL_CONNECTION_COLOR : CONNECTION_COLOR)}
+                  strokeWidth={isCentralConnection ? (isSelected ? '4' : '3') : (isSelected ? '3' : '2')}
                   fill="none"
-                  opacity="0.8"
+                  opacity={isCentralConnection ? "0.9" : "0.7"}
                   transform={`translate(${pan.x}, ${pan.y + TIMELINE_HEIGHT}) scale(${zoom})`}
+                  strokeDasharray={isCentralConnection ? "none" : "5,5"}
                 />
                 {isSelected && (
                   <circle
@@ -635,63 +685,66 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         </svg>
 
         {/* Nodes */}
-        {localNodes.map(node => (
-          <div
-            key={node.id}
-            className={`node ${selectedNode?.id === node.id ? 'selected' : ''}`}
-            style={{
-              left: `${getTimelinePosition(node.timeline) * zoom + pan.x}px`,
-              top: `${node.y * zoom + pan.y + TIMELINE_HEIGHT}px`,
-              width: `${NODE_WIDTH * zoom}px`,
-              height: `${NODE_HEIGHT * zoom}px`,
-              transform: selectedNode?.id === node.id && isDraggingRef.current ? 'scale(1.02)' : 'scale(1)',
-              transition: 'transform 0.1s ease'
-            }}
-            onMouseDown={(e) => handleMouseDown(e, node)}
-            onClick={(e) => handleNodeClick(e, node)}
-            onDoubleClick={() => handleNodeDoubleClick(node)}
-          >
-            <div style={{ display: 'flex'}}>
-              {node.imageSrc && (
-                <img
-                  src={node.imageSrc}
-                  alt={node.title}
-                  className="node-image"
-                  style={{
-                    width: `${40 * zoom}px`,
-                    height: `${40 * zoom}px`
-                  }}
-                />
-              )}
-              
-              <div>
-                <div className="node-title" style={{ fontSize: `${11 * zoom}px` }}>
-                  {node.title}
-                </div>
-              
-                <div className="node-timeline" style={{ fontSize: `${9 * zoom}px` }}>
-                  {formatTimelineValue(node.timeline.value, node.timeline.unit)}
+        {localNodes.map(node => {
+          const isCentral = centralNode && centralNode.id === node.id;
+          return (
+            <div
+              key={node.id}
+              className={`node ${selectedNode?.id === node.id ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
+              style={{
+                left: `${getTimelinePosition(node.timeline) * zoom + pan.x}px`,
+                top: `${node.y * zoom + pan.y + TIMELINE_HEIGHT}px`,
+                width: `${NODE_WIDTH * zoom}px`,
+                height: `${NODE_HEIGHT * zoom}px`,
+                transform: selectedNode?.id === node.id && isDraggingRef.current ? 'scale(1.02)' : 'scale(1)',
+                transition: 'transform 0.1s ease'
+              }}
+              onMouseDown={(e) => handleMouseDown(e, node)}
+              onClick={(e) => handleNodeClick(e, node)}
+              onDoubleClick={() => handleNodeDoubleClick(node)}
+            >
+              <div className="node-content">
+                {node.imageSrc && (
+                  <img
+                    src={node.imageSrc}
+                    alt={node.title}
+                    className="node-image"
+                    style={{
+                      width: `${28 * zoom}px`,
+                      height: `${28 * zoom}px`
+                    }}
+                  />
+                )}
+                
+                <div className="node-text">
+                  <div className="node-title" style={{ fontSize: `${10 * zoom}px` }}>
+                    {node.title}
+                  </div>
+                
+                  <div className="node-timeline" style={{ fontSize: `${8 * zoom}px` }}>
+                    {formatTimelineValue(node.timeline.value, node.timeline.unit)}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {selectedNode?.id === node.id && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteNode(node.id);
-                }}
-                className="delete-node-btn"
-                style={{
-                  width: `${24 * zoom}px`,
-                  height: `${24 * zoom}px`
-                }}
-              >
-                <Trash2 size={12 * zoom} />
-              </button>
-            )}
-          </div>
-        ))}
+              {selectedNode?.id === node.id && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteNode(node.id);
+                  }}
+                  className="delete-node-btn"
+                  style={{
+                    width: `${20 * zoom}px`,
+                    height: `${20 * zoom}px`
+                  }}
+                >
+                  <Trash2 size={10 * zoom} />
+                </button>
+              )}
+            </div>
+          );
+        })}
 
         {/* Connection mode indicator */}
         {connectionMode && (
@@ -707,7 +760,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           <div>❌ <strong>Click connection midpoint:</strong> Delete connection</div>
           <div>📍 <strong>Drag:</strong> Move nodes vertically</div>
           <div>✏️ <strong>Double-click:</strong> Edit node details</div>
-          <div>🔍 <strong>Scroll:</strong> Pan | <strong>Shift+Scroll:</strong> Horizontal Pan | <strong>Ctrl+Scroll:</strong> Zoom</div>
+          <div>🔍 <strong>Scroll:</strong> Pan | <strong>Shift+Scroll:</strong> Horizontal Pan</div>
         </div>
       </div>
 
@@ -963,54 +1016,81 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         .node {
           position: absolute;
           background: #66bb6a;
-          border-radius: 25px;
-          padding: 8px;
+          border-radius: 12px;
+          padding: 6px 8px;
           cursor: grab;
           z-index: 10;
           border: 2px solid rgba(255,255,255,0.3);
-          box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
           display: flex;
-          flex-direction: column;
           align-items: center;
           justify-content: center;
           overflow: hidden;
+          transition: all 0.2s ease;
         }
         
         .node.selected {
           background: #81c784;
-          border: 3px solid #2e7d32;
+          border: 2px solid #2e7d32;
           z-index: 100;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        }
+        
+        .node.central {
+          background: linear-gradient(135deg, #ff6b6b, #4ecdc4);
+          border: 3px solid #fff;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        
+        .node.central.selected {
+          background: linear-gradient(135deg, #ff5252, #26a69a);
+          border: 3px solid #ffeb3b;
+          box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+        }
+        
+        .node-content {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          width: 100%;
         }
         
         .node-image {
           object-fit: cover;
           border-radius: 50%;
-          margin-bottom: 4px;
+          flex-shrink: 0;
           pointer-events: none;
+        }
+        
+        .node-text {
+          flex: 1;
+          min-width: 0;
         }
         
         .node-title {
           color: white;
           font-weight: 600;
-          text-align: center;
-          margin-bottom: 2px;
+          text-align: left;
+          margin-bottom: 1px;
           line-height: 1.2;
           overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 1;
-          -webkit-box-orient: vertical;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         
         .node-timeline {
           color: rgba(255,255,255,0.9);
-          text-align: center;
+          text-align: left;
           font-weight: 500;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         
         .delete-node-btn {
           position: absolute;
-          top: -8px;
-          right: -8px;
+          top: -6px;
+          right: -6px;
           background: #e53e3e;
           color: white;
           border: none;
@@ -1047,6 +1127,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           font-size: 12px;
           color: #4a5568;
           z-index: 100;
+          backdrop-filter: blur(10px);
         }
         
         .instructions-panel div {
