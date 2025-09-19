@@ -15,6 +15,7 @@ import ClassDiagramMain from './classmain';
 import ClassDiagramMaker from './class';
 import DomainModelMain from './domainmodelmain';
 import DomainModelMaker from './domainmodel';
+import MindMapMaker from './projectsetup';
 
 // Diagram type constants
 const DIAGRAM_TYPES = {
@@ -736,6 +737,7 @@ const App = () => {
           </>
         )}
       </div>
+      <MindMapMaker />
     </div>
   );
 };
