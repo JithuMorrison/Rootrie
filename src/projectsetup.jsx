@@ -220,21 +220,21 @@ const MindMapMaker = () => {
       const root = newNodes.find(n => n.isRoot);
       if (!root) return prev;
 
-      const NODE_HEIGHT = 40;      // approximate node height
-      const VERTICAL_GAP = 20;     // min gap between siblings
+      const NODE_HEIGHT = 30;      // approximate node height
+      const VERTICAL_GAP = 20;     // more gap to avoid collisions
       const LEVEL_DISTANCE = 200;  // horizontal distance between levels
 
-      // Compute height of a subtree (for spacing)
+      // Compute the total height of a subtree (node + children recursively)
       const computeSubtreeHeight = (nodeId) => {
         const children = newNodes.filter(n => n.parentId === nodeId);
         if (children.length === 0) return NODE_HEIGHT;
 
-        let totalHeight = 0;
-        children.forEach(child => {
-          totalHeight += computeSubtreeHeight(child.id) + VERTICAL_GAP;
+        let total = 0;
+        children.forEach((child, i) => {
+          total += computeSubtreeHeight(child.id);
+          if (i < children.length - 1) total += VERTICAL_GAP; // add gap between siblings
         });
-
-        return Math.max(totalHeight - VERTICAL_GAP, NODE_HEIGHT);
+        return Math.max(total, NODE_HEIGHT);
       };
 
       // Recursive positioning
@@ -252,6 +252,7 @@ const MindMapMaker = () => {
         let rightChildren = [];
 
         if (node.isRoot) {
+          // split children around root
           children.forEach(child => {
             if (child.x < node.x) leftChildren.push(child);
             else rightChildren.push(child);
@@ -265,32 +266,19 @@ const MindMapMaker = () => {
           if (childList.length === 0) return;
 
           const subtreeHeights = childList.map(c => computeSubtreeHeight(c.id));
-          const totalHeight =
-            subtreeHeights.reduce((a, b) => a + b, 0) +
-            (childList.length - 1) * VERTICAL_GAP;
+          const totalHeight = subtreeHeights.reduce((a, b) => a + b, 0) + (childList.length - 1) * VERTICAL_GAP;
 
-          let startY;
-
-          if (childList.length % 2 === 1) {
-            // Odd number → center middle child under parent
-            const middleIndex = Math.floor(childList.length / 2);
-            const beforeMiddle = subtreeHeights
-              .slice(0, middleIndex)
-              .reduce((a, b) => a + b + VERTICAL_GAP, 0);
-            startY = baseY - beforeMiddle - subtreeHeights[middleIndex] / 2;
-          } else {
-            // Even number → center the whole block
-            startY = baseY - totalHeight / 2;
-          }
+          // start from top, centered under parent
+          let currentY = baseY - totalHeight / 2;
 
           childList.forEach((child, i) => {
             const childHeight = subtreeHeights[i];
-            const childY = startY + childHeight / 2;
-            const childX =
-              direction === "left" ? baseX - LEVEL_DISTANCE : baseX + LEVEL_DISTANCE;
+            const childY = currentY + childHeight / 2;
+            const childX = direction === "left" ? baseX - LEVEL_DISTANCE : baseX + LEVEL_DISTANCE;
 
             positionNodeTree(child.id, childX, childY, direction);
-            startY += childHeight + VERTICAL_GAP;
+
+            currentY += childHeight + VERTICAL_GAP;
           });
         };
 
