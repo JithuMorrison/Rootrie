@@ -220,16 +220,31 @@ const MindMapMaker = () => {
       const root = newNodes.find(n => n.isRoot);
       if (!root) return prev;
 
-      // Recursively position all nodes from root
+      const NODE_HEIGHT = 40;      // approximate node height
+      const VERTICAL_GAP = 20;     // min gap between siblings
+      const LEVEL_DISTANCE = 200;  // horizontal distance between levels
+
+      // Compute height of a subtree (for spacing)
+      const computeSubtreeHeight = (nodeId) => {
+        const children = newNodes.filter(n => n.parentId === nodeId);
+        if (children.length === 0) return NODE_HEIGHT;
+
+        let totalHeight = 0;
+        children.forEach(child => {
+          totalHeight += computeSubtreeHeight(child.id) + VERTICAL_GAP;
+        });
+
+        return Math.max(totalHeight - VERTICAL_GAP, NODE_HEIGHT);
+      };
+
+      // Recursive positioning
       const positionNodeTree = (nodeId, baseX, baseY, side = null) => {
         const node = newNodes.find(n => n.id === nodeId);
         if (!node) return;
 
-        // Update node position
         node.x = baseX;
         node.y = baseY;
 
-        // Get children and group by side
         const children = newNodes.filter(n => n.parentId === nodeId);
         if (children.length === 0) return;
 
@@ -237,53 +252,52 @@ const MindMapMaker = () => {
         let rightChildren = [];
 
         if (node.isRoot) {
-          // For root, maintain existing sides
           children.forEach(child => {
-            if (child.x < node.x) {
-              leftChildren.push(child);
-            } else {
-              rightChildren.push(child);
-            }
+            if (child.x < node.x) leftChildren.push(child);
+            else rightChildren.push(child);
           });
         } else {
-          // For non-root, all children go to same side as parent
-          if (side === 'right') {
-            rightChildren = children;
+          if (side === "right") rightChildren = children;
+          else leftChildren = children;
+        }
+
+        const positionSide = (childList, direction) => {
+          if (childList.length === 0) return;
+
+          const subtreeHeights = childList.map(c => computeSubtreeHeight(c.id));
+          const totalHeight =
+            subtreeHeights.reduce((a, b) => a + b, 0) +
+            (childList.length - 1) * VERTICAL_GAP;
+
+          let startY;
+
+          if (childList.length % 2 === 1) {
+            // Odd number → center middle child under parent
+            const middleIndex = Math.floor(childList.length / 2);
+            const beforeMiddle = subtreeHeights
+              .slice(0, middleIndex)
+              .reduce((a, b) => a + b + VERTICAL_GAP, 0);
+            startY = baseY - beforeMiddle - subtreeHeights[middleIndex] / 2;
           } else {
-            leftChildren = children;
+            // Even number → center the whole block
+            startY = baseY - totalHeight / 2;
           }
-        }
 
-        // Sort children by Y position
-        leftChildren.sort((a, b) => a.y - b.y);
-        rightChildren.sort((a, b) => a.y - b.y);
+          childList.forEach((child, i) => {
+            const childHeight = subtreeHeights[i];
+            const childY = startY + childHeight / 2;
+            const childX =
+              direction === "left" ? baseX - LEVEL_DISTANCE : baseX + LEVEL_DISTANCE;
 
-        // Position left children
-        if (leftChildren.length > 0) {
-          const leftTotalHeight = (leftChildren.length - 1) * (40 + MIN_VERTICAL_GAP);
-          const leftStartY = baseY - leftTotalHeight / 2;
-          
-          leftChildren.forEach((child, index) => {
-            const childY = leftStartY + index * (40 + MIN_VERTICAL_GAP);
-            const childX = baseX - LEVEL_DISTANCE;
-            positionNodeTree(child.id, childX, childY, 'left');
+            positionNodeTree(child.id, childX, childY, direction);
+            startY += childHeight + VERTICAL_GAP;
           });
-        }
+        };
 
-        // Position right children
-        if (rightChildren.length > 0) {
-          const rightTotalHeight = (rightChildren.length - 1) * (40 + MIN_VERTICAL_GAP);
-          const rightStartY = baseY - rightTotalHeight / 2;
-          
-          rightChildren.forEach((child, index) => {
-            const childY = rightStartY + index * (40 + MIN_VERTICAL_GAP);
-            const childX = baseX + LEVEL_DISTANCE;
-            positionNodeTree(child.id, childX, childY, 'right');
-          });
-        }
+        positionSide(leftChildren, "left");
+        positionSide(rightChildren, "right");
       };
 
-      // Start positioning from root
       positionNodeTree(root.id, root.x, root.y);
       return newNodes;
     });
@@ -362,21 +376,18 @@ const MindMapMaker = () => {
   };
 
   const handleNodeMouseDown = (e, node) => {
-  e.stopPropagation();
-  if (e.detail === 1) {
-    setSelectedNode(node.id);
-    setDragNode(node);
-    setIsDragging(true);
-    const rect = svgRef.current.getBoundingClientRect();
-    setDragStart({ 
-      x: e.clientX - rect.left - pan.x - node.x * zoom, 
-      y: e.clientY - rect.top - pan.y - node.y * zoom 
-    });
-    
-    // Only detach from parent when dragging actually starts (not on initial click)
-    // This will be handled in the mouse move when movement is detected
-  }
-};
+    e.stopPropagation();
+    if (e.detail === 1) {
+      setSelectedNode(node.id);
+      setDragNode(node);
+      setIsDragging(true);
+      const rect = svgRef.current.getBoundingClientRect();
+      setDragStart({ 
+        x: e.clientX - rect.left - pan.x - node.x * zoom, 
+        y: e.clientY - rect.top - pan.y - node.y * zoom 
+      });
+    }
+  };
 
   const handleCanvasMouseDown = (e) => {
     if (e.target === svgRef.current) {
