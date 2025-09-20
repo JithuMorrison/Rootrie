@@ -362,23 +362,21 @@ const MindMapMaker = () => {
   };
 
   const handleNodeMouseDown = (e, node) => {
-    e.stopPropagation();
-    if (e.detail === 1) {
-      setSelectedNode(node.id);
-      setDragNode(node);
-      setIsDragging(true);
-      const rect = svgRef.current.getBoundingClientRect();
-      setDragStart({ 
-        x: e.clientX - rect.left - pan.x - node.x * zoom, 
-        y: e.clientY - rect.top - pan.y - node.y * zoom 
-      });
-      
-      // Detach node from old parent immediately when dragging starts
-      if (!node.isRoot) {
-        updateNodePosition(node.id, node.x, node.y, true);
-      }
-    }
-  };
+  e.stopPropagation();
+  if (e.detail === 1) {
+    setSelectedNode(node.id);
+    setDragNode(node);
+    setIsDragging(true);
+    const rect = svgRef.current.getBoundingClientRect();
+    setDragStart({ 
+      x: e.clientX - rect.left - pan.x - node.x * zoom, 
+      y: e.clientY - rect.top - pan.y - node.y * zoom 
+    });
+    
+    // Only detach from parent when dragging actually starts (not on initial click)
+    // This will be handled in the mouse move when movement is detected
+  }
+};
 
   const handleCanvasMouseDown = (e) => {
     if (e.target === svgRef.current) {
