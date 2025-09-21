@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   Plus, 
@@ -16,11 +17,14 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Moon,
+  Sun
 } from 'lucide-react';
 
 const MindMapMaker = () => {
   const svgRef = useRef(null);
+  const [darkMode, setDarkMode] = useState(false);
   const [nodes, setNodes] = useState([
     {
       id: 1,
@@ -159,46 +163,22 @@ const MindMapMaker = () => {
     return allChildren;
   };
 
-  // Calculate proper vertical positions for children to avoid overlap
-  const calculateChildPositions = (parentId) => {
-    const parent = nodes.find(n => n.id === parentId);
-    if (!parent) return;
-
-    const children = getDirectChildren(parentId);
-    if (children.length === 0) return;
-
-    // Sort children by current Y position
-    children.sort((a, b) => a.y - b.y);
-
-    const startY = parent.y - ((children.length - 1) * (40 + MIN_VERTICAL_GAP)) / 2;
-    
-    return children.map((child, index) => ({
-      ...child,
-      y: startY + index * (40 + MIN_VERTICAL_GAP)
-    }));
-  };
-
-  // Update node position and detach from old parent when dragging starts
-  const updateNodePosition = (nodeId, newX, newY, isDetached = false) => {
+  // Update node position and move all connected children
+  const updateNodePosition = (nodeId, newX, newY, updateConnections = true) => {
     setNodes(prev => {
       const newNodes = [...prev];
       const nodeToUpdate = newNodes.find(n => n.id === nodeId);
       if (!nodeToUpdate) return prev;
 
-      // Detach node from old parent when dragging starts
-      if (isDetached && !nodeToUpdate.isRoot) {
-        nodeToUpdate.parentId = null;
-      }
-
       const originalNode = nodes.find(n => n.id === nodeId);
       const deltaX = newX - originalNode.x;
       const deltaY = newY - originalNode.y;
 
-      // Update the dragged node
+      // Update the dragged node immediately
       nodeToUpdate.x = newX;
       nodeToUpdate.y = newY;
 
-      // Update all children recursively
+      // Update all children recursively to move with parent
       const updateChildren = (parentId, parentDeltaX, parentDeltaY) => {
         const children = newNodes.filter(n => n.parentId === parentId);
         children.forEach(child => {
@@ -208,7 +188,10 @@ const MindMapMaker = () => {
         });
       };
 
-      updateChildren(nodeId, deltaX, deltaY);
+      if (updateConnections) {
+        updateChildren(nodeId, deltaX, deltaY);
+      }
+      
       return newNodes;
     });
   };
@@ -220,11 +203,10 @@ const MindMapMaker = () => {
       const root = newNodes.find(n => n.isRoot);
       if (!root) return prev;
 
-      const NODE_HEIGHT = 30;      // approximate node height
-      const VERTICAL_GAP = 20;     // more gap to avoid collisions
-      const LEVEL_DISTANCE = 200;  // horizontal distance between levels
+      const NODE_HEIGHT = 30;
+      const VERTICAL_GAP = 20;
+      const LEVEL_DISTANCE = 200;
 
-      // Compute the total height of a subtree (node + children recursively)
       const computeSubtreeHeight = (nodeId) => {
         const children = newNodes.filter(n => n.parentId === nodeId);
         if (children.length === 0) return NODE_HEIGHT;
@@ -232,12 +214,11 @@ const MindMapMaker = () => {
         let total = 0;
         children.forEach((child, i) => {
           total += computeSubtreeHeight(child.id);
-          if (i < children.length - 1) total += VERTICAL_GAP; // add gap between siblings
+          if (i < children.length - 1) total += VERTICAL_GAP;
         });
         return Math.max(total, NODE_HEIGHT);
       };
 
-      // Recursive positioning
       const positionNodeTree = (nodeId, baseX, baseY, side = null) => {
         const node = newNodes.find(n => n.id === nodeId);
         if (!node) return;
@@ -252,7 +233,6 @@ const MindMapMaker = () => {
         let rightChildren = [];
 
         if (node.isRoot) {
-          // split children around root
           children.forEach(child => {
             if (child.x < node.x) leftChildren.push(child);
             else rightChildren.push(child);
@@ -268,7 +248,6 @@ const MindMapMaker = () => {
           const subtreeHeights = childList.map(c => computeSubtreeHeight(c.id));
           const totalHeight = subtreeHeights.reduce((a, b) => a + b, 0) + (childList.length - 1) * VERTICAL_GAP;
 
-          // start from top, centered under parent
           let currentY = baseY - totalHeight / 2;
 
           childList.forEach((child, i) => {
@@ -291,53 +270,25 @@ const MindMapMaker = () => {
     });
   };
 
-  // Generate smooth curved connection paths for all lines
-  const getConnectionPath = (parent, children) => {
-    if (!parent || children.length === 0) return '';
+  // Generate smooth curved connection paths
+  const getConnectionPath = (parent, child) => {
+    if (!parent || !child) return '';
 
     const parentCenterX = (parent.x + parent.width / 2) * zoom + pan.x;
     const parentCenterY = (parent.y + parent.height / 2) * zoom + pan.y;
-
-    if (children.length === 1) {
-      // Single child - smooth curved line
-      const child = children[0];
-      const childCenterX = (child.x + child.width / 2) * zoom + pan.x;
-      const childCenterY = (child.y + child.height / 2) * zoom + pan.y;
-      
-      const dx = childCenterX - parentCenterX;
-      const dy = childCenterY - parentCenterY;
-      const controlDistance = Math.abs(dx) * 0.5;
-      
-      const controlX1 = parentCenterX + Math.sign(dx) * controlDistance;
-      const controlY1 = parentCenterY + dy * 0.1;
-      const controlX2 = childCenterX - Math.sign(dx) * controlDistance;
-      const controlY2 = childCenterY - dy * 0.1;
-      
-      return `M ${parentCenterX} ${parentCenterY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${childCenterX} ${childCenterY}`;
-    } else {
-      // Multiple children - all curved connections
-      let pathString = '';
-      
-      children.forEach(child => {
-        const childCenterX = (child.x + child.width / 2) * zoom + pan.x;
-        const childCenterY = (child.y + child.height / 2) * zoom + pan.y;
-        
-        const dx = childCenterX - parentCenterX;
-        const dy = childCenterY - parentCenterY;
-        const controlDistance = Math.abs(dx) * 0.4;
-        
-        // Create smooth S-curve for each child
-        const controlX1 = parentCenterX + Math.sign(dx) * controlDistance;
-        const controlY1 = parentCenterY + dy * 0.2;
-        const controlX2 = childCenterX - Math.sign(dx) * controlDistance;
-        const controlY2 = childCenterY - dy * 0.2;
-        
-        if (pathString !== '') pathString += ' ';
-        pathString += `M ${parentCenterX} ${parentCenterY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${childCenterX} ${childCenterY}`;
-      });
-      
-      return pathString;
-    }
+    const childCenterX = (child.x + child.width / 2) * zoom + pan.x;
+    const childCenterY = (child.y + child.height / 2) * zoom + pan.y;
+    
+    const dx = childCenterX - parentCenterX;
+    const dy = childCenterY - parentCenterY;
+    const controlDistance = Math.abs(dx) * 0.5;
+    
+    const controlX1 = parentCenterX + Math.sign(dx) * controlDistance;
+    const controlY1 = parentCenterY + dy * 0.1;
+    const controlX2 = childCenterX - Math.sign(dx) * controlDistance;
+    const controlY2 = childCenterY - dy * 0.1;
+    
+    return `M ${parentCenterX} ${parentCenterY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${childCenterX} ${childCenterY}`;
   };
 
   // Check if a node is near another node for connection
@@ -395,8 +346,8 @@ const MindMapMaker = () => {
       const target = checkForConnectionTarget(dragNode, e.clientX - rect.left, e.clientY - rect.top);
       setConnectionTarget(target);
 
-      // Update position (detached mode)
-      updateNodePosition(dragNode.id, newX, newY, false);
+      // Update position with smooth connection movement
+      updateNodePosition(dragNode.id, newX, newY, true);
 
     } else if (isPanning) {
       setPan({
@@ -409,7 +360,6 @@ const MindMapMaker = () => {
   const handleMouseUp = useCallback(() => {
     if (isDragging && dragNode) {
       if (connectionTarget) {
-        // Connect the dragged node to the target
         setNodes(prev => prev.map(node => {
           if (node.id === dragNode.id) {
             return {
@@ -423,7 +373,6 @@ const MindMapMaker = () => {
         }));
       }
 
-      // Auto-reposition all nodes after any change
       setTimeout(() => {
         autoRepositionAllNodes();
       }, 50);
@@ -448,17 +397,13 @@ const MindMapMaker = () => {
     const referenceNode = nodes.find(n => n.id === referenceNodeId);
     if (!referenceNode) return;
 
-    // Determine the side of the reference node relative to root
     const root = nodes.find(n => n.isRoot);
     let isRightSide;
     
     if (referenceNode.isRoot) {
-      // For root node, use the specified position
       isRightSide = position === 'right';
     } else {
-      // For non-root nodes, maintain the same side as the reference node
       isRightSide = referenceNode.x > root.x;
-      // Override position to match the side
       position = isRightSide ? 'right' : 'left';
     }
 
@@ -483,7 +428,6 @@ const MindMapMaker = () => {
     setNodes(prev => [...prev, newNode]);
     setSelectedNode(newNode.id);
 
-    // Auto-reposition all nodes after adding
     setTimeout(() => {
       autoRepositionAllNodes();
     }, 50);
@@ -497,12 +441,9 @@ const MindMapMaker = () => {
     const toDelete = [nodeToDelete, ...allChildren];
     const ids = toDelete.map(n => n.id);
     
-    const parentId = nodeToDelete.parentId;
-    
     setNodes(prev => prev.filter(n => !ids.includes(n.id)));
     setSelectedNode(null);
 
-    // Auto-reposition all nodes after deletion
     setTimeout(() => {
       autoRepositionAllNodes();
     }, 50);
@@ -528,23 +469,20 @@ const MindMapMaker = () => {
   const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.2, 0.3));
   const handleZoomReset = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
 
-  // Group nodes by parent for rendering connections
-  const connectionGroups = nodes.reduce((groups, node) => {
-    if (node.parentId) {
-      if (!groups[node.parentId]) {
-        groups[node.parentId] = [];
-      }
-      groups[node.parentId].push(node);
-    }
-    return groups;
-  }, {});
+  const toggleTheme = () => setDarkMode(prev => !prev);
+
+  const getTextColor = () => darkMode ? '#e2e8f0' : '#1f2937';
+  const getConnectionColor = () => darkMode ? '#64748b' : '#475569';
 
   return (
-    <div className="mindmap-container">
+    <div className={`mindmap-container ${darkMode ? 'dark' : 'light'}`}>
       {/* Top Toolbar */}
       {showToolbar && (
         <div className="top-toolbar">
           <div className="toolbar-section">
+            <button className="toolbar-btn" onClick={toggleTheme} title={darkMode ? "Light Mode" : "Dark Mode"}>
+              {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
             <button className="toolbar-btn" title="Undo">
               <RefreshCw size={18} />
             </button>
@@ -616,14 +554,14 @@ const MindMapMaker = () => {
           </filter>
         </defs>
 
-        {/* Connection Lines - each child gets its own curved path */}
+        {/* Connection Lines */}
         {nodes.map(node => {
           const parent = nodes.find(n => n.id === node.parentId);
           return parent ? (
             <path
               key={`connection-${node.id}`}
-              d={getConnectionPath(parent, [node])}
-              stroke="#64748b"
+              d={getConnectionPath(parent, node)}
+              stroke={getConnectionColor()}
               strokeWidth="2"
               fill="none"
               opacity="0.8"
@@ -670,7 +608,7 @@ const MindMapMaker = () => {
             {/* Node Shape */}
             <g
               transform={`translate(${node.x * zoom + pan.x}, ${node.y * zoom + pan.y}) scale(${zoom})`}
-              className="node-group"
+              className={`node-group ${isDragging && dragNode?.id === node.id ? 'dragging' : ''}`}
             >
               <rect
                 width={node.width}
@@ -691,7 +629,7 @@ const MindMapMaker = () => {
                 y={node.height / 2}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fill="white"
+                fill={getTextColor()}
                 fontSize="14"
                 fontWeight="500"
                 style={{ pointerEvents: 'none', userSelect: 'none' }}
@@ -703,7 +641,6 @@ const MindMapMaker = () => {
             {/* Add Child Buttons */}
             {selectedNode === node.id && (
               <>
-                {/* Show only appropriate side button based on node's position relative to root */}
                 {(() => {
                   const root = nodes.find(n => n.isRoot);
                   const isNodeOnRight = node.isRoot ? true : node.x >= root.x;
@@ -711,7 +648,7 @@ const MindMapMaker = () => {
                   
                   return (
                     <>
-                      {/* Right Child Button - show if node is root or on right side */}
+                      {/* Right Child Button */}
                       {(node.isRoot || isNodeOnRight) && (
                         <g transform={`translate(${(node.x + node.width + 15) * zoom + pan.x}, ${(node.y + node.height/2 - 12) * zoom + pan.y})`}>
                           <circle
@@ -728,7 +665,7 @@ const MindMapMaker = () => {
                         </g>
                       )}
 
-                      {/* Left Child Button - show if node is root or on left side */}
+                      {/* Left Child Button */}
                       {(node.isRoot || isNodeOnLeft) && (
                         <g transform={`translate(${(node.x - 35) * zoom + pan.x}, ${(node.y + node.height/2 - 12) * zoom + pan.y})`}>
                           <circle
@@ -756,8 +693,8 @@ const MindMapMaker = () => {
                     width={100}
                     height={40}
                     rx={20}
-                    fill="white"
-                    stroke="#e2e8f0"
+                    fill={darkMode ? "#374151" : "white"}
+                    stroke={darkMode ? "#4b5563" : "#e2e8f0"}
                     strokeWidth="1"
                     filter="url(#shadow)"
                   />
@@ -836,15 +773,15 @@ const MindMapMaker = () => {
       <div className="legend">
         <div className="legend-item">
           <div className="legend-icon fork"></div>
-          <span>Fork connections</span>
+          <span>Smooth connections</span>
         </div>
         <div className="legend-item">
           <div className="legend-icon drag"></div>
-          <span>Drag to reconnect</span>
+          <span>Drag with children</span>
         </div>
         <div className="legend-item">
           <div className="legend-icon spacing"></div>
-          <span>20px min spacing</span>
+          <span>Auto positioning</span>
         </div>
       </div>
 
@@ -852,27 +789,18 @@ const MindMapMaker = () => {
         .mindmap-container {
           width: 100vw;
           height: 100vh;
-          background: linear-gradient(135deg, #f9f9f9ff 0%, rgba(255, 241, 241, 1) 100%);
           position: relative;
           overflow: hidden;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          transition: all 0.3s ease;
         }
 
-        .top-toolbar {
-          position: absolute;
-          top: 20px;
-          left: 50%;
-          transform: translateX(-50%);
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
+        .light .top-toolbar {
           background: rgba(255, 255, 255, 0.95);
-          border-radius: 25px;
-          padding: 8px 20px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-          backdrop-filter: blur(10px);
-          z-index: 100;
-          min-width: 600px;
+        }
+
+        .dark .top-toolbar {
+          background: rgba(55, 65, 81, 0.95);
         }
 
         .toolbar-section {
@@ -892,7 +820,14 @@ const MindMapMaker = () => {
           border-radius: 18px;
           cursor: pointer;
           transition: all 0.2s ease;
+        }
+
+        .light .toolbar-btn {
           color: #64748b;
+        }
+
+        .dark .toolbar-btn {
+          color: #9ca3af;
         }
 
         .toolbar-btn:hover {
@@ -928,8 +863,15 @@ const MindMapMaker = () => {
 
         .toggle-label {
           font-size: 12px;
-          color: #64748b;
           font-weight: 500;
+        }
+
+        .light .toggle-label {
+          color: #64748b;
+        }
+
+        .dark .toggle-label {
+          color: #9ca3af;
         }
 
         .canvas {
@@ -942,8 +884,26 @@ const MindMapMaker = () => {
           cursor: grabbing;
         }
 
+        .node-group {
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
         .node-group:hover rect {
           filter: url(#glow);
+        }
+
+        .node-group.dragging {
+          opacity: 0.9;
+          filter: drop-shadow(0 8px 25px rgba(0, 0, 0, 0.3));
+        }
+
+        .connection-line {
+          transition: all 0.1s ease;
+        }
+
+        .connection-line:hover {
+          stroke-width: 3;
+          stroke: #3b82f6;
         }
 
         .edit-overlay {
@@ -960,21 +920,40 @@ const MindMapMaker = () => {
         }
 
         .edit-box {
-          background: white;
-          padding: 20px;
           border-radius: 12px;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
           min-width: 300px;
+          padding: 20px;
+        }
+
+        .light .edit-box {
+          background: white;
+        }
+
+        .dark .edit-box {
+          background: #374151;
         }
 
         .edit-box input {
           width: 100%;
           font-size: 16px;
           padding: 12px 16px;
-          border: 2px solid #e2e8f0;
+          border: 2px solid;
           border-radius: 8px;
           outline: none;
           transition: all 0.2s ease;
+        }
+
+        .light .edit-box input {
+          background: white;
+          color: #1f2937;
+          border-color: #e2e8f0;
+        }
+
+        .dark .edit-box input {
+          background: #4b5563;
+          color: #e2e8f0;
+          border-color: #6b7280;
         }
 
         .edit-box input:focus {
@@ -988,12 +967,19 @@ const MindMapMaker = () => {
           right: 30px;
           display: flex;
           align-items: center;
-          background: rgba(255, 255, 255, 0.95);
           border-radius: 25px;
           padding: 8px;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
           backdrop-filter: blur(10px);
           gap: 4px;
+        }
+
+        .light .zoom-controls {
+          background: rgba(255, 255, 255, 0.95);
+        }
+
+        .dark .zoom-controls {
+          background: rgba(55, 65, 81, 0.95);
         }
 
         .zoom-btn {
@@ -1008,8 +994,15 @@ const MindMapMaker = () => {
           justify-content: center;
           font-size: 18px;
           font-weight: bold;
-          color: #64748b;
           transition: all 0.2s ease;
+        }
+
+        .light .zoom-btn {
+          color: #64748b;
+        }
+
+        .dark .zoom-btn {
+          color: #9ca3af;
         }
 
         .zoom-btn:hover {
@@ -1025,16 +1018,22 @@ const MindMapMaker = () => {
           padding: 0 12px;
           font-size: 12px;
           font-weight: 500;
-          color: #64748b;
           min-width: 40px;
           text-align: center;
+        }
+
+        .light .zoom-level {
+          color: #64748b;
+        }
+
+        .dark .zoom-level {
+          color: #9ca3af;
         }
 
         .legend {
           position: absolute;
           bottom: 30px;
           left: 30px;
-          background: rgba(255, 255, 255, 0.95);
           border-radius: 12px;
           padding: 16px;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
@@ -1044,12 +1043,27 @@ const MindMapMaker = () => {
           gap: 8px;
         }
 
+        .light .legend {
+          background: rgba(255, 255, 255, 0.95);
+        }
+
+        .dark .legend {
+          background: rgba(55, 65, 81, 0.95);
+        }
+
         .legend-item {
           display: flex;
           align-items: center;
           gap: 8px;
           font-size: 12px;
+        }
+
+        .light .legend-item {
           color: #64748b;
+        }
+
+        .dark .legend-item {
+          color: #9ca3af;
         }
 
         .legend-icon {
@@ -1067,10 +1081,10 @@ const MindMapMaker = () => {
         }
 
         .legend-icon.fork::after {
-          content: '⋈';
+          content: '~';
           color: white;
           font-weight: bold;
-          font-size: 12px;
+          font-size: 14px;
         }
 
         .legend-icon.drag {
@@ -1091,7 +1105,7 @@ const MindMapMaker = () => {
         }
 
         .legend-icon.spacing::after {
-          content: '↕';
+          content: '⚡';
           color: white;
           font-weight: bold;
           font-size: 12px;
@@ -1105,7 +1119,6 @@ const MindMapMaker = () => {
           transform: scale(1.05);
         }
 
-        /* Connection indicator animations */
         @keyframes pulse {
           0% { transform: scale(1); opacity: 0.8; }
           50% { transform: scale(1.1); opacity: 1; }
@@ -1116,23 +1129,17 @@ const MindMapMaker = () => {
           animation: pulse 1s infinite;
         }
 
-        /* Drag feedback */
-        .node-group.dragging {
-          opacity: 0.8;
-          filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.3));
-        }
-
-        /* Fork-style connections */
         path {
-          transition: all 0.3s ease;
+          transition: all 0.1s ease;
+          vector-effect: non-scaling-stroke;
         }
 
         path:hover {
           stroke-width: 3;
           stroke: #3b82f6;
+          filter: drop-shadow(0 2px 8px rgba(59, 130, 246, 0.4));
         }
 
-        /* Responsive design */
         @media (max-width: 768px) {
           .top-toolbar {
             min-width: 90vw;
@@ -1169,11 +1176,6 @@ const MindMapMaker = () => {
           }
         }
 
-        /* Enhanced visual feedback for connection zones */
-        .connection-target {
-          animation: connectionPulse 1s infinite;
-        }
-
         @keyframes connectionPulse {
           0% { 
             stroke-width: 2px; 
@@ -1192,37 +1194,17 @@ const MindMapMaker = () => {
           }
         }
 
-        /* Node positioning feedback */
-        .node-repositioning {
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        .connection-target {
+          animation: connectionPulse 1s infinite;
+        }.3s ease;
         }
 
-        /* Connection line styling */
-        .connection-line {
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        .mindmap-container.light {
+          background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
         }
 
-        .connection-line:hover {
-          stroke-width: 3;
-          stroke: #3b82f6;
-          filter: drop-shadow(0 2px 8px rgba(59, 130, 246, 0.4));
-        }
-
-        /* Smooth curved connections */
-        path {
-          vector-effect: non-scaling-stroke;
-        }
-
-        /* Node repositioning feedback */
-        .node-repositioning {
-          transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        /* Detached node styling */
-        .node-detached {
-          opacity: 0.9;
-          filter: drop-shadow(0 8px 25px rgba(0, 0, 0, 0.3)) saturate(1.2);
-          z-index: 1000;
+        .mindmap-container.dark {
+          background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
         }
       `}</style>
     </div>
