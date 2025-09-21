@@ -852,7 +852,7 @@ const MindMapMaker = () => {
         .mindmap-container {
           width: 100vw;
           height: 100vh;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: linear-gradient(135deg, #f9f9f9ff 0%, rgba(255, 241, 241, 1) 100%);
           position: relative;
           overflow: hidden;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
