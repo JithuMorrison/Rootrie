@@ -88,7 +88,7 @@ const ProjectSettings = ({ project, onSave, onClose }) => {
 
           <div className="modal-buttons">
             <button type="button" className="cancel-button" onClick={onClose}>
-              Cance
+              Cancel
             </button>
             <button type="submit" className="save-button">
               Save Changes
