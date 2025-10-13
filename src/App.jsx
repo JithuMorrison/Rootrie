@@ -15,7 +15,8 @@ import ClassDiagramMain from './classmain';
 import ClassDiagramMaker from './class';
 import DomainModelMain from './domainmodelmain';
 import DomainModelMaker from './domainmodel';
-import MindMapMaker from './projectsetup';
+import MindMapMain from './mindmapmain';
+import MindMapMaker from './mindmap';
 
 // Diagram type constants
 const DIAGRAM_TYPES = {
@@ -26,7 +27,8 @@ const DIAGRAM_TYPES = {
   SEQUENCE: 'sequence',
   ARCHITECTURE: 'architecture',
   CLASS: 'class',
-  DOMAIN_MODEL: 'domainmodel'
+  DOMAIN_MODEL: 'domainmodel',
+  MIND_MAP: 'mindmap'
 };
 
 // Initial data structure
@@ -46,7 +48,9 @@ const getInitialData = () => ({
   classDiagrams: [],
   currentClassDiagram: null,
   domainModels: [],
-  currentDomainModel: null
+  currentDomainModel: null,
+  mindMaps: [],
+  currentMindMap: null
 });
 
 const getStoredData = () => {
@@ -99,6 +103,7 @@ const App = () => {
     updateData.currentArchitectureDiagram = null;
     updateData.currentClassDiagram = null;
     updateData.currentDomainModel = null;
+    updateData.currentMindMap = null;
 
     // Add new diagram and set as current
     switch (type) {
@@ -133,6 +138,10 @@ const App = () => {
       case DIAGRAM_TYPES.DOMAIN_MODEL:
         updateData.domainModels = [...currentData.domainModels, baseDiagram];
         updateData.currentDomainModel = baseDiagram;
+        break;
+      case DIAGRAM_TYPES.MIND_MAP:
+        updateData.mindMaps = [...currentData.mindMaps, baseDiagram];
+        updateData.currentMindMap = baseDiagram;
         break;
     }
 
@@ -194,6 +203,12 @@ const App = () => {
           updateData.currentDomainModel = null;
         }
         break;
+      case DIAGRAM_TYPES.MIND_MAP: // Add this case
+        updateData.mindMaps = currentData.mindMaps.filter(m => m.id !== id);
+        if (currentData.currentMindMap?.id === id) {
+          updateData.currentMindMap = null;
+        }
+        break;
     }
 
     saveToStorage(updateData);
@@ -253,6 +268,12 @@ const App = () => {
           d.id === updatedDiagram.id ? updatedDiagram : d
         );
         updateData.currentDomainModel = updatedDiagram;
+        break;
+      case DIAGRAM_TYPES.MIND_MAP: // Add this case
+        updateData.mindMaps = currentData.mindMaps.map(m => 
+          m.id === updatedDiagram.id ? updatedDiagram : m
+        );
+        updateData.currentMindMap = updatedDiagram;
         break;
     }
 
@@ -336,6 +357,27 @@ const App = () => {
     });
   };
 
+  const createMindMap = (name) => {
+    createDiagram(DIAGRAM_TYPES.MIND_MAP, name, {
+      nodes: [
+        {
+          id: 1,
+          text: 'Central Idea',
+          x: 400,
+          y: 300,
+          level: 0,
+          parentId: null,
+          isRoot: true,
+          color: '#ff6b6b',
+          width: 140,
+          height: 40
+        }
+      ],
+      zoom: 1,
+      pan: { x: 0, y: 0 }
+    });
+  };
+
   // Specific diagram deletion functions
   const deleteProject = (id) => deleteDiagram(DIAGRAM_TYPES.PROJECT, id);
   const deleteFlowchart = (id) => deleteDiagram(DIAGRAM_TYPES.FLOWCHART, id);
@@ -345,6 +387,7 @@ const App = () => {
   const deleteArchitectureDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.ARCHITECTURE, id);
   const deleteClassDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.CLASS, id);
   const deleteDomainModel = (id) => deleteDiagram(DIAGRAM_TYPES.DOMAIN_MODEL, id);
+  const deleteMindMap = (id) => deleteDiagram(DIAGRAM_TYPES.MIND_MAP, id);
 
   // Specific diagram update functions
   const updateProject = (project) => updateDiagram(DIAGRAM_TYPES.PROJECT, project);
@@ -355,6 +398,7 @@ const App = () => {
   const updateArchitectureDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.ARCHITECTURE, diagram);
   const updateClassDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.CLASS, diagram);
   const updateDomainModel = (diagram) => updateDiagram(DIAGRAM_TYPES.DOMAIN_MODEL, diagram);
+  const updateMindMap = (mindMap) => updateDiagram(DIAGRAM_TYPES.MIND_MAP, mindMap);
 
   const importFlowchartFromJson = (jsonString) => {
     try {
@@ -383,7 +427,8 @@ const App = () => {
       currentSequenceDiagram: null,
       currentArchitectureDiagram: null,
       currentClassDiagram: null,
-      currentDomainModel: null
+      currentDomainModel: null,
+      currentMindMap: null
     };
     
     saveToStorage(updateData);
@@ -402,7 +447,8 @@ const App = () => {
       currentSequenceDiagram: null,
       currentArchitectureDiagram: null,
       currentClassDiagram: null,
-      currentDomainModel: null
+      currentDomainModel: null,
+      currentMindMap: null
     };
 
     // Set the specific current diagram
@@ -430,6 +476,9 @@ const App = () => {
         break;
       case DIAGRAM_TYPES.DOMAIN_MODEL:
         updateData.currentDomainModel = diagram;
+        break;
+      case DIAGRAM_TYPES.MIND_MAP: // Add this case
+        updateData.currentMindMap = diagram;
         break;
     }
 
@@ -623,6 +672,19 @@ const App = () => {
           onDeleteDomainModel={deleteDomainModel}
         />
       )
+    },
+    {
+      type: DIAGRAM_TYPES.MIND_MAP, // Add this tab
+      label: '🧠 Mind Maps',
+      color: '#10b981',
+      component: (
+        <MindMapMain
+          mindMaps={getCurrentData().mindMaps}
+          onCreateMindMap={createMindMap}
+          onLoadMindMap={(mindMap) => loadDiagram(DIAGRAM_TYPES.MIND_MAP, mindMap)}
+          onDeleteMindMap={deleteMindMap}
+        />
+      )
     }
   ];
 
@@ -699,7 +761,14 @@ const App = () => {
             onUpdateDomainModel={updateDomainModel}
             onBack={handleBack}
           />
-        ) : (
+        ) : currentData.currentMindMap ? (
+        <MindMapMaker
+          mindMap={currentData.currentMindMap}
+          nodes={currentData.currentMindMap.nodes || []}
+          onUpdateMindMap={updateMindMap}
+          onBack={handleBack}
+        />
+      ) : (
           <>
             <div style={styles.header}>
               <h1 style={styles.headerTitle}>Visual Designer Suite</h1>
@@ -737,7 +806,6 @@ const App = () => {
           </>
         )}
       </div>
-      <MindMapMaker />
     </div>
   );
 };
