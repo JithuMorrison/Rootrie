@@ -2,7 +2,6 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   Plus, 
   Trash2, 
-  Edit3, 
   ArrowLeft,
   Download,
   Copy,
@@ -18,17 +17,11 @@ import {
   Minus,
   ZoomIn,
   ZoomOut,
-  User
+  MousePointer,
+  Move
 } from 'lucide-react';
 
-const ActivityDiagramMaker = ({ 
-  activityDiagram, 
-  swimlanes = [], 
-  nodes = [], 
-  edges = [],
-  onUpdateActivityDiagram,
-  onBack 
-}) => {
+const ActivityDiagramMaker = () => {
   const svgRef = useRef(null);
   const canvasRef = useRef(null);
   const [selectedNode, setSelectedNode] = useState(null);
@@ -42,34 +35,36 @@ const ActivityDiagramMaker = ({
   const [selectedTool, setSelectedTool] = useState('select');
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStart, setConnectionStart] = useState(null);
+  const [connectionMouse, setConnectionMouse] = useState({ x: 0, y: 0 });
   const [newSwimlaneName, setNewSwimlaneName] = useState('');
-  const [swimlaneWidth] = useState(200);
+  const [swimlaneWidth] = useState(220);
+  const [diagramName, setDiagramName] = useState('Activity Diagram');
 
-  const [currentSwimlanes, setCurrentSwimlanes] = useState(swimlanes.length > 0 ? swimlanes : [
+  const [currentSwimlanes, setCurrentSwimlanes] = useState([
     { id: 1, name: 'Customer', order: 0 },
-    { id: 2, name: 'Order', order: 1 },
+    { id: 2, name: 'Order System', order: 1 },
     { id: 3, name: 'Accounting', order: 2 },
     { id: 4, name: 'Shipping', order: 3 }
   ]);
 
-  const [currentNodes, setCurrentNodes] = useState(nodes.length > 0 ? nodes : [
+  const [currentNodes, setCurrentNodes] = useState([
     { id: 1, type: 'initial', text: 'Start', x: 100, y: 80, width: 40, height: 40, swimlaneId: 1 },
     { id: 2, type: 'activity', text: 'Place order', x: 60, y: 150, width: 120, height: 60, swimlaneId: 1 },
     { id: 3, type: 'fork', text: '', x: 80, y: 240, width: 80, height: 10, swimlaneId: 1 },
-    { id: 4, type: 'activity', text: 'Receive confirmation', x: 40, y: 310, width: 120, height: 60, swimlaneId: 1 },
-    { id: 5, type: 'activity', text: 'Take order', x: 260, y: 310, width: 100, height: 60, swimlaneId: 2 },
-    { id: 6, type: 'activity', text: 'Process order', x: 460, y: 310, width: 100, height: 60, swimlaneId: 3 },
-    { id: 7, type: 'activity', text: 'Pack in box', x: 660, y: 310, width: 100, height: 60, swimlaneId: 4 },
-    { id: 8, type: 'activity', text: 'Record shipping', x: 460, y: 420, width: 120, height: 60, swimlaneId: 3 },
-    { id: 9, type: 'activity', text: 'Ship order', x: 660, y: 420, width: 100, height: 60, swimlaneId: 4 },
+    { id: 4, type: 'activity', text: 'Receive confirmation', x: 40, y: 310, width: 140, height: 60, swimlaneId: 1 },
+    { id: 5, type: 'activity', text: 'Take order', x: 260, y: 310, width: 120, height: 60, swimlaneId: 2 },
+    { id: 6, type: 'activity', text: 'Process order', x: 470, y: 310, width: 120, height: 60, swimlaneId: 3 },
+    { id: 7, type: 'activity', text: 'Pack in box', x: 690, y: 310, width: 120, height: 60, swimlaneId: 4 },
+    { id: 8, type: 'activity', text: 'Record shipping', x: 460, y: 420, width: 140, height: 60, swimlaneId: 3 },
+    { id: 9, type: 'activity', text: 'Ship order', x: 680, y: 420, width: 120, height: 60, swimlaneId: 4 },
     { id: 10, type: 'join', text: '', x: 80, y: 530, width: 80, height: 10, swimlaneId: 1 },
     { id: 11, type: 'activity', text: 'Receive order', x: 50, y: 600, width: 120, height: 60, swimlaneId: 1 },
-    { id: 12, type: 'activity', text: 'Pay bill', x: 60, y: 700, width: 100, height: 60, swimlaneId: 1 },
-    { id: 13, type: 'activity', text: 'Close order', x: 460, y: 700, width: 100, height: 60, swimlaneId: 3 },
-    { id: 14, type: 'final', text: 'End', x: 490, y: 800, width: 40, height: 40, swimlaneId: 3 }
+    { id: 12, type: 'activity', text: 'Pay bill', x: 70, y: 700, width: 100, height: 60, swimlaneId: 1 },
+    { id: 13, type: 'activity', text: 'Close order', x: 470, y: 700, width: 120, height: 60, swimlaneId: 3 },
+    { id: 14, type: 'final', text: 'End', x: 510, y: 800, width: 40, height: 40, swimlaneId: 3 }
   ]);
 
-  const [currentEdges, setCurrentEdges] = useState(edges.length > 0 ? edges : [
+  const [currentEdges, setCurrentEdges] = useState([
     { id: 1, source: 1, target: 2, label: '' },
     { id: 2, source: 2, target: 3, label: '' },
     { id: 3, source: 3, target: 4, label: '' },
@@ -88,18 +83,13 @@ const ActivityDiagramMaker = ({
   ]);
 
   useEffect(() => {
-    if (swimlanes.length > 0) setCurrentSwimlanes(swimlanes);
-    if (nodes.length > 0) setCurrentNodes(nodes);
-    if (edges.length > 0) setCurrentEdges(edges);
-  }, [swimlanes, nodes, edges]);
-
-  useEffect(() => {
     setJsonInput(JSON.stringify({ 
+      name: diagramName,
       swimlanes: currentSwimlanes, 
       nodes: currentNodes, 
       edges: currentEdges 
     }, null, 2));
-  }, [currentSwimlanes, currentNodes, currentEdges]);
+  }, [currentSwimlanes, currentNodes, currentEdges, diagramName]);
 
   const nodeTypes = {
     initial: { width: 40, height: 40, color: '#10b981', shape: 'circle' },
@@ -113,10 +103,61 @@ const ActivityDiagramMaker = ({
   const calculateNodeDimensions = (type, text) => {
     const base = nodeTypes[type];
     if (type === 'activity') {
-      const textWidth = Math.max(100, text.length * 7 + 30);
+      const textWidth = Math.max(100, text.length * 8 + 40);
       return { ...base, width: Math.min(textWidth, 180) };
     }
     return base;
+  };
+
+  // Get swimlane bounds
+  const getSwimlaneById = (swimlaneId) => {
+    const swimlane = currentSwimlanes.find(s => s.id === swimlaneId);
+    if (!swimlane) return null;
+    const index = currentSwimlanes.findIndex(s => s.id === swimlaneId);
+    return {
+      ...swimlane,
+      x: index * swimlaneWidth,
+      width: swimlaneWidth,
+      centerX: index * swimlaneWidth + swimlaneWidth / 2
+    };
+  };
+
+  // Center node in swimlane
+  const centerNodeInSwimlane = (node) => {
+    const swimlane = getSwimlaneById(node.swimlaneId);
+    if (!swimlane) return node;
+    
+    const centeredX = swimlane.centerX - node.width / 2;
+    return { ...node, x: centeredX };
+  };
+
+  // Constrain node position within swimlane
+  const constrainNodeToSwimlane = (node, newX, newY) => {
+    const swimlane = getSwimlaneById(node.swimlaneId);
+    if (!swimlane) return { x: newX, y: newY };
+
+    const minX = swimlane.x + 10;
+    const maxX = swimlane.x + swimlane.width - node.width - 10;
+    const minY = 60;
+
+    const constrainedX = Math.max(minX, Math.min(maxX, newX));
+    const constrainedY = Math.max(minY, newY);
+
+    return { x: constrainedX, y: constrainedY };
+  };
+
+  // Detect which swimlane the node is in
+  const detectSwimlaneForPosition = (x, nodeWidth) => {
+    const nodeCenterX = x + nodeWidth / 2;
+    
+    for (let i = 0; i < currentSwimlanes.length; i++) {
+      const swimlaneX = i * swimlaneWidth;
+      if (nodeCenterX >= swimlaneX && nodeCenterX < swimlaneX + swimlaneWidth) {
+        return currentSwimlanes[i].id;
+      }
+    }
+    
+    return currentSwimlanes[0]?.id || null;
   };
 
   const addSwimlane = () => {
@@ -128,38 +169,29 @@ const ActivityDiagramMaker = ({
       order: currentSwimlanes.length
     };
     
-    const updatedSwimlanes = [...currentSwimlanes, newSwimlane];
-    setCurrentSwimlanes(updatedSwimlanes);
+    setCurrentSwimlanes([...currentSwimlanes, newSwimlane]);
     setNewSwimlaneName('');
-    
-    onUpdateActivityDiagram({
-      ...activityDiagram,
-      swimlanes: updatedSwimlanes,
-      nodes: currentNodes,
-      edges: currentEdges
-    });
   };
 
   const deleteSwimlane = (swimlaneId) => {
+    if (currentSwimlanes.length <= 1) {
+      alert('Cannot delete the last swimlane');
+      return;
+    }
+
     const updatedSwimlanes = currentSwimlanes.filter(s => s.id !== swimlaneId);
     const updatedNodes = currentNodes.filter(n => n.swimlaneId !== swimlaneId);
     
     setCurrentSwimlanes(updatedSwimlanes);
     setCurrentNodes(updatedNodes);
     setSelectedSwimlane(null);
-    
-    onUpdateActivityDiagram({
-      ...activityDiagram,
-      swimlanes: updatedSwimlanes,
-      nodes: updatedNodes,
-      edges: currentEdges
-    });
   };
 
   const handleNodeMouseDown = (e, node) => {
     e.stopPropagation();
+    setSelectedNode(node.id);
+    
     if (selectedTool === 'select') {
-      setSelectedNode(node.id);
       setDragNode(node);
       setIsDragging(true);
       const rect = canvasRef.current.getBoundingClientRect();
@@ -174,16 +206,33 @@ const ActivityDiagramMaker = ({
   };
 
   const handleMouseMove = useCallback((e) => {
-    if (isDragging && dragNode && canvasRef.current) {
+    if (canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
-      const newX = (e.clientX - rect.left) / zoom - dragStart.x;
-      const newY = (e.clientY - rect.top) / zoom - dragStart.y;
+      const mouseX = (e.clientX - rect.left) / zoom;
+      const mouseY = (e.clientY - rect.top) / zoom;
+      
+      if (isConnecting) {
+        setConnectionMouse({ x: mouseX, y: mouseY });
+      }
 
-      setCurrentNodes(prev => prev.map(node => 
-        node.id === dragNode.id ? { ...node, x: Math.max(0, newX), y: Math.max(0, newY) } : node
-      ));
+      if (isDragging && dragNode) {
+        let newX = mouseX - dragStart.x;
+        let newY = mouseY - dragStart.y;
+
+        // Constrain to swimlane bounds
+        const constrained = constrainNodeToSwimlane(dragNode, newX, newY);
+        
+        // Detect swimlane change
+        const newSwimlaneId = detectSwimlaneForPosition(constrained.x, dragNode.width);
+
+        setCurrentNodes(prev => prev.map(node => 
+          node.id === dragNode.id 
+            ? { ...node, x: constrained.x, y: constrained.y, swimlaneId: newSwimlaneId } 
+            : node
+        ));
+      }
     }
-  }, [isDragging, dragNode, dragStart, zoom]);
+  }, [isDragging, isConnecting, dragNode, dragStart, zoom]);
 
   const handleMouseUp = useCallback((e) => {
     if (isConnecting && connectionStart && canvasRef.current) {
@@ -197,21 +246,19 @@ const ActivityDiagramMaker = ({
       });
 
       if (targetNode && targetNode.id !== connectionStart) {
-        const newEdge = {
-          id: Date.now(),
-          source: connectionStart,
-          target: targetNode.id,
-          label: ''
-        };
-        const updatedEdges = [...currentEdges, newEdge];
-        setCurrentEdges(updatedEdges);
+        const existingEdge = currentEdges.find(
+          e => e.source === connectionStart && e.target === targetNode.id
+        );
         
-        onUpdateActivityDiagram({
-          ...activityDiagram,
-          swimlanes: currentSwimlanes,
-          nodes: currentNodes,
-          edges: updatedEdges
-        });
+        if (!existingEdge) {
+          const newEdge = {
+            id: Date.now(),
+            source: connectionStart,
+            target: targetNode.id,
+            label: ''
+          };
+          setCurrentEdges([...currentEdges, newEdge]);
+        }
       }
     }
 
@@ -219,7 +266,7 @@ const ActivityDiagramMaker = ({
     setDragNode(null);
     setIsConnecting(false);
     setConnectionStart(null);
-  }, [isConnecting, connectionStart, currentNodes, currentEdges, currentSwimlanes, zoom, activityDiagram, onUpdateActivityDiagram]);
+  }, [isConnecting, connectionStart, currentNodes, currentEdges, zoom]);
 
   useEffect(() => {
     document.addEventListener('mousemove', handleMouseMove);
@@ -235,8 +282,8 @@ const ActivityDiagramMaker = ({
       swimlaneId = currentSwimlanes[0].id;
     }
 
-    const swimlaneIndex = currentSwimlanes.findIndex(s => s.id === swimlaneId);
-    const xPos = 80 + (swimlaneIndex * swimlaneWidth);
+    const swimlane = getSwimlaneById(swimlaneId);
+    if (!swimlane) return;
     
     const newNode = {
       id: Date.now(),
@@ -246,69 +293,40 @@ const ActivityDiagramMaker = ({
             type === 'decision' ? 'Decision' : 
             type === 'fork' ? '' : 
             type === 'join' ? '' : 'New Activity',
-      x: xPos,
       y: 200,
       swimlaneId,
       ...calculateNodeDimensions(type, 'New Activity')
     };
 
-    const updatedNodes = [...currentNodes, newNode];
-    setCurrentNodes(updatedNodes);
-    setSelectedNode(newNode.id);
+    // Center the node in the swimlane
+    const centeredNode = centerNodeInSwimlane(newNode);
 
-    onUpdateActivityDiagram({
-      ...activityDiagram,
-      swimlanes: currentSwimlanes,
-      nodes: updatedNodes,
-      edges: currentEdges
-    });
+    setCurrentNodes([...currentNodes, centeredNode]);
+    setSelectedNode(centeredNode.id);
   };
 
   const deleteNode = (nodeId) => {
-    const updatedNodes = currentNodes.filter(n => n.id !== nodeId);
-    const updatedEdges = currentEdges.filter(e => 
-      e.source !== nodeId && e.target !== nodeId
-    );
-    
-    setCurrentNodes(updatedNodes);
-    setCurrentEdges(updatedEdges);
+    setCurrentNodes(currentNodes.filter(n => n.id !== nodeId));
+    setCurrentEdges(currentEdges.filter(e => e.source !== nodeId && e.target !== nodeId));
     setSelectedNode(null);
-
-    onUpdateActivityDiagram({
-      ...activityDiagram,
-      swimlanes: currentSwimlanes,
-      nodes: updatedNodes,
-      edges: updatedEdges
-    });
   };
 
   const deleteEdge = (edgeId) => {
-    const updatedEdges = currentEdges.filter(e => e.id !== edgeId);
-    setCurrentEdges(updatedEdges);
-
-    onUpdateActivityDiagram({
-      ...activityDiagram,
-      swimlanes: currentSwimlanes,
-      nodes: currentNodes,
-      edges: updatedEdges
-    });
+    setCurrentEdges(currentEdges.filter(e => e.id !== edgeId));
   };
 
   const updateNodeText = (nodeId, text) => {
-    const updatedNodes = currentNodes.map(n => 
+    setCurrentNodes(currentNodes.map(n => 
       n.id === nodeId 
         ? { ...n, text, ...calculateNodeDimensions(n.type, text) } 
         : n
-    );
-    
-    setCurrentNodes(updatedNodes);
+    ));
+  };
 
-    onUpdateActivityDiagram({
-      ...activityDiagram,
-      swimlanes: currentSwimlanes,
-      nodes: updatedNodes,
-      edges: currentEdges
-    });
+  const centerNodeInCurrentSwimlane = (nodeId) => {
+    setCurrentNodes(currentNodes.map(n => 
+      n.id === nodeId ? centerNodeInSwimlane(n) : n
+    ));
   };
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.2, 3));
@@ -316,28 +334,29 @@ const ActivityDiagramMaker = ({
   const handleZoomReset = () => setZoom(1);
 
   const exportToJson = () => {
-    const data = { swimlanes: currentSwimlanes, nodes: currentNodes, edges: currentEdges };
+    const data = { 
+      name: diagramName,
+      swimlanes: currentSwimlanes, 
+      nodes: currentNodes, 
+      edges: currentEdges 
+    };
     return JSON.stringify(data, null, 2);
   };
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(exportToJson());
+    alert('JSON copied to clipboard!');
   };
 
   const importFromJson = () => {
     try {
       const data = JSON.parse(jsonInput);
-      if (Array.isArray(data.swimlanes) && Array.isArray(data.nodes) && Array.isArray(data.edges)) {
+      if (data.swimlanes && data.nodes && data.edges) {
         setCurrentSwimlanes(data.swimlanes);
         setCurrentNodes(data.nodes);
         setCurrentEdges(data.edges);
-        
-        onUpdateActivityDiagram({
-          ...activityDiagram,
-          swimlanes: data.swimlanes,
-          nodes: data.nodes,
-          edges: data.edges
-        });
+        if (data.name) setDiagramName(data.name);
+        alert('Diagram imported successfully!');
       } else {
         alert('Invalid JSON format. Expected swimlanes, nodes and edges arrays.');
       }
@@ -355,23 +374,6 @@ const ActivityDiagramMaker = ({
       setJsonInput(event.target.result);
     };
     reader.readAsText(file);
-  };
-
-  const exportToImage = () => {
-    if (!canvasRef.current) return;
-    
-    import('html2canvas').then(html2canvas => {
-      html2canvas.default(canvasRef.current, {
-        backgroundColor: '#ffffff',
-        scale: 2,
-        useCORS: true
-      }).then(canvas => {
-        const link = document.createElement('a');
-        link.download = `${activityDiagram.name || 'activity-diagram'}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-      });
-    });
   };
 
   const getConnectionPath = (sourceNode, targetNode) => {
@@ -397,7 +399,7 @@ const ActivityDiagramMaker = ({
 
   const renderSwimlane = (swimlane, index) => {
     const x = index * swimlaneWidth;
-    const height = Math.max(900, currentNodes.reduce((max, n) => Math.max(max, n.y + n.height + 100), 0));
+    const height = Math.max(1000, currentNodes.reduce((max, n) => Math.max(max, n.y + n.height + 150), 0));
     
     return (
       <g key={swimlane.id}>
@@ -408,13 +410,13 @@ const ActivityDiagramMaker = ({
           height={height}
           fill={index % 2 === 0 ? '#ffffff' : '#f9fafb'}
           stroke="#e5e7eb"
-          strokeWidth="1"
+          strokeWidth="2"
         />
         <text
           x={x + swimlaneWidth / 2}
           y={30}
           textAnchor="middle"
-          fontSize="14"
+          fontSize="15"
           fontWeight="600"
           fill="#1f2937"
         >
@@ -422,12 +424,11 @@ const ActivityDiagramMaker = ({
         </text>
         <line
           x1={x}
-          y1={50}
+          y1={55}
           x2={x + swimlaneWidth}
-          y2={50}
+          y2={55}
           stroke="#d1d5db"
-          strokeWidth="1"
-          strokeDasharray="5,5"
+          strokeWidth="2"
         />
       </g>
     );
@@ -440,9 +441,12 @@ const ActivityDiagramMaker = ({
     return (
       <g
         key={node.id}
-        className={`node-group ${isSelected ? 'selected' : ''}`}
+        className="node-group"
         onMouseDown={(e) => handleNodeMouseDown(e, node)}
-        style={{ cursor: selectedTool === 'select' ? 'move' : 'crosshair' }}
+        style={{ 
+          cursor: selectedTool === 'select' ? 'move' : 'crosshair',
+          pointerEvents: 'all'
+        }}
       >
         {nodeConfig.shape === 'circle' && (
           <circle
@@ -450,8 +454,9 @@ const ActivityDiagramMaker = ({
             cy={node.y + node.height / 2}
             r={node.width / 2}
             fill={nodeConfig.color}
-            stroke={isSelected ? '#000' : '#fff'}
+            stroke={isSelected ? '#3b82f6' : '#fff'}
             strokeWidth={isSelected ? '3' : '2'}
+            style={{ filter: isSelected ? 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.6))' : 'none' }}
           />
         )}
         
@@ -464,13 +469,15 @@ const ActivityDiagramMaker = ({
               fill="none"
               stroke={nodeConfig.color}
               strokeWidth="3"
+              style={{ filter: isSelected ? 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.6))' : 'none' }}
             />
             <circle
               cx={node.x + node.width / 2}
               cy={node.y + node.height / 2}
               r={node.width / 2 - 5}
               fill={nodeConfig.color}
-              stroke="none"
+              stroke={isSelected ? '#3b82f6' : 'none'}
+              strokeWidth={isSelected ? '2' : '0'}
             />
           </>
         )}
@@ -481,10 +488,11 @@ const ActivityDiagramMaker = ({
             y={node.y}
             width={node.width}
             height={node.height}
-            rx="15"
+            rx="12"
             fill={nodeConfig.color}
-            stroke={isSelected ? '#000' : '#fff'}
-            strokeWidth={isSelected ? '2' : '1'}
+            stroke={isSelected ? '#3b82f6' : '#fff'}
+            strokeWidth={isSelected ? '3' : '2'}
+            style={{ filter: isSelected ? 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.6))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
           />
         )}
         
@@ -497,8 +505,9 @@ const ActivityDiagramMaker = ({
               ${node.x},${node.y + node.height / 2}
             `}
             fill={nodeConfig.color}
-            stroke={isSelected ? '#000' : '#fff'}
-            strokeWidth={isSelected ? '2' : '1'}
+            stroke={isSelected ? '#3b82f6' : '#fff'}
+            strokeWidth={isSelected ? '3' : '2'}
+            style={{ filter: isSelected ? 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.6))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
           />
         )}
         
@@ -509,8 +518,9 @@ const ActivityDiagramMaker = ({
             width={node.width}
             height={node.height}
             fill={nodeConfig.color}
-            stroke={isSelected ? '#000' : 'none'}
-            strokeWidth="2"
+            stroke={isSelected ? '#3b82f6' : '#6b7280'}
+            strokeWidth={isSelected ? '3' : '2'}
+            style={{ filter: isSelected ? 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.6))' : 'none' }}
           />
         )}
         
@@ -521,10 +531,10 @@ const ActivityDiagramMaker = ({
             textAnchor="middle"
             dominantBaseline="middle"
             fill="white"
-            fontSize="11"
-            fontWeight="500"
+            fontSize="12"
+            fontWeight="600"
           >
-            {node.text.length > 18 ? node.text.substring(0, 18) + '...' : node.text}
+            {node.text.length > 20 ? node.text.substring(0, 20) + '...' : node.text}
           </text>
         )}
       </g>
@@ -547,15 +557,23 @@ const ActivityDiagramMaker = ({
           strokeWidth="2"
           fill="none"
           markerEnd="url(#arrowhead)"
+          style={{ cursor: 'pointer' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (window.confirm('Delete this connection?')) {
+              deleteEdge(edge.id);
+            }
+          }}
         />
         
         {edge.label && (
           <text
             x={(sourceNode.x + targetNode.x) / 2}
             y={(sourceNode.y + targetNode.y) / 2 - 10}
-            fill="#6b7280"
-            fontSize="10"
+            fill="#374151"
+            fontSize="11"
             fontWeight="500"
+            style={{ pointerEvents: 'none' }}
           >
             {edge.label}
           </text>
@@ -564,34 +582,39 @@ const ActivityDiagramMaker = ({
     );
   };
 
+  const canvasHeight = Math.max(1000, currentNodes.reduce((max, n) => Math.max(max, n.y + n.height + 150), 0));
+  const canvasWidth = currentSwimlanes.length * swimlaneWidth;
+
   return (
     <div className="activity-maker">
       <div className="toolbar">
-        <button onClick={onBack} className="back-btn">
-          <ArrowLeft size={16} /> Back
-        </button>
-        <h2>{activityDiagram.name}</h2>
-        <div className="spacer"></div>
-        
-        <div className="zoom-controls">
-          <button onClick={handleZoomOut} className="zoom-btn">
-            <ZoomOut size={16} />
-          </button>
-          <span className="zoom-level">{Math.round(zoom * 100)}%</span>
-          <button onClick={handleZoomIn} className="zoom-btn">
-            <ZoomIn size={16} />
-          </button>
-          <button onClick={handleZoomReset} className="zoom-btn">
-            Reset
-          </button>
+        <div className="toolbar-left">
+          <input
+            type="text"
+            value={diagramName}
+            onChange={(e) => setDiagramName(e.target.value)}
+            className="diagram-name-input"
+          />
         </div>
         
-        <div className="export-buttons">
-          <button onClick={exportToImage} className="export-btn">
-            <Image size={16} /> Export Image
-          </button>
-          <button onClick={copyToClipboard} className="export-btn">
-            <Copy size={16} /> Copy JSON
+        <div className="toolbar-center">
+          <div className="zoom-controls">
+            <button onClick={handleZoomOut} className="zoom-btn" title="Zoom Out">
+              <ZoomOut size={16} />
+            </button>
+            <span className="zoom-level">{Math.round(zoom * 100)}%</span>
+            <button onClick={handleZoomIn} className="zoom-btn" title="Zoom In">
+              <ZoomIn size={16} />
+            </button>
+            <button onClick={handleZoomReset} className="zoom-btn" title="Reset Zoom">
+              Reset
+            </button>
+          </div>
+        </div>
+        
+        <div className="toolbar-right">
+          <button onClick={copyToClipboard} className="export-btn" title="Copy JSON">
+            <Copy size={16} /> Copy
           </button>
           <button 
             onClick={() => {
@@ -599,15 +622,16 @@ const ActivityDiagramMaker = ({
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `${activityDiagram.name || 'activity-diagram'}.json`;
+              a.download = `${diagramName.replace(/\s+/g, '-').toLowerCase()}.json`;
               document.body.appendChild(a);
               a.click();
               document.body.removeChild(a);
               URL.revokeObjectURL(url);
             }} 
             className="export-btn"
+            title="Download JSON"
           >
-            <Download size={16} /> Export JSON
+            <Download size={16} /> Export
           </button>
         </div>
       </div>
@@ -631,13 +655,29 @@ const ActivityDiagramMaker = ({
         <div className="diagram-container">
           <div className="sidebar">
             <div className="sidebar-section">
+              <h3>Tools</h3>
+              <button 
+                className={`tool-btn ${selectedTool === 'select' ? 'active' : ''}`}
+                onClick={() => setSelectedTool('select')}
+              >
+                <MousePointer size={16} /> Select & Move
+              </button>
+              <button 
+                className={`tool-btn ${selectedTool === 'connection' ? 'active' : ''}`}
+                onClick={() => setSelectedTool('connection')}
+              >
+                <GitBranch size={16} /> Create Connection
+              </button>
+            </div>
+
+            <div className="sidebar-section">
               <h3>Swimlanes</h3>
               <div className="form-group">
                 <input
                   type="text"
                   value={newSwimlaneName}
                   onChange={(e) => setNewSwimlaneName(e.target.value)}
-                  placeholder="New swimlane name"
+                  placeholder="Swimlane name"
                   onKeyPress={(e) => e.key === 'Enter' && addSwimlane()}
                 />
               </div>
@@ -653,6 +693,7 @@ const ActivityDiagramMaker = ({
                     <button 
                       onClick={() => deleteSwimlane(swimlane.id)}
                       className="delete-btn"
+                      title="Delete swimlane"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -662,26 +703,10 @@ const ActivityDiagramMaker = ({
             </div>
 
             <div className="sidebar-section">
-              <h3>Tools</h3>
-              <button 
-                className={`tool-btn ${selectedTool === 'select' ? 'active' : ''}`}
-                onClick={() => setSelectedTool('select')}
-              >
-                Select & Move
-              </button>
-              <button 
-                className={`tool-btn ${selectedTool === 'connection' ? 'active' : ''}`}
-                onClick={() => setSelectedTool('connection')}
-              >
-                <GitBranch size={16} /> Create Connection
-              </button>
-            </div>
-
-            <div className="sidebar-section">
               <h3>Add Nodes</h3>
               {currentSwimlanes.length > 0 && (
                 <div className="form-group">
-                  <label>Swimlane</label>
+                  <label>Target Swimlane</label>
                   <select 
                     value={selectedSwimlane || currentSwimlanes[0]?.id || ''}
                     onChange={(e) => setSelectedSwimlane(parseInt(e.target.value))}
@@ -693,22 +718,22 @@ const ActivityDiagramMaker = ({
                 </div>
               )}
               <div className="node-buttons">
-                <button onClick={() => addNode('initial', selectedSwimlane || currentSwimlanes[0]?.id)}>
+                <button onClick={() => addNode('initial', selectedSwimlane || currentSwimlanes[0]?.id)} title="Start node">
                   <Play size={14} /> Initial
                 </button>
-                <button onClick={() => addNode('activity', selectedSwimlane || currentSwimlanes[0]?.id)}>
+                <button onClick={() => addNode('activity', selectedSwimlane || currentSwimlanes[0]?.id)} title="Activity node">
                   <Square size={14} /> Activity
                 </button>
-                <button onClick={() => addNode('decision', selectedSwimlane || currentSwimlanes[0]?.id)}>
+                <button onClick={() => addNode('decision', selectedSwimlane || currentSwimlanes[0]?.id)} title="Decision node">
                   <Diamond size={14} /> Decision
                 </button>
-                <button onClick={() => addNode('fork', selectedSwimlane || currentSwimlanes[0]?.id)}>
+                <button onClick={() => addNode('fork', selectedSwimlane || currentSwimlanes[0]?.id)} title="Fork node">
                   <Minus size={14} /> Fork
                 </button>
-                <button onClick={() => addNode('join', selectedSwimlane || currentSwimlanes[0]?.id)}>
+                <button onClick={() => addNode('join', selectedSwimlane || currentSwimlanes[0]?.id)} title="Join node">
                   <Merge size={14} /> Join
                 </button>
-                <button onClick={() => addNode('final', selectedSwimlane || currentSwimlanes[0]?.id)}>
+                <button onClick={() => addNode('final', selectedSwimlane || currentSwimlanes[0]?.id)} title="End node">
                   <Circle size={14} /> Final
                 </button>
               </div>
@@ -721,12 +746,15 @@ const ActivityDiagramMaker = ({
               ref={canvasRef}
               style={{
                 transform: `scale(${zoom})`,
-                transformOrigin: 'top left'
+                transformOrigin: 'top left',
+                width: canvasWidth,
+                height: canvasHeight
               }}
             >
               <svg
-                width={currentSwimlanes.length * swimlaneWidth}
-                height={Math.max(900, currentNodes.reduce((max, n) => Math.max(max, n.y + n.height + 100), 0))}
+                ref={svgRef}
+                width={canvasWidth}
+                height={canvasHeight}
                 style={{ background: '#fff' }}
               >
                 <defs>
@@ -759,11 +787,12 @@ const ActivityDiagramMaker = ({
                   <line
                     x1={currentNodes.find(n => n.id === connectionStart)?.x + currentNodes.find(n => n.id === connectionStart)?.width / 2}
                     y1={currentNodes.find(n => n.id === connectionStart)?.y + currentNodes.find(n => n.id === connectionStart)?.height / 2}
-                    x2={0}
-                    y2={0}
+                    x2={connectionMouse.x}
+                    y2={connectionMouse.y}
                     stroke="#3b82f6"
                     strokeWidth="2"
                     strokeDasharray="5,5"
+                    style={{ pointerEvents: 'none' }}
                   />
                 )}
               </svg>
@@ -773,25 +802,34 @@ const ActivityDiagramMaker = ({
           {/* Properties Panel */}
           {selectedNode && (
             <div className="properties-panel">
-              <h3>Properties</h3>
+              <h3>Node Properties</h3>
               {(() => {
                 const node = currentNodes.find(n => n.id === selectedNode);
                 if (!node) return null;
 
                 return (
                   <div className="property-group">
+                    <label>Node ID</label>
+                    <input
+                      type="text"
+                      value={node.id}
+                      disabled
+                      className="disabled-input"
+                    />
+
                     {node.type !== 'fork' && node.type !== 'join' && (
                       <>
-                        <label>Text</label>
+                        <label>Text Label</label>
                         <input
                           type="text"
                           value={node.text}
                           onChange={(e) => updateNodeText(node.id, e.target.value)}
+                          placeholder="Enter text"
                         />
                       </>
                     )}
                     
-                    <label>Type</label>
+                    <label>Node Type</label>
                     <select
                       value={node.type}
                       onChange={(e) => {
@@ -801,13 +839,6 @@ const ActivityDiagramMaker = ({
                             : n
                         );
                         setCurrentNodes(updatedNodes);
-                        
-                        onUpdateActivityDiagram({
-                          ...activityDiagram,
-                          swimlanes: currentSwimlanes,
-                          nodes: updatedNodes,
-                          edges: currentEdges
-                        });
                       }}
                     >
                       <option value="initial">Initial Node</option>
@@ -822,19 +853,15 @@ const ActivityDiagramMaker = ({
                     <select
                       value={node.swimlaneId || ''}
                       onChange={(e) => {
-                        const updatedNodes = currentNodes.map(n => 
-                          n.id === selectedNode 
-                            ? { ...n, swimlaneId: parseInt(e.target.value) } 
-                            : n
-                        );
-                        setCurrentNodes(updatedNodes);
-                        
-                        onUpdateActivityDiagram({
-                          ...activityDiagram,
-                          swimlanes: currentSwimlanes,
-                          nodes: updatedNodes,
-                          edges: currentEdges
+                        const newSwimlaneId = parseInt(e.target.value);
+                        const updatedNodes = currentNodes.map(n => {
+                          if (n.id === selectedNode) {
+                            const updatedNode = { ...n, swimlaneId: newSwimlaneId };
+                            return centerNodeInSwimlane(updatedNode);
+                          }
+                          return n;
                         });
+                        setCurrentNodes(updatedNodes);
                       }}
                     >
                       {currentSwimlanes.map(swimlane => (
@@ -842,8 +869,51 @@ const ActivityDiagramMaker = ({
                       ))}
                     </select>
 
+                    <label>Position</label>
+                    <div className="position-group">
+                      <div className="position-item">
+                        <span>X:</span>
+                        <input
+                          type="number"
+                          value={Math.round(node.x)}
+                          onChange={(e) => {
+                            const newX = parseInt(e.target.value) || 0;
+                            const constrained = constrainNodeToSwimlane(node, newX, node.y);
+                            setCurrentNodes(currentNodes.map(n => 
+                              n.id === selectedNode ? { ...n, x: constrained.x } : n
+                            ));
+                          }}
+                        />
+                      </div>
+                      <div className="position-item">
+                        <span>Y:</span>
+                        <input
+                          type="number"
+                          value={Math.round(node.y)}
+                          onChange={(e) => {
+                            const newY = parseInt(e.target.value) || 0;
+                            const constrained = constrainNodeToSwimlane(node, node.x, newY);
+                            setCurrentNodes(currentNodes.map(n => 
+                              n.id === selectedNode ? { ...n, y: constrained.y } : n
+                            ));
+                          }}
+                        />
+                      </div>
+                    </div>
+
                     <button 
-                      onClick={() => deleteNode(selectedNode)}
+                      onClick={() => centerNodeInCurrentSwimlane(selectedNode)}
+                      className="center-btn"
+                    >
+                      <Move size={14} /> Center in Swimlane
+                    </button>
+
+                    <button 
+                      onClick={() => {
+                        if (window.confirm('Delete this node and all connected edges?')) {
+                          deleteNode(selectedNode);
+                        }
+                      }}
                       className="delete-node-btn"
                     >
                       <Trash2 size={14} /> Delete Node
@@ -869,142 +939,162 @@ const ActivityDiagramMaker = ({
             >
               <Upload size={16} /> Import JSON File
             </button>
+            <button 
+              onClick={importFromJson}
+              className="import-btn apply-btn"
+            >
+              <Save size={16} /> Apply Changes
+            </button>
           </div>
           <textarea
             value={jsonInput}
             onChange={(e) => setJsonInput(e.target.value)}
             className="json-textarea"
+            placeholder="Paste or edit JSON here..."
           />
-          <button 
-            onClick={importFromJson}
-            className="import-btn"
-          >
-            <Save size={16} /> Apply JSON
-          </button>
         </div>
       )}
 
       <style jsx>{`
+        * {
+          box-sizing: border-box;
+        }
+
         .activity-maker {
           width: 100%;
           height: 100vh;
           display: flex;
           flex-direction: column;
           background: #f8fafc;
-          font-family: 'Inter', system-ui, -apple-system, sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+          overflow: hidden;
         }
         
         .toolbar {
           display: flex;
           align-items: center;
-          padding: 12px 16px;
+          justify-content: space-between;
+          padding: 12px 20px;
           background: white;
-          border-bottom: 1px solid #e2e8f0;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          border-bottom: 2px solid #e2e8f0;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+          gap: 16px;
+          flex-shrink: 0;
+        }
+
+        .toolbar-left,
+        .toolbar-center,
+        .toolbar-right {
+          display: flex;
+          align-items: center;
           gap: 12px;
         }
-        
-        .toolbar h2 {
-          margin: 0 16px;
-          font-size: 18px;
-          color: #1e293b;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 200px;
-        }
-        
-        .spacer {
+
+        .toolbar-center {
           flex: 1;
+          justify-content: center;
+        }
+
+        .diagram-name-input {
+          padding: 8px 14px;
+          font-size: 16px;
+          font-weight: 600;
+          border: 2px solid transparent;
+          border-radius: 8px;
+          background: #f8fafc;
+          color: #1e293b;
+          min-width: 250px;
+          transition: all 0.2s;
+        }
+
+        .diagram-name-input:focus {
+          outline: none;
+          border-color: #3b82f6;
+          background: white;
         }
         
         .zoom-controls {
           display: flex;
           align-items: center;
           background: #f1f5f9;
-          border-radius: 6px;
-          padding: 2px;
+          border-radius: 8px;
+          padding: 4px;
           gap: 4px;
         }
         
         .zoom-btn {
-          padding: 6px 10px;
+          padding: 8px 12px;
           display: flex;
           align-items: center;
           justify-content: center;
           border: none;
           background: white;
-          border-radius: 4px;
+          border-radius: 6px;
           cursor: pointer;
           color: #475569;
-          font-size: 12px;
-          font-weight: 500;
+          font-size: 13px;
+          font-weight: 600;
           transition: all 0.2s;
+          min-width: 36px;
         }
         
         .zoom-btn:hover {
           background: #e2e8f0;
+          color: #1e293b;
         }
         
         .zoom-level {
-          font-size: 12px;
-          font-weight: 500;
-          padding: 0 8px;
-          color: #475569;
-        }
-        
-        .export-buttons {
-          display: flex;
-          gap: 8px;
-        }
-        
-        .back-btn, .export-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          border-radius: 6px;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        
-        .back-btn {
-          background: #f1f5f9;
+          font-size: 13px;
+          font-weight: 600;
+          padding: 0 10px;
           color: #64748b;
-          border: 1px solid #e2e8f0;
-        }
-        
-        .back-btn:hover {
-          background: #e2e8f0;
+          min-width: 50px;
+          text-align: center;
         }
         
         .export-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
           background: #3b82f6;
           color: white;
-          border: 1px solid #3b82f6;
+          border: none;
         }
         
         .export-btn:hover {
           background: #2563eb;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
         }
         
         .tabs {
           display: flex;
-          border-bottom: 1px solid #e2e8f0;
+          border-bottom: 2px solid #e2e8f0;
           background: white;
+          flex-shrink: 0;
         }
         
         .tab {
-          padding: 12px 24px;
+          padding: 14px 28px;
           border: none;
           background: none;
           cursor: pointer;
-          font-weight: 500;
+          font-weight: 600;
           color: #64748b;
-          border-bottom: 2px solid transparent;
+          border-bottom: 3px solid transparent;
           font-size: 14px;
+          transition: all 0.2s;
+        }
+
+        .tab:hover {
+          color: #3b82f6;
+          background: #f8fafc;
         }
         
         .tab.active {
@@ -1016,85 +1106,93 @@ const ActivityDiagramMaker = ({
           display: flex;
           flex: 1;
           overflow: hidden;
+          min-height: 0;
         }
         
         .sidebar {
-          width: 280px;
+          width: 300px;
           background: white;
-          border-right: 1px solid #e2e8f0;
+          border-right: 2px solid #e2e8f0;
           overflow-y: auto;
+          flex-shrink: 0;
         }
         
         .sidebar-section {
-          padding: 16px;
+          padding: 20px;
           border-bottom: 1px solid #f1f5f9;
         }
         
         .sidebar-section h3 {
-          margin: 0 0 12px 0;
-          font-size: 14px;
+          margin: 0 0 16px 0;
+          font-size: 15px;
           color: #1e293b;
-          font-weight: 600;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
         }
         
         .form-group {
-          margin-bottom: 12px;
+          margin-bottom: 14px;
         }
         
         .form-group label {
           display: block;
-          margin-bottom: 4px;
-          font-size: 12px;
-          font-weight: 500;
+          margin-bottom: 6px;
+          font-size: 13px;
+          font-weight: 600;
           color: #64748b;
         }
         
         .form-group input,
         .form-group select {
           width: 100%;
-          padding: 8px 10px;
-          border: 1px solid #e2e8f0;
-          border-radius: 6px;
-          font-size: 13px;
+          padding: 10px 12px;
+          border: 2px solid #e2e8f0;
+          border-radius: 8px;
+          font-size: 14px;
+          transition: all 0.2s;
         }
         
         .form-group input:focus,
         .form-group select:focus {
           outline: none;
           border-color: #3b82f6;
-          box-shadow: 0 0 0 1px #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
         
         .add-btn {
           width: 100%;
-          padding: 8px 12px;
+          padding: 10px 14px;
           background: #10b981;
           color: white;
           border: none;
-          border-radius: 6px;
-          font-weight: 500;
+          border-radius: 8px;
+          font-weight: 600;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 6px;
-          font-size: 13px;
+          gap: 8px;
+          font-size: 14px;
+          transition: all 0.2s;
         }
         
         .add-btn:hover {
           background: #059669;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
         }
         
         .list {
-          margin-top: 12px;
-          max-height: 200px;
+          margin-top: 14px;
+          max-height: 220px;
           overflow-y: auto;
         }
         
         .list-item {
           display: flex;
           align-items: center;
-          padding: 8px 0;
+          padding: 10px 0;
           border-bottom: 1px solid #f1f5f9;
         }
         
@@ -1103,15 +1201,15 @@ const ActivityDiagramMaker = ({
         }
         
         .item-name {
-          font-size: 13px;
-          font-weight: 500;
+          font-size: 14px;
+          font-weight: 600;
           color: #1e293b;
         }
         
         .delete-btn {
-          width: 28px;
-          height: 28px;
-          border-radius: 4px;
+          width: 32px;
+          height: 32px;
+          border-radius: 6px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1119,60 +1217,64 @@ const ActivityDiagramMaker = ({
           color: #ef4444;
           border: none;
           cursor: pointer;
+          transition: all 0.2s;
         }
         
         .delete-btn:hover {
           background: #fecaca;
+          transform: scale(1.1);
         }
         
         .tool-btn {
           width: 100%;
-          padding: 10px 12px;
-          border: 1px solid #e2e8f0;
+          padding: 12px 14px;
+          border: 2px solid #e2e8f0;
           background: white;
-          border-radius: 6px;
+          border-radius: 8px;
           cursor: pointer;
-          font-size: 13px;
-          font-weight: 500;
+          font-size: 14px;
+          font-weight: 600;
           color: #475569;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
-          margin-bottom: 8px;
+          gap: 10px;
+          margin-bottom: 10px;
           transition: all 0.2s;
         }
         
         .tool-btn:hover {
           border-color: #3b82f6;
           background: #f0f9ff;
+          transform: translateX(2px);
         }
         
         .tool-btn.active {
           border-color: #3b82f6;
           background: #dbeafe;
           color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
         
         .node-buttons {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 6px;
+          gap: 8px;
         }
         
         .node-buttons button {
-          padding: 8px 10px;
-          border: 1px solid #e2e8f0;
+          padding: 10px 12px;
+          border: 2px solid #e2e8f0;
           background: white;
-          border-radius: 6px;
+          border-radius: 8px;
           cursor: pointer;
-          font-size: 11px;
-          font-weight: 500;
+          font-size: 12px;
+          font-weight: 600;
           color: #475569;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 4px;
+          gap: 6px;
           transition: all 0.2s;
         }
         
@@ -1180,6 +1282,7 @@ const ActivityDiagramMaker = ({
           border-color: #3b82f6;
           background: #f0f9ff;
           color: #3b82f6;
+          transform: scale(1.05);
         }
         
         .canvas-wrapper {
@@ -1187,133 +1290,232 @@ const ActivityDiagramMaker = ({
           background: #f9fafb;
           overflow: auto;
           position: relative;
+          min-width: 0;
         }
         
         .canvas {
           transform-origin: top left;
-          min-width: 100%;
-          min-height: 100%;
+          transition: transform 0.1s ease-out;
         }
         
         .node-group {
-          transition: all 0.1s ease;
-        }
-        
-        .node-group.selected {
-          filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.6));
+          cursor: move;
+          transition: filter 0.2s;
         }
         
         .properties-panel {
-          width: 260px;
+          width: 300px;
           background: white;
-          border-left: 1px solid #e2e8f0;
-          padding: 16px;
+          border-left: 2px solid #e2e8f0;
+          padding: 20px;
           overflow-y: auto;
+          flex-shrink: 0;
         }
         
         .properties-panel h3 {
-          margin: 0 0 16px 0;
-          font-size: 14px;
+          margin: 0 0 20px 0;
+          font-size: 15px;
           color: #1e293b;
-          font-weight: 600;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
         }
         
         .property-group {
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 14px;
         }
         
         .property-group label {
-          font-size: 12px;
-          font-weight: 500;
+          font-size: 13px;
+          font-weight: 600;
           color: #64748b;
-          margin-bottom: -6px;
+          margin-bottom: -8px;
         }
         
         .property-group input,
         .property-group select {
-          padding: 8px 10px;
-          border: 1px solid #e2e8f0;
-          border-radius: 6px;
-          font-size: 13px;
+          padding: 10px 12px;
+          border: 2px solid #e2e8f0;
+          border-radius: 8px;
+          font-size: 14px;
+          transition: all 0.2s;
+        }
+
+        .property-group input.disabled-input {
+          background: #f1f5f9;
+          color: #94a3b8;
+          cursor: not-allowed;
         }
         
         .property-group input:focus,
         .property-group select:focus {
           outline: none;
           border-color: #3b82f6;
-          box-shadow: 0 0 0 1px #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .position-group {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+
+        .position-item {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .position-item span {
+          font-size: 12px;
+          font-weight: 600;
+          color: #64748b;
+        }
+
+        .position-item input {
+          padding: 8px 10px;
+          border: 2px solid #e2e8f0;
+          border-radius: 6px;
+          font-size: 13px;
+        }
+
+        .center-btn {
+          background: #8b5cf6;
+          color: white;
+          border: none;
+          padding: 10px 14px;
+          border-radius: 8px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          transition: all 0.2s;
+        }
+
+        .center-btn:hover {
+          background: #7c3aed;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px rgba(139, 92, 246, 0.3);
         }
         
         .delete-node-btn {
           background: #fee2e2;
           color: #ef4444;
-          border: 1px solid #fecaca;
-          padding: 8px 12px;
-          border-radius: 6px;
+          border: 2px solid #fecaca;
+          padding: 10px 14px;
+          border-radius: 8px;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 6px;
-          margin-top: 8px;
-          font-size: 13px;
-          font-weight: 500;
+          gap: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          transition: all 0.2s;
         }
         
         .delete-node-btn:hover {
           background: #fecaca;
+          border-color: #ef4444;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
         }
         
         .json-editor {
           display: flex;
           flex-direction: column;
           flex: 1;
-          padding: 16px;
+          padding: 20px;
           background: white;
+          overflow: hidden;
         }
         
         .json-actions {
           display: flex;
-          gap: 8px;
-          margin-bottom: 12px;
+          gap: 12px;
+          margin-bottom: 16px;
         }
         
         .import-btn {
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 8px 16px;
-          border-radius: 6px;
-          font-weight: 500;
+          padding: 10px 18px;
+          border-radius: 8px;
+          font-weight: 600;
           cursor: pointer;
           border: none;
           background: #10b981;
           color: white;
           font-size: 14px;
+          transition: all 0.2s;
         }
         
         .import-btn:hover {
           background: #059669;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
+        }
+
+        .import-btn.apply-btn {
+          background: #3b82f6;
+        }
+
+        .import-btn.apply-btn:hover {
+          background: #2563eb;
+          box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
         }
         
         .json-textarea {
           flex: 1;
-          padding: 12px;
-          border: 1px solid #e2e8f0;
-          border-radius: 6px;
-          font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-          font-size: 12px;
+          padding: 16px;
+          border: 2px solid #e2e8f0;
+          border-radius: 8px;
+          font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+          font-size: 13px;
           resize: none;
-          margin-bottom: 12px;
-          line-height: 1.5;
+          line-height: 1.6;
+          background: #f8fafc;
+          color: #1e293b;
         }
         
         .json-textarea:focus {
           outline: none;
           border-color: #3b82f6;
-          box-shadow: 0 0 0 1px #3b82f6;
+          background: white;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .edge-group path {
+          transition: stroke 0.2s;
+        }
+
+        .edge-group:hover path {
+          stroke: #3b82f6;
+          stroke-width: 3;
+        }
+
+        ::-webkit-scrollbar {
+          width: 10px;
+          height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+          background: #f1f5f9;
+        }
+
+        ::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
       `}</style>
     </div>
