@@ -47,40 +47,9 @@ const ActivityDiagramMaker = () => {
     { id: 4, name: 'Shipping', order: 3 }
   ]);
 
-  const [currentNodes, setCurrentNodes] = useState([
-    { id: 1, type: 'initial', text: 'Start', x: 100, y: 80, width: 40, height: 40, swimlaneId: 1 },
-    { id: 2, type: 'activity', text: 'Place order', x: 60, y: 150, width: 120, height: 60, swimlaneId: 1 },
-    { id: 3, type: 'fork', text: '', x: 80, y: 240, width: 80, height: 10, swimlaneId: 1 },
-    { id: 4, type: 'activity', text: 'Receive confirmation', x: 40, y: 310, width: 140, height: 60, swimlaneId: 1 },
-    { id: 5, type: 'activity', text: 'Take order', x: 260, y: 310, width: 120, height: 60, swimlaneId: 2 },
-    { id: 6, type: 'activity', text: 'Process order', x: 470, y: 310, width: 120, height: 60, swimlaneId: 3 },
-    { id: 7, type: 'activity', text: 'Pack in box', x: 690, y: 310, width: 120, height: 60, swimlaneId: 4 },
-    { id: 8, type: 'activity', text: 'Record shipping', x: 460, y: 420, width: 140, height: 60, swimlaneId: 3 },
-    { id: 9, type: 'activity', text: 'Ship order', x: 680, y: 420, width: 120, height: 60, swimlaneId: 4 },
-    { id: 10, type: 'join', text: '', x: 80, y: 530, width: 80, height: 10, swimlaneId: 1 },
-    { id: 11, type: 'activity', text: 'Receive order', x: 50, y: 600, width: 120, height: 60, swimlaneId: 1 },
-    { id: 12, type: 'activity', text: 'Pay bill', x: 70, y: 700, width: 100, height: 60, swimlaneId: 1 },
-    { id: 13, type: 'activity', text: 'Close order', x: 470, y: 700, width: 120, height: 60, swimlaneId: 3 },
-    { id: 14, type: 'final', text: 'End', x: 510, y: 800, width: 40, height: 40, swimlaneId: 3 }
-  ]);
+  const [currentNodes, setCurrentNodes] = useState([]);
 
-  const [currentEdges, setCurrentEdges] = useState([
-    { id: 1, source: 1, target: 2, label: '' },
-    { id: 2, source: 2, target: 3, label: '' },
-    { id: 3, source: 3, target: 4, label: '' },
-    { id: 4, source: 3, target: 5, label: '' },
-    { id: 5, source: 5, target: 6, label: '' },
-    { id: 6, source: 6, target: 7, label: '' },
-    { id: 7, source: 6, target: 8, label: '' },
-    { id: 8, source: 7, target: 9, label: '' },
-    { id: 9, source: 8, target: 9, label: '' },
-    { id: 10, source: 4, target: 10, label: '' },
-    { id: 11, source: 9, target: 10, label: '' },
-    { id: 12, source: 10, target: 11, label: '' },
-    { id: 13, source: 11, target: 12, label: '' },
-    { id: 14, source: 12, target: 13, label: '' },
-    { id: 15, source: 13, target: 14, label: '' }
-  ]);
+  const [currentEdges, setCurrentEdges] = useState([]);
 
   useEffect(() => {
     setJsonInput(JSON.stringify({ 
