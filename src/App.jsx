@@ -1,4 +1,4 @@
-import React, { useReducer, useState } from 'react';
+import React, { act, useReducer, useState } from 'react';
 import EvolutionChartMain from './treecanvas';
 import EvolutionChartMaker from './timeline';
 import FlowchartMain from './flowchartmain';
@@ -17,6 +17,8 @@ import DomainModelMain from './domainmodelmain';
 import DomainModelMaker from './domainmodel';
 import MindMapMain from './mindmapmain';
 import MindMapMaker from './mindmap';
+import ActivityDiagramMain from './activitymain';
+import ActivityDiagramMaker from './activity';
 
 // Diagram type constants
 const DIAGRAM_TYPES = {
@@ -28,7 +30,8 @@ const DIAGRAM_TYPES = {
   ARCHITECTURE: 'architecture',
   CLASS: 'class',
   DOMAIN_MODEL: 'domainmodel',
-  MIND_MAP: 'mindmap'
+  MIND_MAP: 'mindmap',
+  ACTIVITY: 'activity'
 };
 
 // Initial data structure
@@ -50,7 +53,9 @@ const getInitialData = () => ({
   domainModels: [],
   currentDomainModel: null,
   mindMaps: [],
-  currentMindMap: null
+  currentMindMap: null,
+  activityDiagrams: [],
+  currentActivityDiagram: null
 });
 
 const getStoredData = () => {
@@ -104,6 +109,7 @@ const App = () => {
     updateData.currentClassDiagram = null;
     updateData.currentDomainModel = null;
     updateData.currentMindMap = null;
+    updateData.currentActivityDiagram = null;
 
     // Add new diagram and set as current
     switch (type) {
@@ -142,6 +148,10 @@ const App = () => {
       case DIAGRAM_TYPES.MIND_MAP:
         updateData.mindMaps = [...currentData.mindMaps, baseDiagram];
         updateData.currentMindMap = baseDiagram;
+        break;
+      case DIAGRAM_TYPES.ACTIVITY:
+        updateData.activityDiagrams = [...currentData.activityDiagrams, baseDiagram];
+        updateData.currentActivityDiagram = baseDiagram;
         break;
     }
 
@@ -209,6 +219,12 @@ const App = () => {
           updateData.currentMindMap = null;
         }
         break;
+      case DIAGRAM_TYPES.ACTIVITY:
+        updateData.activityDiagrams = currentData.activityDiagrams.filter(d => d.id !== id);
+        if (currentData.currentActivityDiagram?.id === id) {
+          updateData.currentActivityDiagram = null;
+        }
+        break;
     }
 
     saveToStorage(updateData);
@@ -274,6 +290,12 @@ const App = () => {
           m.id === updatedDiagram.id ? updatedDiagram : m
         );
         updateData.currentMindMap = updatedDiagram;
+        break;
+      case DIAGRAM_TYPES.ACTIVITY:
+        updateData.activityDiagrams = currentData.activityDiagrams.map(d => 
+          d.id === updatedDiagram.id ? updatedDiagram : d
+        );
+        updateData.currentActivityDiagram = updatedDiagram;
         break;
     }
 
@@ -378,6 +400,26 @@ const App = () => {
     });
   };
 
+  const createActivityDiagram = (name) => {
+    createDiagram(DIAGRAM_TYPES.ACTIVITY, name, {
+      nodes: [
+        {
+          id: 1,
+          type: 'initial',
+          text: 'Start',
+          x: 400,
+          y: 100,
+          width: 60,
+          height: 60,
+          color: '#10b981'
+        }
+      ],
+      edges: [],
+      zoom: 1,
+      pan: { x: 0, y: 0 }
+    });
+  };
+
   // Specific diagram deletion functions
   const deleteProject = (id) => deleteDiagram(DIAGRAM_TYPES.PROJECT, id);
   const deleteFlowchart = (id) => deleteDiagram(DIAGRAM_TYPES.FLOWCHART, id);
@@ -388,6 +430,7 @@ const App = () => {
   const deleteClassDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.CLASS, id);
   const deleteDomainModel = (id) => deleteDiagram(DIAGRAM_TYPES.DOMAIN_MODEL, id);
   const deleteMindMap = (id) => deleteDiagram(DIAGRAM_TYPES.MIND_MAP, id);
+  const deleteActivityDiagram = (id) => deleteDiagram(DIAGRAM_TYPES.ACTIVITY, id);
 
   // Specific diagram update functions
   const updateProject = (project) => updateDiagram(DIAGRAM_TYPES.PROJECT, project);
@@ -399,6 +442,7 @@ const App = () => {
   const updateClassDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.CLASS, diagram);
   const updateDomainModel = (diagram) => updateDiagram(DIAGRAM_TYPES.DOMAIN_MODEL, diagram);
   const updateMindMap = (mindMap) => updateDiagram(DIAGRAM_TYPES.MIND_MAP, mindMap);
+  const updateActivityDiagram = (diagram) => updateDiagram(DIAGRAM_TYPES.ACTIVITY, diagram);
 
   const importFlowchartFromJson = (jsonString) => {
     try {
@@ -428,7 +472,8 @@ const App = () => {
       currentArchitectureDiagram: null,
       currentClassDiagram: null,
       currentDomainModel: null,
-      currentMindMap: null
+      currentMindMap: null,
+      currentActivityDiagram: null
     };
     
     saveToStorage(updateData);
@@ -448,7 +493,8 @@ const App = () => {
       currentArchitectureDiagram: null,
       currentClassDiagram: null,
       currentDomainModel: null,
-      currentMindMap: null
+      currentMindMap: null,
+      currentActivityDiagram: null
     };
 
     // Set the specific current diagram
@@ -479,6 +525,9 @@ const App = () => {
         break;
       case DIAGRAM_TYPES.MIND_MAP: // Add this case
         updateData.currentMindMap = diagram;
+        break;
+      case DIAGRAM_TYPES.ACTIVITY:
+        updateData.currentActivityDiagram = diagram;
         break;
     }
 
@@ -685,6 +734,19 @@ const App = () => {
           onDeleteMindMap={deleteMindMap}
         />
       )
+    },
+    {
+      type: DIAGRAM_TYPES.ACTIVITY,
+      label: '⚡ Activity Diagram',
+      color: '#f59e0b',
+      component: (
+        <ActivityDiagramMain
+          activityDiagrams={getCurrentData().activityDiagrams}
+          onCreateActivityDiagram={createActivityDiagram}
+          onLoadActivityDiagram={(diagram) => loadDiagram(DIAGRAM_TYPES.ACTIVITY, diagram)}
+          onDeleteActivityDiagram={deleteActivityDiagram}
+        />
+      )
     }
   ];
 
@@ -762,13 +824,21 @@ const App = () => {
             onBack={handleBack}
           />
         ) : currentData.currentMindMap ? (
-        <MindMapMaker
-          mindMap={currentData.currentMindMap}
-          nodes={currentData.currentMindMap.nodes || []}
-          onUpdateMindMap={updateMindMap}
-          onBack={handleBack}
-        />
-      ) : (
+          <MindMapMaker
+            mindMap={currentData.currentMindMap}
+            nodes={currentData.currentMindMap.nodes || []}
+            onUpdateMindMap={updateMindMap}
+            onBack={handleBack}
+          />
+        ) : currentData.currentActivityDiagram ? (
+          <ActivityDiagramMaker
+            activityDiagram={currentData.currentActivityDiagram}
+            nodes={currentData.currentActivityDiagram.nodes || []}
+            edges={currentData.currentActivityDiagram.edges || []}
+            onUpdateActivityDiagram={updateActivityDiagram}
+            onBack={handleBack}
+          />
+        ) : (
           <>
             <div style={styles.header}>
               <h1 style={styles.headerTitle}>Visual Designer Suite</h1>
