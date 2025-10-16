@@ -402,18 +402,14 @@ const App = () => {
 
   const createActivityDiagram = (name) => {
     createDiagram(DIAGRAM_TYPES.ACTIVITY, name, {
-      nodes: [
+      swimlanes: [
         {
-          id: 1,
-          type: 'initial',
-          text: 'Start',
-          x: 400,
-          y: 100,
-          width: 60,
-          height: 60,
-          color: '#10b981'
+          id: Date.now(),
+          name: 'Default Swimlane',
+          order: 0
         }
       ],
+      nodes: [],
       edges: [],
       zoom: 1,
       pan: { x: 0, y: 0 }
@@ -833,6 +829,7 @@ const App = () => {
         ) : currentData.currentActivityDiagram ? (
           <ActivityDiagramMaker
             activityDiagram={currentData.currentActivityDiagram}
+            swimlanes={currentData.currentActivityDiagram.swimlanes || []}
             nodes={currentData.currentActivityDiagram.nodes || []}
             edges={currentData.currentActivityDiagram.edges || []}
             onUpdateActivityDiagram={updateActivityDiagram}
