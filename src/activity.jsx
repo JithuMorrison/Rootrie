@@ -7,7 +7,6 @@ import {
   Copy,
   Upload,
   Save,
-  Image,
   Play,
   Square,
   Circle,
@@ -21,7 +20,14 @@ import {
   Move
 } from 'lucide-react';
 
-const ActivityDiagramMaker = () => {
+const ActivityDiagramMaker = ({ 
+  activityDiagram,
+  swimlanes = [],
+  nodes = [],
+  edges = [],
+  onUpdateActivityDiagram,
+  onBack
+}) => {
   const svgRef = useRef(null);
   const canvasRef = useRef(null);
   const [selectedNode, setSelectedNode] = useState(null);
@@ -38,27 +44,15 @@ const ActivityDiagramMaker = () => {
   const [connectionMouse, setConnectionMouse] = useState({ x: 0, y: 0 });
   const [newSwimlaneName, setNewSwimlaneName] = useState('');
   const [swimlaneWidth] = useState(220);
-  const [diagramName, setDiagramName] = useState('Activity Diagram');
-
-  const [currentSwimlanes, setCurrentSwimlanes] = useState([
-    { id: 1, name: 'Customer', order: 0 },
-    { id: 2, name: 'Order System', order: 1 },
-    { id: 3, name: 'Accounting', order: 2 },
-    { id: 4, name: 'Shipping', order: 3 }
-  ]);
-
-  const [currentNodes, setCurrentNodes] = useState([]);
-
-  const [currentEdges, setCurrentEdges] = useState([]);
 
   useEffect(() => {
     setJsonInput(JSON.stringify({ 
-      name: diagramName,
-      swimlanes: currentSwimlanes, 
-      nodes: currentNodes, 
-      edges: currentEdges 
+      name: activityDiagram.name,
+      swimlanes, 
+      nodes, 
+      edges 
     }, null, 2));
-  }, [currentSwimlanes, currentNodes, currentEdges, diagramName]);
+  }, [swimlanes, nodes, edges, activityDiagram.name]);
 
   const nodeTypes = {
     initial: { width: 40, height: 40, color: '#10b981', shape: 'circle' },
@@ -78,11 +72,10 @@ const ActivityDiagramMaker = () => {
     return base;
   };
 
-  // Get swimlane bounds
   const getSwimlaneById = (swimlaneId) => {
-    const swimlane = currentSwimlanes.find(s => s.id === swimlaneId);
+    const swimlane = swimlanes.find(s => s.id === swimlaneId);
     if (!swimlane) return null;
-    const index = currentSwimlanes.findIndex(s => s.id === swimlaneId);
+    const index = swimlanes.findIndex(s => s.id === swimlaneId);
     return {
       ...swimlane,
       x: index * swimlaneWidth,
@@ -91,7 +84,6 @@ const ActivityDiagramMaker = () => {
     };
   };
 
-  // Center node in swimlane
   const centerNodeInSwimlane = (node) => {
     const swimlane = getSwimlaneById(node.swimlaneId);
     if (!swimlane) return node;
@@ -100,7 +92,6 @@ const ActivityDiagramMaker = () => {
     return { ...node, x: centeredX };
   };
 
-  // Constrain node position within swimlane
   const constrainNodeToSwimlane = (node, newX, newY) => {
     const swimlane = getSwimlaneById(node.swimlaneId);
     if (!swimlane) return { x: newX, y: newY };
@@ -115,18 +106,17 @@ const ActivityDiagramMaker = () => {
     return { x: constrainedX, y: constrainedY };
   };
 
-  // Detect which swimlane the node is in
   const detectSwimlaneForPosition = (x, nodeWidth) => {
     const nodeCenterX = x + nodeWidth / 2;
     
-    for (let i = 0; i < currentSwimlanes.length; i++) {
+    for (let i = 0; i < swimlanes.length; i++) {
       const swimlaneX = i * swimlaneWidth;
       if (nodeCenterX >= swimlaneX && nodeCenterX < swimlaneX + swimlaneWidth) {
-        return currentSwimlanes[i].id;
+        return swimlanes[i].id;
       }
     }
     
-    return currentSwimlanes[0]?.id || null;
+    return swimlanes[0]?.id || null;
   };
 
   const addSwimlane = () => {
@@ -135,24 +125,32 @@ const ActivityDiagramMaker = () => {
     const newSwimlane = {
       id: Date.now(),
       name: newSwimlaneName,
-      order: currentSwimlanes.length
+      order: swimlanes.length
     };
     
-    setCurrentSwimlanes([...currentSwimlanes, newSwimlane]);
+    onUpdateActivityDiagram({
+      ...activityDiagram,
+      swimlanes: [...swimlanes, newSwimlane]
+    });
+    
     setNewSwimlaneName('');
   };
 
   const deleteSwimlane = (swimlaneId) => {
-    if (currentSwimlanes.length <= 1) {
+    if (swimlanes.length <= 1) {
       alert('Cannot delete the last swimlane');
       return;
     }
 
-    const updatedSwimlanes = currentSwimlanes.filter(s => s.id !== swimlaneId);
-    const updatedNodes = currentNodes.filter(n => n.swimlaneId !== swimlaneId);
+    const updatedSwimlanes = swimlanes.filter(s => s.id !== swimlaneId);
+    const updatedNodes = nodes.filter(n => n.swimlaneId !== swimlaneId);
     
-    setCurrentSwimlanes(updatedSwimlanes);
-    setCurrentNodes(updatedNodes);
+    onUpdateActivityDiagram({
+      ...activityDiagram,
+      swimlanes: updatedSwimlanes,
+      nodes: updatedNodes
+    });
+    
     setSelectedSwimlane(null);
   };
 
@@ -188,20 +186,22 @@ const ActivityDiagramMaker = () => {
         let newX = mouseX - dragStart.x;
         let newY = mouseY - dragStart.y;
 
-        // Constrain to swimlane bounds
         const constrained = constrainNodeToSwimlane(dragNode, newX, newY);
-        
-        // Detect swimlane change
         const newSwimlaneId = detectSwimlaneForPosition(constrained.x, dragNode.width);
 
-        setCurrentNodes(prev => prev.map(node => 
+        const updatedNodes = nodes.map(node => 
           node.id === dragNode.id 
             ? { ...node, x: constrained.x, y: constrained.y, swimlaneId: newSwimlaneId } 
             : node
-        ));
+        );
+
+        onUpdateActivityDiagram({
+          ...activityDiagram,
+          nodes: updatedNodes
+        });
       }
     }
-  }, [isDragging, isConnecting, dragNode, dragStart, zoom]);
+  }, [isDragging, isConnecting, dragNode, dragStart, zoom, nodes, activityDiagram, onUpdateActivityDiagram]);
 
   const handleMouseUp = useCallback((e) => {
     if (isConnecting && connectionStart && canvasRef.current) {
@@ -209,13 +209,13 @@ const ActivityDiagramMaker = () => {
       const mouseX = (e.clientX - rect.left) / zoom;
       const mouseY = (e.clientY - rect.top) / zoom;
 
-      const targetNode = currentNodes.find(node => {
+      const targetNode = nodes.find(node => {
         return mouseX >= node.x && mouseX <= node.x + node.width &&
                mouseY >= node.y && mouseY <= node.y + node.height;
       });
 
       if (targetNode && targetNode.id !== connectionStart) {
-        const existingEdge = currentEdges.find(
+        const existingEdge = edges.find(
           e => e.source === connectionStart && e.target === targetNode.id
         );
         
@@ -226,7 +226,11 @@ const ActivityDiagramMaker = () => {
             target: targetNode.id,
             label: ''
           };
-          setCurrentEdges([...currentEdges, newEdge]);
+          
+          onUpdateActivityDiagram({
+            ...activityDiagram,
+            edges: [...edges, newEdge]
+          });
         }
       }
     }
@@ -235,7 +239,7 @@ const ActivityDiagramMaker = () => {
     setDragNode(null);
     setIsConnecting(false);
     setConnectionStart(null);
-  }, [isConnecting, connectionStart, currentNodes, currentEdges, zoom]);
+  }, [isConnecting, connectionStart, nodes, edges, zoom, activityDiagram, onUpdateActivityDiagram]);
 
   useEffect(() => {
     document.addEventListener('mousemove', handleMouseMove);
@@ -247,8 +251,8 @@ const ActivityDiagramMaker = () => {
   }, [handleMouseMove, handleMouseUp]);
 
   const addNode = (type, swimlaneId) => {
-    if (!swimlaneId && currentSwimlanes.length > 0) {
-      swimlaneId = currentSwimlanes[0].id;
+    if (!swimlaneId && swimlanes.length > 0) {
+      swimlaneId = swimlanes[0].id;
     }
 
     const swimlane = getSwimlaneById(swimlaneId);
@@ -267,35 +271,58 @@ const ActivityDiagramMaker = () => {
       ...calculateNodeDimensions(type, 'New Activity')
     };
 
-    // Center the node in the swimlane
     const centeredNode = centerNodeInSwimlane(newNode);
 
-    setCurrentNodes([...currentNodes, centeredNode]);
+    onUpdateActivityDiagram({
+      ...activityDiagram,
+      nodes: [...nodes, centeredNode]
+    });
+    
     setSelectedNode(centeredNode.id);
   };
 
   const deleteNode = (nodeId) => {
-    setCurrentNodes(currentNodes.filter(n => n.id !== nodeId));
-    setCurrentEdges(currentEdges.filter(e => e.source !== nodeId && e.target !== nodeId));
+    const updatedNodes = nodes.filter(n => n.id !== nodeId);
+    const updatedEdges = edges.filter(e => e.source !== nodeId && e.target !== nodeId);
+    
+    onUpdateActivityDiagram({
+      ...activityDiagram,
+      nodes: updatedNodes,
+      edges: updatedEdges
+    });
+    
     setSelectedNode(null);
   };
 
   const deleteEdge = (edgeId) => {
-    setCurrentEdges(currentEdges.filter(e => e.id !== edgeId));
+    onUpdateActivityDiagram({
+      ...activityDiagram,
+      edges: edges.filter(e => e.id !== edgeId)
+    });
   };
 
   const updateNodeText = (nodeId, text) => {
-    setCurrentNodes(currentNodes.map(n => 
+    const updatedNodes = nodes.map(n => 
       n.id === nodeId 
         ? { ...n, text, ...calculateNodeDimensions(n.type, text) } 
         : n
-    ));
+    );
+    
+    onUpdateActivityDiagram({
+      ...activityDiagram,
+      nodes: updatedNodes
+    });
   };
 
   const centerNodeInCurrentSwimlane = (nodeId) => {
-    setCurrentNodes(currentNodes.map(n => 
+    const updatedNodes = nodes.map(n => 
       n.id === nodeId ? centerNodeInSwimlane(n) : n
-    ));
+    );
+    
+    onUpdateActivityDiagram({
+      ...activityDiagram,
+      nodes: updatedNodes
+    });
   };
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.2, 3));
@@ -304,10 +331,10 @@ const ActivityDiagramMaker = () => {
 
   const exportToJson = () => {
     const data = { 
-      name: diagramName,
-      swimlanes: currentSwimlanes, 
-      nodes: currentNodes, 
-      edges: currentEdges 
+      name: activityDiagram.name,
+      swimlanes, 
+      nodes, 
+      edges 
     };
     return JSON.stringify(data, null, 2);
   };
@@ -321,10 +348,13 @@ const ActivityDiagramMaker = () => {
     try {
       const data = JSON.parse(jsonInput);
       if (data.swimlanes && data.nodes && data.edges) {
-        setCurrentSwimlanes(data.swimlanes);
-        setCurrentNodes(data.nodes);
-        setCurrentEdges(data.edges);
-        if (data.name) setDiagramName(data.name);
+        onUpdateActivityDiagram({
+          ...activityDiagram,
+          name: data.name || activityDiagram.name,
+          swimlanes: data.swimlanes,
+          nodes: data.nodes,
+          edges: data.edges
+        });
         alert('Diagram imported successfully!');
       } else {
         alert('Invalid JSON format. Expected swimlanes, nodes and edges arrays.');
@@ -368,7 +398,7 @@ const ActivityDiagramMaker = () => {
 
   const renderSwimlane = (swimlane, index) => {
     const x = index * swimlaneWidth;
-    const height = Math.max(1000, currentNodes.reduce((max, n) => Math.max(max, n.y + n.height + 150), 0));
+    const height = Math.max(1000, nodes.reduce((max, n) => Math.max(max, n.y + n.height + 150), 0));
     
     return (
       <g key={swimlane.id}>
@@ -511,8 +541,8 @@ const ActivityDiagramMaker = () => {
   };
 
   const renderEdge = (edge) => {
-    const sourceNode = currentNodes.find(n => n.id === edge.source);
-    const targetNode = currentNodes.find(n => n.id === edge.target);
+    const sourceNode = nodes.find(n => n.id === edge.source);
+    const targetNode = nodes.find(n => n.id === edge.target);
     
     if (!sourceNode || !targetNode) return null;
 
@@ -551,19 +581,18 @@ const ActivityDiagramMaker = () => {
     );
   };
 
-  const canvasHeight = Math.max(1000, currentNodes.reduce((max, n) => Math.max(max, n.y + n.height + 150), 0));
-  const canvasWidth = currentSwimlanes.length * swimlaneWidth;
+  const canvasHeight = Math.max(1000, nodes.reduce((max, n) => Math.max(max, n.y + n.height + 150), 0));
+  const canvasWidth = swimlanes.length * swimlaneWidth;
 
   return (
     <div className="activity-maker">
       <div className="toolbar">
+        <button onClick={onBack} className="back-btn">
+          <ArrowLeft size={16} /> Back
+        </button>
+        
         <div className="toolbar-left">
-          <input
-            type="text"
-            value={diagramName}
-            onChange={(e) => setDiagramName(e.target.value)}
-            className="diagram-name-input"
-          />
+          <h2>{activityDiagram.name}</h2>
         </div>
         
         <div className="toolbar-center">
@@ -591,7 +620,7 @@ const ActivityDiagramMaker = () => {
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `${diagramName.replace(/\s+/g, '-').toLowerCase()}.json`;
+              a.download = `${activityDiagram.name.replace(/\s+/g, '-').toLowerCase()}.json`;
               document.body.appendChild(a);
               a.click();
               document.body.removeChild(a);
@@ -654,7 +683,7 @@ const ActivityDiagramMaker = () => {
                 <Plus size={16} /> Add Swimlane
               </button>
               <div className="list">
-                {currentSwimlanes.map(swimlane => (
+                {swimlanes.map(swimlane => (
                   <div key={swimlane.id} className="list-item">
                     <div className="item-info">
                       <div className="item-name">{swimlane.name}</div>
@@ -673,36 +702,36 @@ const ActivityDiagramMaker = () => {
 
             <div className="sidebar-section">
               <h3>Add Nodes</h3>
-              {currentSwimlanes.length > 0 && (
+              {swimlanes.length > 0 && (
                 <div className="form-group">
                   <label>Target Swimlane</label>
                   <select 
-                    value={selectedSwimlane || currentSwimlanes[0]?.id || ''}
+                    value={selectedSwimlane || swimlanes[0]?.id || ''}
                     onChange={(e) => setSelectedSwimlane(parseInt(e.target.value))}
                   >
-                    {currentSwimlanes.map(swimlane => (
+                    {swimlanes.map(swimlane => (
                       <option key={swimlane.id} value={swimlane.id}>{swimlane.name}</option>
                     ))}
                   </select>
                 </div>
               )}
               <div className="node-buttons">
-                <button onClick={() => addNode('initial', selectedSwimlane || currentSwimlanes[0]?.id)} title="Start node">
+                <button onClick={() => addNode('initial', selectedSwimlane || swimlanes[0]?.id)} title="Start node">
                   <Play size={14} /> Initial
                 </button>
-                <button onClick={() => addNode('activity', selectedSwimlane || currentSwimlanes[0]?.id)} title="Activity node">
+                <button onClick={() => addNode('activity', selectedSwimlane || swimlanes[0]?.id)} title="Activity node">
                   <Square size={14} /> Activity
                 </button>
-                <button onClick={() => addNode('decision', selectedSwimlane || currentSwimlanes[0]?.id)} title="Decision node">
+                <button onClick={() => addNode('decision', selectedSwimlane || swimlanes[0]?.id)} title="Decision node">
                   <Diamond size={14} /> Decision
                 </button>
-                <button onClick={() => addNode('fork', selectedSwimlane || currentSwimlanes[0]?.id)} title="Fork node">
+                <button onClick={() => addNode('fork', selectedSwimlane || swimlanes[0]?.id)} title="Fork node">
                   <Minus size={14} /> Fork
                 </button>
-                <button onClick={() => addNode('join', selectedSwimlane || currentSwimlanes[0]?.id)} title="Join node">
+                <button onClick={() => addNode('join', selectedSwimlane || swimlanes[0]?.id)} title="Join node">
                   <Merge size={14} /> Join
                 </button>
-                <button onClick={() => addNode('final', selectedSwimlane || currentSwimlanes[0]?.id)} title="End node">
+                <button onClick={() => addNode('final', selectedSwimlane || swimlanes[0]?.id)} title="End node">
                   <Circle size={14} /> Final
                 </button>
               </div>
@@ -742,20 +771,14 @@ const ActivityDiagramMaker = () => {
                   </marker>
                 </defs>
 
-                {/* Swimlanes */}
-                {currentSwimlanes.map((swimlane, index) => renderSwimlane(swimlane, index))}
+                {swimlanes.map((swimlane, index) => renderSwimlane(swimlane, index))}
+                {edges.map(edge => renderEdge(edge))}
+                {nodes.map(node => renderNode(node))}
 
-                {/* Edges */}
-                {currentEdges.map(edge => renderEdge(edge))}
-
-                {/* Nodes */}
-                {currentNodes.map(node => renderNode(node))}
-
-                {/* Connection in progress */}
                 {isConnecting && connectionStart && (
                   <line
-                    x1={currentNodes.find(n => n.id === connectionStart)?.x + currentNodes.find(n => n.id === connectionStart)?.width / 2}
-                    y1={currentNodes.find(n => n.id === connectionStart)?.y + currentNodes.find(n => n.id === connectionStart)?.height / 2}
+                    x1={nodes.find(n => n.id === connectionStart)?.x + nodes.find(n => n.id === connectionStart)?.width / 2}
+                    y1={nodes.find(n => n.id === connectionStart)?.y + nodes.find(n => n.id === connectionStart)?.height / 2}
                     x2={connectionMouse.x}
                     y2={connectionMouse.y}
                     stroke="#3b82f6"
@@ -768,12 +791,11 @@ const ActivityDiagramMaker = () => {
             </div>
           </div>
 
-          {/* Properties Panel */}
           {selectedNode && (
             <div className="properties-panel">
               <h3>Node Properties</h3>
               {(() => {
-                const node = currentNodes.find(n => n.id === selectedNode);
+                const node = nodes.find(n => n.id === selectedNode);
                 if (!node) return null;
 
                 return (
@@ -802,12 +824,15 @@ const ActivityDiagramMaker = () => {
                     <select
                       value={node.type}
                       onChange={(e) => {
-                        const updatedNodes = currentNodes.map(n => 
+                        const updatedNodes = nodes.map(n => 
                           n.id === selectedNode 
                             ? { ...n, type: e.target.value, ...calculateNodeDimensions(e.target.value, n.text) } 
                             : n
                         );
-                        setCurrentNodes(updatedNodes);
+                        onUpdateActivityDiagram({
+                          ...activityDiagram,
+                          nodes: updatedNodes
+                        });
                       }}
                     >
                       <option value="initial">Initial Node</option>
@@ -823,17 +848,20 @@ const ActivityDiagramMaker = () => {
                       value={node.swimlaneId || ''}
                       onChange={(e) => {
                         const newSwimlaneId = parseInt(e.target.value);
-                        const updatedNodes = currentNodes.map(n => {
+                        const updatedNodes = nodes.map(n => {
                           if (n.id === selectedNode) {
                             const updatedNode = { ...n, swimlaneId: newSwimlaneId };
                             return centerNodeInSwimlane(updatedNode);
                           }
                           return n;
                         });
-                        setCurrentNodes(updatedNodes);
+                        onUpdateActivityDiagram({
+                          ...activityDiagram,
+                          nodes: updatedNodes
+                        });
                       }}
                     >
-                      {currentSwimlanes.map(swimlane => (
+                      {swimlanes.map(swimlane => (
                         <option key={swimlane.id} value={swimlane.id}>{swimlane.name}</option>
                       ))}
                     </select>
@@ -848,9 +876,13 @@ const ActivityDiagramMaker = () => {
                           onChange={(e) => {
                             const newX = parseInt(e.target.value) || 0;
                             const constrained = constrainNodeToSwimlane(node, newX, node.y);
-                            setCurrentNodes(currentNodes.map(n => 
+                            const updatedNodes = nodes.map(n => 
                               n.id === selectedNode ? { ...n, x: constrained.x } : n
-                            ));
+                            );
+                            onUpdateActivityDiagram({
+                              ...activityDiagram,
+                              nodes: updatedNodes
+                            });
                           }}
                         />
                       </div>
@@ -862,9 +894,13 @@ const ActivityDiagramMaker = () => {
                           onChange={(e) => {
                             const newY = parseInt(e.target.value) || 0;
                             const constrained = constrainNodeToSwimlane(node, node.x, newY);
-                            setCurrentNodes(currentNodes.map(n => 
+                            const updatedNodes = nodes.map(n => 
                               n.id === selectedNode ? { ...n, y: constrained.y } : n
-                            ));
+                            );
+                            onUpdateActivityDiagram({
+                              ...activityDiagram,
+                              nodes: updatedNodes
+                            });
                           }}
                         />
                       </div>
@@ -924,7 +960,7 @@ const ActivityDiagramMaker = () => {
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         * {
           box-sizing: border-box;
         }
@@ -951,6 +987,25 @@ const ActivityDiagramMaker = () => {
           flex-shrink: 0;
         }
 
+        .back-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 6px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+          background: #f1f5f9;
+          color: #64748b;
+          border: 1px solid #e2e8f0;
+        }
+
+        .back-btn:hover {
+          background: #e2e8f0;
+        }
+
         .toolbar-left,
         .toolbar-center,
         .toolbar-right {
@@ -959,27 +1014,18 @@ const ActivityDiagramMaker = () => {
           gap: 12px;
         }
 
+        .toolbar-left h2 {
+          margin: 0;
+          font-size: 18px;
+          color: #1e293b;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
         .toolbar-center {
           flex: 1;
           justify-content: center;
-        }
-
-        .diagram-name-input {
-          padding: 8px 14px;
-          font-size: 16px;
-          font-weight: 600;
-          border: 2px solid transparent;
-          border-radius: 8px;
-          background: #f8fafc;
-          color: #1e293b;
-          min-width: 250px;
-          transition: all 0.2s;
-        }
-
-        .diagram-name-input:focus {
-          outline: none;
-          border-color: #3b82f6;
-          background: white;
         }
         
         .zoom-controls {
