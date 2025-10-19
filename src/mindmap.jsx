@@ -50,6 +50,8 @@ const MindMapMaker = ({
 
   const MIN_VERTICAL_GAP = 20;
   const LEVEL_DISTANCE = 200;
+  const MAX_TEXT_LENGTH = 15; // Maximum characters before truncation
+  const MAX_SUBTEXT_LENGTH = 25; // Maximum characters for subtext before truncation
 
   const [currentNodes, setCurrentNodes] = useState(nodes.length > 0 ? nodes : [
     {
@@ -79,29 +81,39 @@ const MindMapMaker = ({
     setJsonInput(JSON.stringify({ nodes: currentNodes }, null, 2));
   }, [currentNodes]);
 
+  // Function to truncate text with ellipsis
+  const truncateText = (text, maxLength) => {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 3) + '...';
+  };
+
   const calculateNodeDimensions = (text, subtext = '', hasImage = false) => {
-    const baseWidth = 140;
+    const baseWidth = 160;
     const charWidth = 8;
     
-    const textWidth = text.length * charWidth;
-    const subtextWidth = subtext ? subtext.length * charWidth * 0.8 : 0;
+    // Use truncated text for width calculation
+    const truncatedText = truncateText(text, MAX_TEXT_LENGTH);
+    const truncatedSubtext = subtext ? truncateText(subtext, MAX_SUBTEXT_LENGTH) : '';
+    
+    const textWidth = truncatedText.length * charWidth;
+    const subtextWidth = truncatedSubtext ? truncatedSubtext.length * charWidth * 0.8 : 0;
     const maxTextWidth = Math.max(textWidth, subtextWidth);
     
     let width = Math.max(baseWidth, maxTextWidth + 40);
-    let height = 60;
+    let height = 60; // Fixed base height
     
     if (subtext) {
-      height += 20;
+      height += 20; // Additional space for subtext
     }
     
     if (hasImage && showImages) {
-      height += 70;
+      height += 70; // Space for image
       width = Math.max(width, 120);
     }
     
     return { 
-      width: Math.min(width, 400), 
-      height: Math.min(height, 300) 
+      width: Math.min(width, 300), // Fixed maximum width
+      height: Math.min(height, 200) // Fixed maximum height
     };
   };
 
@@ -597,7 +609,8 @@ const MindMapMaker = ({
       currentY += 55;
     }
 
-    // Main text
+    // Main text (truncated)
+    const displayText = truncateText(node.text, MAX_TEXT_LENGTH);
     elements.push(
       <text
         key="main-text"
@@ -609,13 +622,14 @@ const MindMapMaker = ({
         fontWeight="600"
         style={{ pointerEvents: 'none' }}
       >
-        {node.text}
+        {displayText}
       </text>
     );
     currentY += 20;
 
-    // Subtext
+    // Subtext (truncated)
     if (node.subtext) {
+      const displaySubtext = truncateText(node.subtext, MAX_SUBTEXT_LENGTH);
       elements.push(
         <text
           key="subtext"
@@ -628,7 +642,7 @@ const MindMapMaker = ({
           opacity="0.8"
           style={{ pointerEvents: 'none' }}
         >
-          {node.subtext}
+          {displaySubtext}
         </text>
       );
       currentY += 15;
@@ -993,31 +1007,43 @@ const MindMapMaker = ({
                 
                 <div className="edit-content">
                   {editMode === 'text' && (
-                    <input
-                      type="text"
-                      value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') updateNodeText(editingNode, editText, editSubtext, editDescription, editImageUrl);
-                        if (e.key === 'Escape') { setEditingNode(null); setEditText(''); }
-                      }}
-                      placeholder="Enter main text..."
-                      autoFocus
-                    />
+                    <div className="input-with-counter">
+                      <input
+                        type="text"
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') updateNodeText(editingNode, editText, editSubtext, editDescription, editImageUrl);
+                          if (e.key === 'Escape') { setEditingNode(null); setEditText(''); }
+                        }}
+                        placeholder="Enter main text..."
+                        autoFocus
+                        maxLength={50}
+                      />
+                      <div className="char-counter">
+                        {editText.length}/{MAX_TEXT_LENGTH}
+                      </div>
+                    </div>
                   )}
                   
                   {editMode === 'subtext' && (
-                    <input
-                      type="text"
-                      value={editSubtext}
-                      onChange={(e) => setEditSubtext(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') updateNodeText(editingNode, editText, editSubtext, editDescription, editImageUrl);
-                        if (e.key === 'Escape') { setEditingNode(null); setEditSubtext(''); }
-                      }}
-                      placeholder="Enter subtext..."
-                      autoFocus
-                    />
+                    <div className="input-with-counter">
+                      <input
+                        type="text"
+                        value={editSubtext}
+                        onChange={(e) => setEditSubtext(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') updateNodeText(editingNode, editText, editSubtext, editDescription, editImageUrl);
+                          if (e.key === 'Escape') { setEditingNode(null); setEditSubtext(''); }
+                        }}
+                        placeholder="Enter subtext..."
+                        autoFocus
+                        maxLength={60}
+                      />
+                      <div className="char-counter">
+                        {editSubtext.length}/{MAX_SUBTEXT_LENGTH}
+                      </div>
+                    </div>
                   )}
                   
                   {editMode === 'description' && (
@@ -1523,6 +1549,27 @@ const MindMapMaker = ({
         .edit-box textarea:focus {
           border-color: #3b82f6;
           box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+
+        .input-with-counter {
+          position: relative;
+        }
+
+        .char-counter {
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          font-size: 12px;
+          color: #64748b;
+          background: rgba(255, 255, 255, 0.9);
+          padding: 2px 6px;
+          border-radius: 4px;
+        }
+
+        .dark .char-counter {
+          color: #9ca3af;
+          background: rgba(55, 65, 81, 0.9);
         }
 
         .image-url-input {
