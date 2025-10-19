@@ -56,7 +56,7 @@ const MindMapMaker = ({
   const [currentNodes, setCurrentNodes] = useState(nodes.length > 0 ? nodes : [
     {
       id: 1,
-      text: 'Central Idea',
+      text: 'Origin',
       subtext: 'Click to edit subtext',
       description: 'This is the central idea of your mind map. You can add descriptions to provide more details.',
       imageUrl: '',
@@ -87,7 +87,7 @@ const MindMapMaker = ({
     return text.substring(0, maxLength - 3) + '...';
   };
 
-  const calculateNodeDimensions = (text, subtext = '', hasImage = false) => {
+  const calculateNodeDimensions = (text, subtext = '', hasImage = false, isRoot = false) => {
     const baseWidth = 160;
     const charWidth = 8;
     
@@ -100,7 +100,11 @@ const MindMapMaker = ({
     const maxTextWidth = Math.max(textWidth, subtextWidth);
     
     let width = Math.max(baseWidth, maxTextWidth + 40);
-    let height = 60; // Fixed base height
+    let height = 25; // Fixed base height
+
+    if (isRoot) {
+      height += 20; // Extra space for root node
+    }
     
     if (subtext) {
       height += 20; // Additional space for subtext
@@ -448,7 +452,7 @@ const MindMapMaker = ({
         };
         return { 
           ...updatedNode, 
-          ...calculateNodeDimensions(text, updatedNode.subtext, !!updatedNode.imageUrl) 
+          ...calculateNodeDimensions(text, updatedNode.subtext, !!updatedNode.imageUrl,updatedNode.isRoot) 
         };
       }
       return n;
@@ -562,6 +566,10 @@ const MindMapMaker = ({
     const elements = [];
     let currentY = 20;
 
+    if (node.isRoot){
+      currentY += 7;
+    }
+
     // Image
     if (node.imageUrl && showImages) {
       elements.push(
@@ -625,7 +633,7 @@ const MindMapMaker = ({
         {displayText}
       </text>
     );
-    currentY += 20;
+    currentY += 15;
 
     // Subtext (truncated)
     if (node.subtext) {
