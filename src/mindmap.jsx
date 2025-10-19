@@ -26,13 +26,13 @@ const MindMapMaker = ({
   onBack 
 }) => {
   const svgRef = useRef(null);
-  const fileInputRef = useRef(null);
   const [darkMode, setDarkMode] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [editingNode, setEditingNode] = useState(null);
   const [editText, setEditText] = useState('');
   const [editSubtext, setEditSubtext] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editImageUrl, setEditImageUrl] = useState('');
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -46,7 +46,7 @@ const MindMapMaker = ({
   const [showImages, setShowImages] = useState(true);
   const [descriptionDialog, setDescriptionDialog] = useState(null);
   const [editMode, setEditMode] = useState('text');
-  const [imageUploadNode, setImageUploadNode] = useState(null);
+  const [imageUrlDialog, setImageUrlDialog] = useState(null);
 
   const MIN_VERTICAL_GAP = 20;
   const LEVEL_DISTANCE = 200;
@@ -83,21 +83,20 @@ const MindMapMaker = ({
     const baseWidth = 140;
     const charWidth = 8;
     
-    // Calculate width based on the longest text
     const textWidth = text.length * charWidth;
-    const subtextWidth = subtext ? subtext.length * charWidth * 0.8 : 0; // Subtext is smaller
+    const subtextWidth = subtext ? subtext.length * charWidth * 0.8 : 0;
     const maxTextWidth = Math.max(textWidth, subtextWidth);
     
     let width = Math.max(baseWidth, maxTextWidth + 40);
-    let height = 60; // Base height for text only
+    let height = 60;
     
     if (subtext) {
-      height += 20; // Additional space for subtext
+      height += 20;
     }
     
     if (hasImage && showImages) {
-      height += 70; // Space for image
-      width = Math.max(width, 120); // Minimum width for image
+      height += 70;
+      width = Math.max(width, 120);
     }
     
     return { 
@@ -419,10 +418,11 @@ const MindMapMaker = ({
     setEditText(node.text);
     setEditSubtext(node.subtext || '');
     setEditDescription(node.description || '');
+    setEditImageUrl(node.imageUrl || '');
     setEditMode('text');
   };
 
-  const updateNodeText = (nodeId, text, subtext = null, description = null) => {
+  const updateNodeText = (nodeId, text, subtext = null, description = null, imageUrl = null) => {
     if (!text.trim()) return;
     
     const updatedNodes = currentNodes.map(n => {
@@ -431,7 +431,8 @@ const MindMapMaker = ({
           ...n, 
           text,
           subtext: subtext !== null ? subtext : n.subtext,
-          description: description !== null ? description : n.description
+          description: description !== null ? description : n.description,
+          imageUrl: imageUrl !== null ? imageUrl : n.imageUrl
         };
         return { 
           ...updatedNode, 
@@ -446,6 +447,7 @@ const MindMapMaker = ({
     setEditText('');
     setEditSubtext('');
     setEditDescription('');
+    setEditImageUrl('');
 
     onUpdateMindMap({
       ...mindMap,
@@ -453,54 +455,20 @@ const MindMapMaker = ({
     });
   };
 
-  const handleImageUpload = (nodeId, e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // Check if file is an image
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const imageUrl = event.target.result;
-      const updatedNodes = currentNodes.map(n => {
-        if (n.id === nodeId) {
-          const updatedNode = { ...n, imageUrl };
-          return { 
-            ...updatedNode, 
-            ...calculateNodeDimensions(n.text, n.subtext, true) 
-          };
-        }
-        return n;
-      });
-      
-      setCurrentNodes(updatedNodes);
-      setImageUploadNode(null);
-      
-      onUpdateMindMap({
-        ...mindMap,
-        nodes: updatedNodes
-      });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const removeImage = (nodeId) => {
+  const updateNodeImageUrl = (nodeId, imageUrl) => {
     const updatedNodes = currentNodes.map(n => {
       if (n.id === nodeId) {
-        const updatedNode = { ...n, imageUrl: '' };
+        const updatedNode = { ...n, imageUrl };
         return { 
           ...updatedNode, 
-          ...calculateNodeDimensions(n.text, n.subtext, false) 
+          ...calculateNodeDimensions(n.text, n.subtext, !!imageUrl) 
         };
       }
       return n;
     });
     
     setCurrentNodes(updatedNodes);
+    setImageUrlDialog(null);
     
     onUpdateMindMap({
       ...mindMap,
@@ -508,14 +476,8 @@ const MindMapMaker = ({
     });
   };
 
-  const triggerImageUpload = (nodeId) => {
-    setImageUploadNode(nodeId);
-    // Create and trigger file input
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = (e) => handleImageUpload(nodeId, e);
-    input.click();
+  const removeImage = (nodeId) => {
+    updateNodeImageUrl(nodeId, '');
   };
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.2, 3));
@@ -601,6 +563,9 @@ const MindMapMaker = ({
             height={50}
             preserveAspectRatio="xMidYMid meet"
             clipPath="url(#imageClip)"
+            onError={(e) => {
+              e.target.style.display = 'none';
+            }}
           />
           <circle
             key="remove-btn"
@@ -939,54 +904,61 @@ const MindMapMaker = ({
                         </>
                       );
                     })()}
-
-                    {/* Action Panel */}
-                    <g transform={`translate(${(node.x + node.width + 50) * zoom + pan.x}, ${(node.y - 15) * zoom + pan.y})`}>
-                      <rect
-                        x={0}
-                        y={0}
-                        width={node.description ? 120 : 90}
-                        height={40}
-                        rx={20}
-                        fill={darkMode ? "#374151" : "white"}
-                        stroke={darkMode ? "#4b5563" : "#e2e8f0"}
-                        strokeWidth="1"
-                        filter="url(#shadow)"
-                      />
-                      
-                      {/* Edit Button */}
-                      <g onClick={() => handleNodeDoubleClick(node)} style={{ cursor: 'pointer' }}>
-                        <circle cx={20} cy={20} r={12} fill="#3b82f6"/>
-                        <text x={20} y={24} textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">E</text>
-                      </g>
-                      
-                      {/* Image Upload Button */}
-                      <g onClick={() => triggerImageUpload(node.id)} style={{ cursor: 'pointer' }}>
-                        <circle cx={50} cy={20} r={12} fill="#8b5cf6"/>
-                        <text x={50} y={24} textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">I</text>
-                      </g>
-                      
-                      {/* Delete Button */}
-                      {!node.isRoot && (
-                        <g onClick={() => deleteNode(node.id)} style={{ cursor: 'pointer' }}>
-                          <circle cx={80} cy={20} r={12} fill="#ef4444"/>
-                          <text x={80} y={24} textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">D</text>
-                        </g>
-                      )}
-                      
-                      {/* Description Button */}
-                      {node.description && (
-                        <g onClick={() => setDescriptionDialog(node)} style={{ cursor: 'pointer' }}>
-                          <circle cx={110} cy={20} r={12} fill="#f59e0b"/>
-                          <text x={110} y={24} textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">?</text>
-                        </g>
-                      )}
-                    </g>
                   </>
                 )}
               </g>
             ))}
           </svg>
+
+          {/* Floating Action Buttons for Selected Node */}
+          {selectedNode && (
+            <div className="floating-actions">
+              <button 
+                className="action-btn edit-btn"
+                onClick={() => {
+                  const node = currentNodes.find(n => n.id === selectedNode);
+                  handleNodeDoubleClick(node);
+                }}
+                title="Edit Node"
+              >
+                <Edit3 size={16} />
+              </button>
+              
+              <button 
+                className="action-btn image-btn"
+                onClick={() => {
+                  const node = currentNodes.find(n => n.id === selectedNode);
+                  setImageUrlDialog(node);
+                }}
+                title="Add Image URL"
+              >
+                <Image size={16} />
+              </button>
+              
+              {currentNodes.find(n => n.id === selectedNode)?.description && (
+                <button 
+                  className="action-btn desc-btn"
+                  onClick={() => {
+                    const node = currentNodes.find(n => n.id === selectedNode);
+                    setDescriptionDialog(node);
+                  }}
+                  title="View Description"
+                >
+                  <FileText size={16} />
+                </button>
+              )}
+              
+              {!currentNodes.find(n => n.id === selectedNode)?.isRoot && (
+                <button 
+                  className="action-btn delete-btn"
+                  onClick={() => deleteNode(selectedNode)}
+                  title="Delete Node"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Edit Input */}
           {editingNode && (
@@ -1011,6 +983,12 @@ const MindMapMaker = ({
                   >
                     Description
                   </button>
+                  <button 
+                    className={`edit-tab ${editMode === 'image' ? 'active' : ''}`}
+                    onClick={() => setEditMode('image')}
+                  >
+                    Image URL
+                  </button>
                 </div>
                 
                 <div className="edit-content">
@@ -1020,7 +998,7 @@ const MindMapMaker = ({
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') updateNodeText(editingNode, editText, editSubtext, editDescription);
+                        if (e.key === 'Enter') updateNodeText(editingNode, editText, editSubtext, editDescription, editImageUrl);
                         if (e.key === 'Escape') { setEditingNode(null); setEditText(''); }
                       }}
                       placeholder="Enter main text..."
@@ -1034,7 +1012,7 @@ const MindMapMaker = ({
                       value={editSubtext}
                       onChange={(e) => setEditSubtext(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') updateNodeText(editingNode, editText, editSubtext, editDescription);
+                        if (e.key === 'Enter') updateNodeText(editingNode, editText, editSubtext, editDescription, editImageUrl);
                         if (e.key === 'Escape') { setEditingNode(null); setEditSubtext(''); }
                       }}
                       placeholder="Enter subtext..."
@@ -1051,6 +1029,24 @@ const MindMapMaker = ({
                       autoFocus
                     />
                   )}
+                  
+                  {editMode === 'image' && (
+                    <div className="image-url-input">
+                      <input
+                        type="url"
+                        value={editImageUrl}
+                        onChange={(e) => setEditImageUrl(e.target.value)}
+                        placeholder="Enter image URL..."
+                        autoFocus
+                      />
+                      {editImageUrl && (
+                        <div className="image-preview">
+                          <img src={editImageUrl} alt="Preview" onError={(e) => e.target.style.display = 'none'} />
+                          <small>Image Preview</small>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="edit-actions">
@@ -1060,17 +1056,66 @@ const MindMapMaker = ({
                       setEditText('');
                       setEditSubtext('');
                       setEditDescription('');
+                      setEditImageUrl('');
                     }}
                     className="cancel-btn"
                   >
                     Cancel
                   </button>
                   <button 
-                    onClick={() => updateNodeText(editingNode, editText, editSubtext, editDescription)}
+                    onClick={() => updateNodeText(editingNode, editText, editSubtext, editDescription, editImageUrl)}
                     className="save-btn"
                   >
                     Save
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Image URL Dialog */}
+          {imageUrlDialog && (
+            <div className="dialog-overlay">
+              <div className="dialog">
+                <div className="dialog-header">
+                  <h3>Add Image URL</h3>
+                  <button onClick={() => setImageUrlDialog(null)} className="close-btn">
+                    <X size={20} />
+                  </button>
+                </div>
+                <div className="dialog-content">
+                  <input
+                    type="url"
+                    placeholder="Enter image URL..."
+                    value={imageUrlDialog.imageUrl || ''}
+                    onChange={(e) => {
+                      const node = currentNodes.find(n => n.id === imageUrlDialog.id);
+                      if (node) {
+                        setImageUrlDialog({...node, imageUrl: e.target.value});
+                      }
+                    }}
+                    className="url-input"
+                  />
+                  {imageUrlDialog.imageUrl && (
+                    <div className="image-preview">
+                      <img src={imageUrlDialog.imageUrl} alt="Preview" onError={(e) => e.target.style.display = 'none'} />
+                      <small>Image Preview</small>
+                    </div>
+                  )}
+                  <div className="dialog-actions">
+                    <button 
+                      onClick={() => setImageUrlDialog(null)}
+                      className="cancel-btn"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={() => updateNodeImageUrl(imageUrlDialog.id, imageUrlDialog.imageUrl)}
+                      className="save-btn"
+                    >
+                      Save
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1269,7 +1314,7 @@ const MindMapMaker = ({
           gap: 12px;
           padding: 8px 16px;
           border-radius: 25px;
-          z-index: 10;
+          z-index: 1000;
           backdrop-filter: blur(10px);
           background: rgba(255, 255, 255, 0.95);
           border: 1px solid #e2e8f0;
@@ -1346,6 +1391,53 @@ const MindMapMaker = ({
           stroke: #3b82f6;
         }
 
+        /* Floating Action Buttons */
+        .floating-actions {
+          position: absolute;
+          top: 70px;
+          right: 30px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          z-index: 1001;
+        }
+
+        .action-btn {
+          width: 48px;
+          height: 48px;
+          border: none;
+          border-radius: 24px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          transition: all 0.2s ease;
+          color: white;
+          font-weight: bold;
+        }
+
+        .action-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .edit-btn {
+          background: #3b82f6;
+        }
+
+        .image-btn {
+          background: #8b5cf6;
+        }
+
+        .desc-btn {
+          background: #f59e0b;
+        }
+
+        .delete-btn {
+          background: #ef4444;
+        }
+
         .edit-overlay {
           position: absolute;
           top: 0;
@@ -1356,7 +1448,7 @@ const MindMapMaker = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 200;
+          z-index: 2000;
         }
 
         .edit-box {
@@ -1433,6 +1525,40 @@ const MindMapMaker = ({
           box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
         }
 
+        .image-url-input {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .image-preview {
+          text-align: center;
+          padding: 12px;
+          border: 1px dashed #e2e8f0;
+          border-radius: 6px;
+        }
+
+        .dark .image-preview {
+          border-color: #4b5563;
+        }
+
+        .image-preview img {
+          max-width: 100%;
+          max-height: 150px;
+          border-radius: 4px;
+        }
+
+        .image-preview small {
+          display: block;
+          margin-top: 8px;
+          color: #64748b;
+          font-size: 12px;
+        }
+
+        .dark .image-preview small {
+          color: #9ca3af;
+        }
+
         .edit-actions {
           display: flex;
           gap: 8px;
@@ -1485,7 +1611,7 @@ const MindMapMaker = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 300;
+          z-index: 2001;
         }
 
         .dialog {
@@ -1560,6 +1686,28 @@ const MindMapMaker = ({
           color: #e2e8f0;
         }
 
+        .url-input {
+          width: 100%;
+          padding: 12px;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          font-size: 16px;
+          margin-bottom: 16px;
+          box-sizing: border-box;
+        }
+
+        .dark .url-input {
+          background: #4b5563;
+          color: #e2e8f0;
+          border-color: #6b7280;
+        }
+
+        .dialog-actions {
+          display: flex;
+          gap: 8px;
+          margin-top: 16px;
+        }
+
         .zoom-controls {
           position: absolute;
           bottom: 30px;
@@ -1573,6 +1721,7 @@ const MindMapMaker = ({
           gap: 4px;
           background: rgba(255, 255, 255, 0.95);
           border: 1px solid #e2e8f0;
+          z-index: 1000;
         }
 
         .dark .zoom-controls {
