@@ -50,8 +50,8 @@ const MindMapMaker = ({
 
   const MIN_VERTICAL_GAP = 20;
   const LEVEL_DISTANCE = 200;
-  const MAX_TEXT_LENGTH = 15; // Maximum characters before truncation
-  const MAX_SUBTEXT_LENGTH = 25; // Maximum characters for subtext before truncation
+  const MAX_TEXT_LENGTH = 15;
+  const MAX_SUBTEXT_LENGTH = 25;
 
   const [currentNodes, setCurrentNodes] = useState(nodes.length > 0 ? nodes : [
     {
@@ -81,7 +81,21 @@ const MindMapMaker = ({
     setJsonInput(JSON.stringify({ nodes: currentNodes }, null, 2));
   }, [currentNodes]);
 
-  // Function to truncate text with ellipsis
+  // Function to get text color based on background color for better contrast
+  const getTextColorForBackground = (backgroundColor) => {
+    // Convert hex to RGB
+    const hex = backgroundColor.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    
+    // Calculate relative luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    
+    // Return black for light colors, white for dark colors
+    return luminance > 0.5 ? '#000000' : '#ffffff';
+  };
+
   const truncateText = (text, maxLength) => {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength - 3) + '...';
@@ -91,7 +105,6 @@ const MindMapMaker = ({
     const baseWidth = 160;
     const charWidth = 8;
     
-    // Use truncated text for width calculation
     const truncatedText = truncateText(text, MAX_TEXT_LENGTH);
     const truncatedSubtext = subtext ? truncateText(subtext, MAX_SUBTEXT_LENGTH) : '';
     
@@ -100,24 +113,24 @@ const MindMapMaker = ({
     const maxTextWidth = Math.max(textWidth, subtextWidth);
     
     let width = Math.max(baseWidth, maxTextWidth + 40);
-    let height = 25; // Fixed base height
+    let height = 25;
 
-    if (isRoot) {
-      height += 20; // Extra space for root node
+    if (isRoot){
+      height += 20;
     }
     
     if (subtext) {
-      height += 20; // Additional space for subtext
+      height += 20;
     }
     
     if (hasImage && showImages) {
-      height += 70; // Space for image
+      height += 70;
       width = Math.max(width, 120);
     }
     
     return { 
-      width: Math.min(width, 300), // Fixed maximum width
-      height: Math.min(height, 200) // Fixed maximum height
+      width: Math.min(width, 300),
+      height: Math.min(height, 200)
     };
   };
 
@@ -301,6 +314,7 @@ const MindMapMaker = ({
     }
   };
 
+  // Optimized mouse move handler with requestAnimationFrame
   const handleMouseMove = useCallback((e) => {
     if (isDragging && dragNode) {
       const rect = svgRef.current.getBoundingClientRect();
@@ -310,14 +324,18 @@ const MindMapMaker = ({
       const target = checkForConnectionTarget(dragNode, e.clientX - rect.left, e.clientY - rect.top);
       setConnectionTarget(target);
 
+      // Use requestAnimationFrame for smooth dragging
       requestAnimationFrame(() => {
         updateNodePosition(dragNode.id, newX, newY, true);
       });
 
     } else if (isPanning) {
-      setPan({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y
+      // Smooth panning with requestAnimationFrame
+      requestAnimationFrame(() => {
+        setPan({
+          x: e.clientX - dragStart.x,
+          y: e.clientY - dragStart.y
+        });
       });
     }
   }, [isDragging, dragNode, dragStart, zoom, pan, isPanning, currentNodes]);
@@ -570,6 +588,9 @@ const MindMapMaker = ({
       currentY += 7;
     }
 
+    // Calculate text color based on node background color for better contrast
+    const textColor = getTextColorForBackground(node.color);
+
     // Image
     if (node.imageUrl && showImages) {
       elements.push(
@@ -625,7 +646,7 @@ const MindMapMaker = ({
         x={node.width / 2}
         y={currentY}
         textAnchor="middle"
-        fill={getTextColor()}
+        fill={textColor} // Use calculated text color for better contrast
         fontSize="14"
         fontWeight="600"
         style={{ pointerEvents: 'none' }}
@@ -644,7 +665,7 @@ const MindMapMaker = ({
           x={node.width / 2}
           y={currentY}
           textAnchor="middle"
-          fill={getTextColor()}
+          fill={textColor} // Use calculated text color for better contrast
           fontSize="11"
           fontStyle="italic"
           opacity="0.8"
