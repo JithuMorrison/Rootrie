@@ -49,13 +49,13 @@ const MindMapMaker = ({
   const [editMode, setEditMode] = useState('text');
   const [imageUrlDialog, setImageUrlDialog] = useState(null);
   const [hoveredNode, setHoveredNode] = useState(null);
-  const [batchEditMode, setBatchEditMode] = useState(false);
   const [batchEditNodes, setBatchEditNodes] = useState([]);
 
   const MIN_VERTICAL_GAP = 20;
   const LEVEL_DISTANCE = 200;
   const MAX_TEXT_LENGTH = 15;
   const MAX_SUBTEXT_LENGTH = 25;
+  const SCROLL_AMOUNT = 100;
 
   const [currentNodes, setCurrentNodes] = useState(nodes.length > 0 ? nodes : [
     {
@@ -86,7 +86,7 @@ const MindMapMaker = ({
   }, [currentNodes]);
 
   useEffect(() => {
-    if (batchEditMode) {
+    if (activeTab === 'batch') {
       setBatchEditNodes(currentNodes.map(node => ({
         id: node.id,
         text: node.text,
@@ -95,9 +95,32 @@ const MindMapMaker = ({
         imageUrl: node.imageUrl || ''
       })));
     }
-  }, [batchEditMode, currentNodes]);
+  }, [activeTab, currentNodes]);
 
-  // Function to get text color based on background color for better contrast
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (activeTab !== 'editor') return;
+      
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setPan(prev => ({ x: prev.x + SCROLL_AMOUNT, y: prev.y }));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setPan(prev => ({ x: prev.x - SCROLL_AMOUNT, y: prev.y }));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setPan(prev => ({ x: prev.x, y: prev.y + SCROLL_AMOUNT }));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setPan(prev => ({ x: prev.x, y: prev.y - SCROLL_AMOUNT }));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab]);
+
   const getTextColorForBackground = (backgroundColor) => {
     const hex = backgroundColor.replace('#', '');
     const r = parseInt(hex.substr(0, 2), 16);
@@ -322,7 +345,6 @@ const MindMapMaker = ({
     }
   };
 
-  // Optimized mouse move handler with requestAnimationFrame
   const handleMouseMove = useCallback((e) => {
     if (isDragging && dragNode) {
       const rect = svgRef.current.getBoundingClientRect();
@@ -332,21 +354,15 @@ const MindMapMaker = ({
       const target = checkForConnectionTarget(dragNode, e.clientX - rect.left, e.clientY - rect.top);
       setConnectionTarget(target);
 
-      // Use requestAnimationFrame for smooth dragging
-      requestAnimationFrame(() => {
-        updateNodePosition(dragNode.id, newX, newY, true);
-      });
+      updateNodePosition(dragNode.id, newX, newY, true);
 
     } else if (isPanning) {
-      // Smooth panning with requestAnimationFrame
-      requestAnimationFrame(() => {
-        setPan({
-          x: e.clientX - dragStart.x,
-          y: e.clientY - dragStart.y
-        });
+      setPan({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
       });
     }
-  }, [isDragging, dragNode, dragStart, zoom, pan, isPanning, currentNodes]);
+  }, [isDragging, dragNode, dragStart, zoom, pan, isPanning]);
 
   const handleMouseUp = useCallback(() => {
     if (isDragging && dragNode) {
@@ -514,8 +530,13 @@ const MindMapMaker = ({
     });
   };
 
-  const removeImage = (nodeId) => {
+  const removeImage = (nodeId, e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     updateNodeImageUrl(nodeId, '');
+    setHoveredNode(null);
   };
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.2, 3));
@@ -595,7 +616,7 @@ const MindMapMaker = ({
       if (batchNode) {
         const updatedNode = {
           ...node,
-          text: batchNode.text,
+          text: batchNode.text || node.text,
           subtext: batchNode.subtext,
           description: batchNode.description,
           imageUrl: batchNode.imageUrl
@@ -609,7 +630,7 @@ const MindMapMaker = ({
     });
 
     setCurrentNodes(updatedNodes);
-    setBatchEditMode(false);
+    setActiveTab('editor');
 
     onUpdateMindMap({
       ...mindMap,
@@ -617,7 +638,6 @@ const MindMapMaker = ({
     });
   };
 
-  // Render node content as SVG elements
   const renderNodeContent = (node) => {
     const elements = [];
     let currentY = 20;
@@ -626,10 +646,8 @@ const MindMapMaker = ({
       currentY += 7;
     }
 
-    // Calculate text color based on node background color for better contrast
     const textColor = getTextColorForBackground(node.color);
 
-    // Main text (truncated)
     const displayText = truncateText(node.text, MAX_TEXT_LENGTH);
     elements.push(
       <text
@@ -647,7 +665,6 @@ const MindMapMaker = ({
     );
     currentY += 15;
 
-    // Subtext (truncated)
     if (node.subtext) {
       const displaySubtext = truncateText(node.subtext, MAX_SUBTEXT_LENGTH);
       elements.push(
@@ -668,7 +685,6 @@ const MindMapMaker = ({
       currentY += 15;
     }
 
-    // Description indicator
     if (node.description) {
       elements.push(
         <g key="desc-indicator">
@@ -696,53 +712,64 @@ const MindMapMaker = ({
     return elements;
   };
 
-  // Render image above node only on hover
   const renderNodeImage = (node) => {
     if (!node.imageUrl || !showImages || hoveredNode !== node.id) return null;
 
-    const imageSize = 60;
-    const imageX = node.x * zoom + pan.x + (node.width * zoom) / 2 - (imageSize / 2);
-    const imageY = node.y * zoom + pan.y - imageSize - 10;
+    const imageSize = 80;
+    const imageX = (node.x + node.width / 2 - imageSize / 2) * zoom + pan.x;
+    const imageY = (node.y - imageSize - 15) * zoom + pan.y;
 
     return (
-      <g key={`image-${node.id}`}>
+      <g key={`image-hover-${node.id}`}>
+        <rect
+          x={imageX - 5}
+          y={imageY - 5}
+          width={imageSize + 10}
+          height={imageSize + 10}
+          rx="10"
+          fill="white"
+          stroke="#e2e8f0"
+          strokeWidth="2"
+          filter="url(#shadow)"
+        />
         <image
           href={node.imageUrl}
           x={imageX}
           y={imageY}
           width={imageSize}
           height={imageSize}
-          preserveAspectRatio="xMidYMid meet"
-          clipPath="url(#imageClip)"
+          preserveAspectRatio="xMidYMid slice"
+          clipPath={`url(#imageClip-${node.id})`}
           onError={(e) => {
             e.target.style.display = 'none';
           }}
-          style={{ cursor: 'pointer', pointerEvents: 'none' }}
         />
         <circle
-          cx={imageX + imageSize - 10}
-          cy={imageY + 10}
-          r={8}
+          cx={imageX + imageSize - 5}
+          cy={imageY + 5}
+          r={10}
           fill="#ef4444"
           stroke="white"
-          strokeWidth="1"
+          strokeWidth="2"
           style={{ cursor: 'pointer' }}
-          onClick={(e) => {
-            e.stopPropagation();
-            removeImage(node.id);
-          }}
+          onMouseDown={(e) => removeImage(node.id, e)}
         />
         <text
-          x={imageX + imageSize - 10}
-          y={imageY + 13}
+          x={imageX + imageSize - 5}
+          y={imageY + 9}
           textAnchor="middle"
           fill="white"
-          fontSize="8"
+          fontSize="10"
           fontWeight="bold"
           style={{ pointerEvents: 'none' }}
         >
           ×
         </text>
+        <defs>
+          <clipPath id={`imageClip-${node.id}`}>
+            <rect x={imageX} y={imageY} width={imageSize} height={imageSize} rx="8" />
+          </clipPath>
+        </defs>
       </g>
     );
   };
@@ -805,7 +832,6 @@ const MindMapMaker = ({
 
       {activeTab === 'editor' ? (
         <div className="mindmap-container">
-          {/* Top Toolbar */}
           {showToolbar && (
             <div className="top-toolbar">
               <div className="toolbar-section">
@@ -824,7 +850,7 @@ const MindMapMaker = ({
                 </button>
                 <button 
                   className="toolbar-btn" 
-                  onClick={() => setBatchEditMode(true)}
+                  onClick={() => setActiveTab('batch')}
                   title="Batch Edit Mode"
                 >
                   <List size={18} />
@@ -833,7 +859,6 @@ const MindMapMaker = ({
             </div>
           )}
 
-          {/* Main Canvas */}
           <svg
             ref={svgRef}
             className="canvas"
@@ -859,12 +884,8 @@ const MindMapMaker = ({
                   <feMergeNode in="SourceGraphic"/>
                 </feMerge>
               </filter>
-              <clipPath id="imageClip">
-                <rect x="0" y="0" width="60" height="60" rx="8" />
-              </clipPath>
             </defs>
 
-            {/* Connection Lines */}
             {currentNodes.map(node => {
               const parent = currentNodes.find(n => n.id === node.parentId);
               return parent ? (
@@ -881,9 +902,8 @@ const MindMapMaker = ({
               ) : null;
             })}
 
-            {/* Connection Target Indicator */}
             {connectionTarget && (
-              <g style={{ zIndex: 9998 }}>
+              <g>
                 <circle
                   cx={(connectionTarget.x + connectionTarget.width / 2) * zoom + pan.x}
                   cy={(connectionTarget.y + connectionTarget.height / 2) * zoom + pan.y}
@@ -911,10 +931,8 @@ const MindMapMaker = ({
               </g>
             )}
 
-            {/* Nodes */}
             {currentNodes.map(node => (
               <g key={node.id}>
-                {/* Node Shape */}
                 <g
                   transform={`translate(${node.x * zoom + pan.x}, ${node.y * zoom + pan.y}) scale(${zoom})`}
                   className={`node-group ${isDragging && dragNode?.id === node.id ? 'dragging' : ''}`}
@@ -934,11 +952,9 @@ const MindMapMaker = ({
                     onDoubleClick={() => handleNodeDoubleClick(node)}
                   />
                   
-                  {/* Node Content */}
                   {renderNodeContent(node)}
                 </g>
 
-                {/* Add Child Buttons */}
                 {selectedNode === node.id && (
                   <>
                     {(() => {
@@ -948,7 +964,6 @@ const MindMapMaker = ({
                       
                       return (
                         <>
-                          {/* Right Child Button */}
                           {(node.isRoot || isNodeOnRight) && (
                             <g transform={`translate(${(node.x + node.width + 15) * zoom + pan.x}, ${(node.y + node.height/2 - 12) * zoom + pan.y})`}>
                               <circle
@@ -975,7 +990,6 @@ const MindMapMaker = ({
                             </g>
                           )}
 
-                          {/* Left Child Button */}
                           {(node.isRoot || isNodeOnLeft) && (
                             <g transform={`translate(${(node.x - 35) * zoom + pan.x}, ${(node.y + node.height/2 - 12) * zoom + pan.y})`}>
                               <circle
@@ -1009,13 +1023,9 @@ const MindMapMaker = ({
               </g>
             ))}
 
-            {/* Images above nodes (rendered last for highest z-index) */}
-            <g style={{ pointerEvents: 'auto' }}>
-              {currentNodes.map(node => renderNodeImage(node))}
-            </g>
+            {currentNodes.map(node => renderNodeImage(node))}
           </svg>
 
-          {/* Floating Action Buttons for Selected Node */}
           {selectedNode && (
             <div className="floating-actions">
               <button 
@@ -1065,7 +1075,6 @@ const MindMapMaker = ({
             </div>
           )}
 
-          {/* Edit Input */}
           {editingNode && (
             <div className="edit-overlay">
               <div className="edit-box">
@@ -1190,7 +1199,6 @@ const MindMapMaker = ({
             </div>
           )}
 
-          {/* Image URL Dialog */}
           {imageUrlDialog && (
             <div className="dialog-overlay">
               <div className="dialog">
@@ -1238,7 +1246,6 @@ const MindMapMaker = ({
             </div>
           )}
 
-          {/* Description Dialog */}
           {descriptionDialog && (
             <div className="dialog-overlay">
               <div className="dialog">
@@ -1255,12 +1262,15 @@ const MindMapMaker = ({
             </div>
           )}
 
-          {/* Zoom Controls */}
           <div className="zoom-controls">
             <button className="zoom-btn" onClick={handleZoomOut} title="Zoom Out">-</button>
             <span className="zoom-level">{Math.round(zoom * 100)}%</span>
             <button className="zoom-btn" onClick={handleZoomIn} title="Zoom In">+</button>
             <button className="zoom-btn reset" onClick={handleZoomReset} title="Reset View">⌂</button>
+          </div>
+
+          <div className="scroll-hint">
+            Use arrow keys ← → ↑ ↓ to navigate
           </div>
         </div>
       ) : activeTab === 'json' ? (
@@ -1356,10 +1366,7 @@ const MindMapMaker = ({
           </div>
           <div className="batch-edit-actions">
             <button 
-              onClick={() => {
-                setBatchEditMode(false);
-                setActiveTab('editor');
-              }}
+              onClick={() => setActiveTab('editor')}
               className="cancel-btn"
             >
               Cancel
@@ -1567,7 +1574,7 @@ const MindMapMaker = ({
         }
 
         .node-group {
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: transform 0.05s ease-out;
         }
 
         .node-group:hover rect {
@@ -1576,7 +1583,6 @@ const MindMapMaker = ({
 
         .node-group.dragging {
           opacity: 0.9;
-          filter: drop-shadow(0 8px 25px rgba(0, 0, 0, 0.3));
         }
 
         .connection-line {
@@ -1588,7 +1594,6 @@ const MindMapMaker = ({
           stroke: #3b82f6;
         }
 
-        /* Floating Action Buttons */
         .floating-actions {
           position: absolute;
           top: 70px;
@@ -1990,6 +1995,26 @@ const MindMapMaker = ({
         }
 
         .dark .zoom-level {
+          color: #9ca3af;
+        }
+
+        .scroll-hint {
+          position: absolute;
+          bottom: 30px;
+          left: 30px;
+          padding: 8px 16px;
+          background: rgba(255, 255, 255, 0.95);
+          border: 1px solid #e2e8f0;
+          border-radius: 20px;
+          font-size: 12px;
+          color: #64748b;
+          backdrop-filter: blur(10px);
+          z-index: 1000;
+        }
+
+        .dark .scroll-hint {
+          background: rgba(55, 65, 81, 0.95);
+          border-color: #4b5563;
           color: #9ca3af;
         }
 
