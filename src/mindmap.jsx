@@ -83,16 +83,13 @@ const MindMapMaker = ({
 
   // Function to get text color based on background color for better contrast
   const getTextColorForBackground = (backgroundColor) => {
-    // Convert hex to RGB
     const hex = backgroundColor.replace('#', '');
     const r = parseInt(hex.substr(0, 2), 16);
     const g = parseInt(hex.substr(2, 2), 16);
     const b = parseInt(hex.substr(4, 2), 16);
     
-    // Calculate relative luminance
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
     
-    // Return black for light colors, white for dark colors
     return luminance > 0.5 ? '#000000' : '#ffffff';
   };
 
@@ -101,7 +98,7 @@ const MindMapMaker = ({
     return text.substring(0, maxLength - 3) + '...';
   };
 
-  const calculateNodeDimensions = (text, subtext = '', hasImage = false, isRoot = false) => {
+  const calculateNodeDimensions = (text, subtext = '', isRoot = false) => {
     const baseWidth = 160;
     const charWidth = 8;
     
@@ -121,11 +118,6 @@ const MindMapMaker = ({
     
     if (subtext) {
       height += 20;
-    }
-    
-    if (hasImage && showImages) {
-      height += 70;
-      width = Math.max(width, 120);
     }
     
     return { 
@@ -470,7 +462,7 @@ const MindMapMaker = ({
         };
         return { 
           ...updatedNode, 
-          ...calculateNodeDimensions(text, updatedNode.subtext, !!updatedNode.imageUrl,updatedNode.isRoot) 
+          ...calculateNodeDimensions(text, updatedNode.subtext, updatedNode.isRoot) 
         };
       }
       return n;
@@ -492,11 +484,7 @@ const MindMapMaker = ({
   const updateNodeImageUrl = (nodeId, imageUrl) => {
     const updatedNodes = currentNodes.map(n => {
       if (n.id === nodeId) {
-        const updatedNode = { ...n, imageUrl };
-        return { 
-          ...updatedNode, 
-          ...calculateNodeDimensions(n.text, n.subtext, !!imageUrl) 
-        };
+        return { ...n, imageUrl };
       }
       return n;
     });
@@ -591,53 +579,6 @@ const MindMapMaker = ({
     // Calculate text color based on node background color for better contrast
     const textColor = getTextColorForBackground(node.color);
 
-    // Image
-    if (node.imageUrl && showImages) {
-      elements.push(
-        <g key="image-group">
-          <image
-            key="image"
-            href={node.imageUrl}
-            x={node.width / 2 - 25}
-            y={currentY}
-            width={50}
-            height={50}
-            preserveAspectRatio="xMidYMid meet"
-            clipPath="url(#imageClip)"
-            onError={(e) => {
-              e.target.style.display = 'none';
-            }}
-          />
-          <circle
-            key="remove-btn"
-            cx={node.width / 2 + 20}
-            cy={currentY + 10}
-            r={8}
-            fill="#ef4444"
-            stroke="white"
-            strokeWidth="1"
-            style={{ cursor: 'pointer' }}
-            onClick={(e) => {
-              e.stopPropagation();
-              removeImage(node.id);
-            }}
-          />
-          <text
-            x={node.width / 2 + 20}
-            y={currentY + 13}
-            textAnchor="middle"
-            fill="white"
-            fontSize="8"
-            fontWeight="bold"
-            style={{ pointerEvents: 'none' }}
-          >
-            ×
-          </text>
-        </g>
-      );
-      currentY += 55;
-    }
-
     // Main text (truncated)
     const displayText = truncateText(node.text, MAX_TEXT_LENGTH);
     elements.push(
@@ -646,7 +587,7 @@ const MindMapMaker = ({
         x={node.width / 2}
         y={currentY}
         textAnchor="middle"
-        fill={textColor} // Use calculated text color for better contrast
+        fill={textColor}
         fontSize="14"
         fontWeight="600"
         style={{ pointerEvents: 'none' }}
@@ -665,7 +606,7 @@ const MindMapMaker = ({
           x={node.width / 2}
           y={currentY}
           textAnchor="middle"
-          fill={textColor} // Use calculated text color for better contrast
+          fill={textColor}
           fontSize="11"
           fontStyle="italic"
           opacity="0.8"
@@ -703,6 +644,58 @@ const MindMapMaker = ({
     }
 
     return elements;
+  };
+
+  // Render image above node
+  const renderNodeImage = (node) => {
+    if (!node.imageUrl || !showImages) return null;
+
+    const imageSize = 60;
+    const imageX = node.x * zoom + pan.x + (node.width * zoom) / 2 - (imageSize / 2);
+    const imageY = node.y * zoom + pan.y - imageSize - 10; // Position above the node
+
+    return (
+      <g key={`image-${node.id}`}>
+        <image
+          href={node.imageUrl}
+          x={imageX}
+          y={imageY}
+          width={imageSize}
+          height={imageSize}
+          preserveAspectRatio="xMidYMid meet"
+          clipPath="url(#imageClip)"
+          onError={(e) => {
+            e.target.style.display = 'none';
+          }}
+          style={{ cursor: 'pointer' }}
+        />
+        {/* Remove image button */}
+        <circle
+          cx={imageX + imageSize - 10}
+          cy={imageY + 10}
+          r={8}
+          fill="#ef4444"
+          stroke="white"
+          strokeWidth="1"
+          style={{ cursor: 'pointer' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            removeImage(node.id);
+          }}
+        />
+        <text
+          x={imageX + imageSize - 10}
+          y={imageY + 13}
+          textAnchor="middle"
+          fill="white"
+          fontSize="8"
+          fontWeight="bold"
+          style={{ pointerEvents: 'none' }}
+        >
+          ×
+        </text>
+      </g>
+    );
   };
 
   return (
@@ -805,7 +798,7 @@ const MindMapMaker = ({
                 </feMerge>
               </filter>
               <clipPath id="imageClip">
-                <rect x="0" y="0" width="50" height="50" rx="8" />
+                <rect x="0" y="0" width="60" height="60" rx="8" />
               </clipPath>
             </defs>
 
@@ -825,6 +818,9 @@ const MindMapMaker = ({
                 />
               ) : null;
             })}
+
+            {/* Images above nodes */}
+            {currentNodes.map(node => renderNodeImage(node))}
 
             {/* Connection Target Indicator */}
             {connectionTarget && (
