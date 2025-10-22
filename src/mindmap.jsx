@@ -15,7 +15,8 @@ import {
   Moon,
   RefreshCw,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  List
 } from 'lucide-react';
 
 const MindMapMaker = ({ 
@@ -47,6 +48,9 @@ const MindMapMaker = ({
   const [descriptionDialog, setDescriptionDialog] = useState(null);
   const [editMode, setEditMode] = useState('text');
   const [imageUrlDialog, setImageUrlDialog] = useState(null);
+  const [hoveredNode, setHoveredNode] = useState(null);
+  const [batchEditMode, setBatchEditMode] = useState(false);
+  const [batchEditNodes, setBatchEditNodes] = useState([]);
 
   const MIN_VERTICAL_GAP = 20;
   const LEVEL_DISTANCE = 200;
@@ -80,6 +84,18 @@ const MindMapMaker = ({
   useEffect(() => {
     setJsonInput(JSON.stringify({ nodes: currentNodes }, null, 2));
   }, [currentNodes]);
+
+  useEffect(() => {
+    if (batchEditMode) {
+      setBatchEditNodes(currentNodes.map(node => ({
+        id: node.id,
+        text: node.text,
+        subtext: node.subtext || '',
+        description: node.description || '',
+        imageUrl: node.imageUrl || ''
+      })));
+    }
+  }, [batchEditMode, currentNodes]);
 
   // Function to get text color based on background color for better contrast
   const getTextColorForBackground = (backgroundColor) => {
@@ -567,6 +583,40 @@ const MindMapMaker = ({
   const getTextColor = () => darkMode ? '#e2e8f0' : '#1f2937';
   const getConnectionColor = () => darkMode ? '#64748b' : '#475569';
 
+  const handleBatchEditChange = (nodeId, field, value) => {
+    setBatchEditNodes(prev => prev.map(node => 
+      node.id === nodeId ? { ...node, [field]: value } : node
+    ));
+  };
+
+  const applyBatchEdit = () => {
+    const updatedNodes = currentNodes.map(node => {
+      const batchNode = batchEditNodes.find(bn => bn.id === node.id);
+      if (batchNode) {
+        const updatedNode = {
+          ...node,
+          text: batchNode.text,
+          subtext: batchNode.subtext,
+          description: batchNode.description,
+          imageUrl: batchNode.imageUrl
+        };
+        return {
+          ...updatedNode,
+          ...calculateNodeDimensions(updatedNode.text, updatedNode.subtext, updatedNode.isRoot)
+        };
+      }
+      return node;
+    });
+
+    setCurrentNodes(updatedNodes);
+    setBatchEditMode(false);
+
+    onUpdateMindMap({
+      ...mindMap,
+      nodes: updatedNodes
+    });
+  };
+
   // Render node content as SVG elements
   const renderNodeContent = (node) => {
     const elements = [];
@@ -646,13 +696,13 @@ const MindMapMaker = ({
     return elements;
   };
 
-  // Render image above node
+  // Render image above node only on hover
   const renderNodeImage = (node) => {
-    if (!node.imageUrl || !showImages) return null;
+    if (!node.imageUrl || !showImages || hoveredNode !== node.id) return null;
 
     const imageSize = 60;
     const imageX = node.x * zoom + pan.x + (node.width * zoom) / 2 - (imageSize / 2);
-    const imageY = node.y * zoom + pan.y - imageSize - 10; // Position above the node
+    const imageY = node.y * zoom + pan.y - imageSize - 10;
 
     return (
       <g key={`image-${node.id}`}>
@@ -667,9 +717,8 @@ const MindMapMaker = ({
           onError={(e) => {
             e.target.style.display = 'none';
           }}
-          style={{ cursor: 'pointer' }}
+          style={{ cursor: 'pointer', pointerEvents: 'none' }}
         />
-        {/* Remove image button */}
         <circle
           cx={imageX + imageSize - 10}
           cy={imageY + 10}
@@ -746,6 +795,12 @@ const MindMapMaker = ({
         >
           JSON Editor
         </button>
+        <button 
+          className={`tab ${activeTab === 'batch' ? 'active' : ''}`}
+          onClick={() => setActiveTab('batch')}
+        >
+          Batch Edit
+        </button>
       </div>
 
       {activeTab === 'editor' ? (
@@ -766,6 +821,13 @@ const MindMapMaker = ({
                   title={showImages ? "Hide Images" : "Show Images"}
                 >
                   <Image size={18} />
+                </button>
+                <button 
+                  className="toolbar-btn" 
+                  onClick={() => setBatchEditMode(true)}
+                  title="Batch Edit Mode"
+                >
+                  <List size={18} />
                 </button>
               </div>
             </div>
@@ -819,12 +881,9 @@ const MindMapMaker = ({
               ) : null;
             })}
 
-            {/* Images above nodes */}
-            {currentNodes.map(node => renderNodeImage(node))}
-
             {/* Connection Target Indicator */}
             {connectionTarget && (
-              <g>
+              <g style={{ zIndex: 9998 }}>
                 <circle
                   cx={(connectionTarget.x + connectionTarget.width / 2) * zoom + pan.x}
                   cy={(connectionTarget.y + connectionTarget.height / 2) * zoom + pan.y}
@@ -859,6 +918,8 @@ const MindMapMaker = ({
                 <g
                   transform={`translate(${node.x * zoom + pan.x}, ${node.y * zoom + pan.y}) scale(${zoom})`}
                   className={`node-group ${isDragging && dragNode?.id === node.id ? 'dragging' : ''}`}
+                  onMouseEnter={() => setHoveredNode(node.id)}
+                  onMouseLeave={() => setHoveredNode(null)}
                 >
                   <rect
                     width={node.width}
@@ -947,6 +1008,11 @@ const MindMapMaker = ({
                 )}
               </g>
             ))}
+
+            {/* Images above nodes (rendered last for highest z-index) */}
+            <g style={{ pointerEvents: 'auto' }}>
+              {currentNodes.map(node => renderNodeImage(node))}
+            </g>
           </svg>
 
           {/* Floating Action Buttons for Selected Node */}
@@ -1197,7 +1263,7 @@ const MindMapMaker = ({
             <button className="zoom-btn reset" onClick={handleZoomReset} title="Reset View">⌂</button>
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'json' ? (
         <div className="json-editor">
           <div className="json-actions">
             <button 
@@ -1225,6 +1291,86 @@ const MindMapMaker = ({
           >
             <Save size={16} /> Apply JSON
           </button>
+        </div>
+      ) : (
+        <div className="batch-edit-container">
+          <div className="batch-edit-header">
+            <h3>Batch Edit All Nodes</h3>
+            <p>Edit multiple nodes at once. Changes are applied when you click "Apply Changes".</p>
+          </div>
+          <div className="batch-edit-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Main Text</th>
+                  <th>Subtext</th>
+                  <th>Description</th>
+                  <th>Image URL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {batchEditNodes.map(node => (
+                  <tr key={node.id}>
+                    <td className="id-cell">{node.id}</td>
+                    <td>
+                      <input
+                        type="text"
+                        value={node.text}
+                        onChange={(e) => handleBatchEditChange(node.id, 'text', e.target.value)}
+                        className="batch-input"
+                        placeholder="Main text..."
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        value={node.subtext}
+                        onChange={(e) => handleBatchEditChange(node.id, 'subtext', e.target.value)}
+                        className="batch-input"
+                        placeholder="Subtext..."
+                      />
+                    </td>
+                    <td>
+                      <textarea
+                        value={node.description}
+                        onChange={(e) => handleBatchEditChange(node.id, 'description', e.target.value)}
+                        className="batch-textarea"
+                        placeholder="Description..."
+                        rows="2"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="url"
+                        value={node.imageUrl}
+                        onChange={(e) => handleBatchEditChange(node.id, 'imageUrl', e.target.value)}
+                        className="batch-input"
+                        placeholder="Image URL..."
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="batch-edit-actions">
+            <button 
+              onClick={() => {
+                setBatchEditMode(false);
+                setActiveTab('editor');
+              }}
+              className="cancel-btn"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={applyBatchEdit}
+              className="save-btn"
+            >
+              <Save size={16} /> Apply Changes
+            </button>
+          </div>
         </div>
       )}
 
@@ -1667,6 +1813,10 @@ const MindMapMaker = ({
         .save-btn {
           background: #3b82f6;
           color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
         }
 
         .save-btn:hover {
@@ -1903,6 +2053,177 @@ const MindMapMaker = ({
           outline: none;
           border-color: #3b82f6;
           box-shadow: 0 0 0 1px #3b82f6;
+        }
+
+        .batch-edit-container {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          background: white;
+          overflow: hidden;
+        }
+
+        .dark .batch-edit-container {
+          background: #374151;
+        }
+
+        .batch-edit-header {
+          padding: 20px;
+          border-bottom: 1px solid #e2e8f0;
+          background: #f8fafc;
+        }
+
+        .dark .batch-edit-header {
+          background: #1f2937;
+          border-bottom-color: #4b5563;
+        }
+
+        .batch-edit-header h3 {
+          margin: 0 0 8px 0;
+          color: #1f2937;
+          font-size: 20px;
+        }
+
+        .dark .batch-edit-header h3 {
+          color: #e2e8f0;
+        }
+
+        .batch-edit-header p {
+          margin: 0;
+          color: #64748b;
+          font-size: 14px;
+        }
+
+        .dark .batch-edit-header p {
+          color: #9ca3af;
+        }
+
+        .batch-edit-table {
+          flex: 1;
+          overflow: auto;
+          padding: 16px;
+        }
+
+        .batch-edit-table table {
+          width: 100%;
+          border-collapse: collapse;
+          background: white;
+        }
+
+        .dark .batch-edit-table table {
+          background: #374151;
+        }
+
+        .batch-edit-table th {
+          position: sticky;
+          top: 0;
+          background: #f1f5f9;
+          padding: 12px;
+          text-align: left;
+          font-weight: 600;
+          color: #475569;
+          border-bottom: 2px solid #e2e8f0;
+          font-size: 14px;
+          z-index: 10;
+        }
+
+        .dark .batch-edit-table th {
+          background: #1f2937;
+          color: #9ca3af;
+          border-bottom-color: #4b5563;
+        }
+
+        .batch-edit-table td {
+          padding: 12px;
+          border-bottom: 1px solid #e2e8f0;
+        }
+
+        .dark .batch-edit-table td {
+          border-bottom-color: #4b5563;
+        }
+
+        .batch-edit-table tr:hover {
+          background: #f8fafc;
+        }
+
+        .dark .batch-edit-table tr:hover {
+          background: #1f2937;
+        }
+
+        .id-cell {
+          font-weight: 600;
+          color: #3b82f6;
+          font-size: 13px;
+          width: 80px;
+        }
+
+        .batch-input {
+          width: 100%;
+          padding: 8px 10px;
+          border: 1px solid #e2e8f0;
+          border-radius: 4px;
+          font-size: 14px;
+          background: white;
+          color: #1f2937;
+          box-sizing: border-box;
+        }
+
+        .dark .batch-input {
+          background: #4b5563;
+          color: #e2e8f0;
+          border-color: #6b7280;
+        }
+
+        .batch-input:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+
+        .batch-textarea {
+          width: 100%;
+          padding: 8px 10px;
+          border: 1px solid #e2e8f0;
+          border-radius: 4px;
+          font-size: 14px;
+          background: white;
+          color: #1f2937;
+          resize: vertical;
+          min-height: 60px;
+          font-family: inherit;
+          box-sizing: border-box;
+        }
+
+        .dark .batch-textarea {
+          background: #4b5563;
+          color: #e2e8f0;
+          border-color: #6b7280;
+        }
+
+        .batch-textarea:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+
+        .batch-edit-actions {
+          display: flex;
+          gap: 12px;
+          padding: 16px 20px;
+          border-top: 1px solid #e2e8f0;
+          background: #f8fafc;
+          justify-content: flex-end;
+        }
+
+        .dark .batch-edit-actions {
+          background: #1f2937;
+          border-top-color: #4b5563;
+        }
+
+        .batch-edit-actions .cancel-btn,
+        .batch-edit-actions .save-btn {
+          flex: 0 0 auto;
+          min-width: 120px;
         }
       `}</style>
     </div>
