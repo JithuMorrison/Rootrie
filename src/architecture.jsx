@@ -606,6 +606,7 @@ const ArchitectureDiagramMaker = ({
     tempContainer.style.background = 'white';
     tempContainer.style.zIndex = '99999';
     tempContainer.style.overflow = 'hidden';
+    tempContainer.style.zIndex = -1;
     
     // Clone the canvas content
     const canvasClone = canvasRef.current.cloneNode(true);
