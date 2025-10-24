@@ -108,11 +108,12 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     let stepYears;
     if (project.timeUnit === 'bya') {
       // Much fewer markers for billion-year scale
-      if (visibleRange > 8000000000) stepYears = 2000000000;
-      else if (visibleRange > 4000000000) stepYears = 1000000000;
-      else if (visibleRange > 2000000000) stepYears = 500000000;
-      else if (visibleRange > 1000000000) stepYears = 250000000;
-      else if (visibleRange > 500000000) stepYears = 100000000;
+      if (visibleRange > 500000000000) stepYears = 100000000000;
+      else if (visibleRange > 100000000000) stepYears = 25000000000;
+      else if (visibleRange > 50000000000) stepYears = 10000000000;
+      else if (visibleRange > 20000000000) stepYears = 5000000000;
+      else if (visibleRange > 10000000000) stepYears = 2500000000;
+      else if (visibleRange > 5000000000) stepYears = 1000000000;
       else stepYears = 50000000;
     } else if (project.timeUnit === 'mya') {
       if (visibleRange > 500000000) stepYears = 100000000;
