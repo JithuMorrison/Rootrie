@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Download, Upload, ZoomIn, ZoomOut, Trash2, X, Link } from 'lucide-react';
+import { Download, Upload, ZoomIn, ZoomOut, Trash2, X } from 'lucide-react';
 
 const TIME_UNITS = [
   { value: 'bya', label: 'Billion Years Ago (BYA)', multiplier: 1000000000 },
@@ -9,38 +9,27 @@ const TIME_UNITS = [
 ];
 
 const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onBack }) => {
-  // Constants - Reduced node height for more compact design
-  const TIMELINE_HEIGHT = 60;
-  const NODE_WIDTH = 120;
-  const NODE_HEIGHT = 60; // Reduced from 100 to 60
-  const CONNECTION_COLOR = '#ffffff';
-  const SELECTED_CONNECTION_COLOR = '#ffeb3b';
-  const CENTRAL_CONNECTION_COLOR = '#4fc3f7'; // Light blue for central connections
+  const TIMELINE_HEIGHT = 80;
+  const NODE_WIDTH = 140;
+  const NODE_HEIGHT = 25;
 
-  // Refs
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
-  const animationRef = useRef(null);
-  const lastPanTime = useRef(0);
-  const lastPosition = useRef({ x: 0, y: 0 });
-  const velocityRef = useRef({ x: 0, y: 0 });
-  const timestampRef = useRef(0);
   const isDraggingRef = useRef(false);
+  const lastPosition = useRef({ x: 0, y: 0 });
 
-  // State
   const [localNodes, setLocalNodes] = useState(nodes || []);
   const [localConnections, setLocalConnections] = useState(connections || []);
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [zoom, setZoom] = useState(project?.zoom || 1);
   const [pan, setPan] = useState(project?.pan || { x: 0, y: 0 });
-  const [targetPan, setTargetPan] = useState(project?.pan || { x: 0, y: 0 });
   const [showNodeEditor, setShowNodeEditor] = useState(false);
   const [editingNode, setEditingNode] = useState(null);
   const [connectionMode, setConnectionMode] = useState(false);
   const [connectionStart, setConnectionStart] = useState(null);
+  const [arrowAnimations, setArrowAnimations] = useState({});
 
-  // Save to parent whenever relevant data changes
   useEffect(() => {
     if (project) {
       const timer = setTimeout(() => {
@@ -56,38 +45,25 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     }
   }, [localNodes, localConnections, zoom, pan, project, onUpdateProject]);
 
-  // Smooth pan animation using requestAnimationFrame
+  // Animate arrows along connections
   useEffect(() => {
-    let animationFrameId;
-    const animate = () => {
-      const now = Date.now();
-      const deltaTime = Math.min(now - lastPanTime.current, 100) / 1000;
-      lastPanTime.current = now;
+    const interval = setInterval(() => {
+      setArrowAnimations(prev => {
+        const next = {};
+        localConnections.forEach(conn => {
+          next[conn.id] = ((prev[conn.id] || 0) + 2) % 100;
+        });
+        return next;
+      });
+    }, 50);
+    return () => clearInterval(interval);
+  }, [localConnections]);
 
-      if (deltaTime > 0 && !isDraggingRef.current) {
-        // Apply smooth interpolation to target pan
-        const dx = (targetPan.x - pan.x) * 0.2;
-        const dy = (targetPan.y - pan.y) * 0.2;
-        
-        if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
-          setPan(prev => ({
-            x: prev.x + dx,
-            y: prev.y + dy
-          }));
-          animationFrameId = requestAnimationFrame(animate);
-        } else {
-          setPan(targetPan);
-        }
-      } else {
-        animationFrameId = requestAnimationFrame(animate);
-      }
-    };
+  const convertToYears = (value, unit) => {
+    const unitObj = TIME_UNITS.find(u => u.value === unit) || TIME_UNITS[0];
+    return value * unitObj.multiplier;
+  };
 
-    animationFrameId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [pan, targetPan]);
-
-  // Timeline calculations
   const getTimelinePosition = useCallback((timelineValue) => {
     if (!project) return 0;
     
@@ -102,18 +78,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     return position * canvasWidth;
   }, [project]);
 
-  const convertToYears = (value, unit) => {
-    const unitObj = TIME_UNITS.find(u => u.value === unit) || TIME_UNITS[0];
-    return value * unitObj.multiplier;
-  };
-
-  const formatTimelineValue = (value, unit) => {
-    if (unit === 'bya') return `${value} BYA`;
-    if (unit === 'mya') return `${value} MYA`;
-    if (unit === 'kya') return `${value} KYA`;
-    return `${value} YA`;
-  };
-
   const getTimelineFromX = useCallback((x) => {
     if (!project) return 0;
     const canvasWidth = canvasRef.current?.offsetWidth || 800;
@@ -124,6 +88,14 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     return startInYears - (position * range);
   }, [project]);
 
+  const formatTimelineValue = (value, unit) => {
+    const formatted = value % 1 === 0 ? value.toFixed(0) : value.toFixed(2);
+    if (unit === 'bya') return `${formatted} BYA`;
+    if (unit === 'mya') return `${formatted} MYA`;
+    if (unit === 'kya') return `${formatted} KYA`;
+    return `${formatted} YA`;
+  };
+
   const getVisibleTimelineMarkers = useCallback(() => {
     if (!project) return [];
     
@@ -133,34 +105,41 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     const range = startInYears - endInYears;
     const visibleRange = range / zoom;
     
-    // Determine step size based on zoom level
     let stepYears;
-    if (visibleRange > 2000000000) stepYears = 1000000000;
-    else if (visibleRange > 1000000000) stepYears = 500000000;
-    else if (visibleRange > 500000000) stepYears = 100000000;
-    else if (visibleRange > 200000000) stepYears = 50000000;
-    else if (visibleRange > 100000000) stepYears = 25000000;
-    else if (visibleRange > 50000000) stepYears = 10000000;
-    else if (visibleRange > 20000000) stepYears = 5000000;
-    else if (visibleRange > 10000000) stepYears = 2500000;
-    else if (visibleRange > 5000000) stepYears = 1000000;
-    else if (visibleRange > 2000000) stepYears = 500000;
-    else if (visibleRange > 1000000) stepYears = 250000;
-    else if (visibleRange > 500000) stepYears = 100000;
-    else if (visibleRange > 200000) stepYears = 50000;
-    else if (visibleRange > 100000) stepYears = 25000;
-    else if (visibleRange > 50000) stepYears = 10000;
-    else if (visibleRange > 20000) stepYears = 5000;
-    else if (visibleRange > 10000) stepYears = 2500;
-    else if (visibleRange > 5000) stepYears = 1000;
-    else if (visibleRange > 2000) stepYears = 500;
-    else if (visibleRange > 1000) stepYears = 250;
-    else if (visibleRange > 500) stepYears = 100;
-    else if (visibleRange > 200) stepYears = 50;
-    else if (visibleRange > 100) stepYears = 25;
-    else if (visibleRange > 50) stepYears = 10;
-    else if (visibleRange > 20) stepYears = 5;
-    else stepYears = 1;
+    if (project.timeUnit === 'bya') {
+      // Much fewer markers for billion-year scale
+      if (visibleRange > 8000000000) stepYears = 2000000000;
+      else if (visibleRange > 4000000000) stepYears = 1000000000;
+      else if (visibleRange > 2000000000) stepYears = 500000000;
+      else if (visibleRange > 1000000000) stepYears = 250000000;
+      else if (visibleRange > 500000000) stepYears = 100000000;
+      else stepYears = 50000000;
+    } else if (project.timeUnit === 'mya') {
+      if (visibleRange > 500000000) stepYears = 100000000;
+      else if (visibleRange > 100000000) stepYears = 25000000;
+      else if (visibleRange > 50000000) stepYears = 10000000;
+      else if (visibleRange > 20000000) stepYears = 5000000;
+      else if (visibleRange > 10000000) stepYears = 2500000;
+      else if (visibleRange > 5000000) stepYears = 1000000;
+      else stepYears = 500000;
+    } else if (project.timeUnit === 'kya') {
+      if (visibleRange > 500000) stepYears = 100000;
+      else if (visibleRange > 100000) stepYears = 25000;
+      else if (visibleRange > 50000) stepYears = 10000;
+      else if (visibleRange > 20000) stepYears = 5000;
+      else if (visibleRange > 10000) stepYears = 2500;
+      else if (visibleRange > 5000) stepYears = 1000;
+      else stepYears = 500;
+    } else {
+      if (visibleRange > 5000) stepYears = 1000;
+      else if (visibleRange > 2000) stepYears = 500;
+      else if (visibleRange > 1000) stepYears = 250;
+      else if (visibleRange > 500) stepYears = 100;
+      else if (visibleRange > 200) stepYears = 50;
+      else if (visibleRange > 100) stepYears = 25;
+      else if (visibleRange > 50) stepYears = 10;
+      else stepYears = 5;
+    }
     
     const markers = [];
     const leftTime = getTimelineFromX(-pan.x / zoom);
@@ -196,7 +175,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     return markers;
   }, [project, zoom, pan, getTimelineFromX]);
 
-  // Find central node (one with most connections)
   const getCentralNode = () => {
     const nodeConnectionCount = {};
     localNodes.forEach(node => {
@@ -221,7 +199,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     return centralNodeId ? localNodes.find(n => n.id === parseInt(centralNodeId)) : null;
   };
 
-  // Node management
   const createNode = (clientX, clientY) => {
     if (!project) return;
     
@@ -235,7 +212,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     const newNode = {
       id: Date.now(),
       x: (canvasX - pan.x) / zoom,
-      y: Math.max(20, (canvasY - pan.y) / zoom),
+      y: Math.max(20, (canvasY - pan.y)),
       title: 'New Species',
       description: 'Description here...',
       imageSrc: '',
@@ -262,7 +239,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     setSelectedNode(null);
   };
 
-  // Connection management
   const createConnection = (fromId, toId) => {
     const newConnection = {
       id: Date.now(),
@@ -277,7 +253,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     setSelectedConnection(null);
   };
 
-  // Improved dragging functionality
   const handleMouseDown = (e, node) => {
     if (connectionMode) return;
     
@@ -286,71 +261,29 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     setSelectedNode(node);
     setSelectedConnection(null);
     
-    const rect = canvasRef.current.getBoundingClientRect();
-    lastPosition.current = {
-      x: e.clientX,
-      y: e.clientY
-    };
-    timestampRef.current = performance.now();
+    lastPosition.current = { x: e.clientY, y: e.clientY };
   };
 
   const handleMouseMove = useCallback((e) => {
     if (!isDraggingRef.current || !selectedNode) return;
     
-    const now = performance.now();
-    const deltaTime = (now - timestampRef.current) / 1000;
-    timestampRef.current = now;
-    
-    const rect = canvasRef.current.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
-    
-    // Calculate velocity
-    const deltaX = e.clientX - lastPosition.current.x;
     const deltaY = e.clientY - lastPosition.current.y;
     lastPosition.current = { x: e.clientX, y: e.clientY };
     
-    velocityRef.current = {
-      x: deltaX / (deltaTime || 0.016),
-      y: deltaY / (deltaTime || 0.016)
-    };
+    const newY = Math.max(20, selectedNode.y + deltaY);
     
-    // Calculate new Y position (X is fixed by timeline)
-    const deltaYPos = deltaY / zoom;
-    const newY = Math.max(20, selectedNode.y + deltaYPos);
-    
-    // Update node position
-    const updatedNode = {
-      ...selectedNode,
-      y: newY
-    };
+    const updatedNode = { ...selectedNode, y: newY };
     
     setLocalNodes(prev => prev.map(node => 
       node.id === selectedNode.id ? updatedNode : node
     ));
     setSelectedNode(updatedNode);
-  }, [selectedNode, zoom]);
+  }, [selectedNode]);
 
   const handleMouseUp = useCallback(() => {
-    if (!isDraggingRef.current) return;
-    
     isDraggingRef.current = false;
-    
-    // Apply momentum scrolling if velocity is significant
-    if (Math.abs(velocityRef.current.y) > 50) {
-      const momentumFactor = 0.9;
-      const momentumY = velocityRef.current.y * momentumFactor;
-      
-      setTargetPan(prev => ({
-        x: prev.x,
-        y: prev.y - momentumY
-      }));
-    }
-    
-    velocityRef.current = { x: 0, y: 0 };
   }, []);
 
-  // Connection handling
   const handleNodeClick = (e, node) => {
     e.stopPropagation();
     
@@ -375,57 +308,65 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     }
   };
 
-  // Improved connection paths with mind map style
   const getConnectionPath = (fromNode, toNode) => {
     if (!fromNode || !toNode) return '';
     
-    const fromX = getTimelinePosition(fromNode.timeline) + (NODE_WIDTH / 2);
-    const fromY = fromNode.y + (NODE_HEIGHT / 2);
-    const toX = getTimelinePosition(toNode.timeline) + (NODE_WIDTH / 2);
-    const toY = toNode.y + (NODE_HEIGHT / 2);
+    const fromX = getTimelinePosition(fromNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
+    const fromY = fromNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
+    const toX = getTimelinePosition(toNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
+    const toY = toNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
     
-    const centralNode = getCentralNode();
-    const isCentralConnection = centralNode && (fromNode.id === centralNode.id || toNode.id === centralNode.id);
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const controlOffset = Math.min(distance * 0.4, 150);
     
-    if (isCentralConnection) {
-      // Smoother curves for central connections
-      const dx = toX - fromX;
-      const dy = toY - fromY;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      const controlOffset = Math.min(distance * 0.4, 100);
-      
-      const midX = (fromX + toX) / 2;
-      const controlX1 = fromX + (dx > 0 ? controlOffset : -controlOffset);
-      const controlX2 = toX + (dx > 0 ? -controlOffset : controlOffset);
-      
-      return `M ${fromX} ${fromY}
-              C ${controlX1} ${fromY},
-                ${controlX2} ${toY},
-                ${toX} ${toY}`;
-    } else {
-      // Standard curved connections for non-central nodes
-      const controlOffset = Math.abs(fromX - toX) * 0.3 + Math.abs(fromY - toY) * 0.2;
-      
-      return `M ${fromX} ${fromY}
-              C ${fromX + controlOffset} ${fromY},
-                ${toX - controlOffset} ${toY},
-                ${toX} ${toY}`;
-    }
+    const controlX1 = fromX + (dx > 0 ? controlOffset : -controlOffset);
+    const controlX2 = toX + (dx > 0 ? -controlOffset : controlOffset);
+    
+    return `M ${fromX} ${fromY} C ${controlX1} ${fromY}, ${controlX2} ${toY}, ${toX} ${toY}`;
+  };
+
+  const getArrowPosition = (fromNode, toNode, offset) => {
+    if (!fromNode || !toNode) return { x: 0, y: 0, angle: 0 };
+    
+    const fromX = getTimelinePosition(fromNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
+    const fromY = fromNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
+    const toX = getTimelinePosition(toNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
+    const toY = toNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
+    
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const controlOffset = Math.min(Math.sqrt(dx * dx + dy * dy) * 0.4, 150);
+    
+    const controlX1 = fromX + (dx > 0 ? controlOffset : -controlOffset);
+    const controlX2 = toX + (dx > 0 ? -controlOffset : controlOffset);
+    
+    const t = offset / 100;
+    const mt = 1 - t;
+    const mt2 = mt * mt;
+    const t2 = t * t;
+    
+    const x = mt2 * mt * fromX + 3 * mt2 * t * controlX1 + 3 * mt * t2 * controlX2 + t2 * t * toX;
+    const y = mt2 * mt * fromY + 3 * mt2 * t * fromY + 3 * mt * t2 * toY + t2 * t * toY;
+    
+    const dx1 = 3 * mt2 * (controlX1 - fromX) + 6 * mt * t * (controlX2 - controlX1) + 3 * t2 * (toX - controlX2);
+    const dy1 = 3 * mt2 * (fromY - fromY) + 6 * mt * t * (toY - fromY) + 3 * t2 * (toY - toY);
+    
+    const angle = Math.atan2(dy1, dx1) * 180 / Math.PI;
+    
+    return { x, y, angle };
   };
 
   const getConnectionMidpoint = (fromNode, toNode) => {
-    const fromX = getTimelinePosition(fromNode.timeline) + (NODE_WIDTH / 2);
-    const fromY = fromNode.y + (NODE_HEIGHT / 2);
-    const toX = getTimelinePosition(toNode.timeline) + (NODE_WIDTH / 2);
-    const toY = toNode.y + (NODE_HEIGHT / 2);
+    const fromX = getTimelinePosition(fromNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
+    const fromY = fromNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
+    const toX = getTimelinePosition(toNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
+    const toY = toNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
     
-    return {
-      x: (fromX + toX) / 2,
-      y: (fromY + toY) / 2
-    };
+    return { x: (fromX + toX) / 2, y: (fromY + toY) / 2 };
   };
 
-  // Export functionality
   const exportProject = () => {
     if (!project) return;
     
@@ -447,7 +388,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     URL.revokeObjectURL(url);
   };
 
-  // Import functionality
   const importProject = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -468,7 +408,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           setLocalConnections(importData.connections);
           setZoom(importData.zoom || 1);
           setPan(importData.pan || { x: 0, y: 0 });
-          setTargetPan(importData.pan || { x: 0, y: 0 });
         }
       } catch (error) {
         alert('Error parsing the file. Please check the file format.');
@@ -477,7 +416,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     reader.readAsText(file);
   };
 
-  // Canvas interaction handlers
   const handleCanvasClick = (e) => {
     if (e.ctrlKey || e.metaKey) {
       createNode(e.clientX, e.clientY);
@@ -496,69 +434,64 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     setShowNodeEditor(true);
   };
 
-  // Improved zoom functionality
-  const handleZoom = (delta, centerX = null, centerY = null) => {
-    const newZoom = Math.max(0.1, Math.min(5, zoom + delta));
-    
-    if (centerX !== null && centerY !== null) {
-      const rect = canvasRef.current.getBoundingClientRect();
-      const mouseX = centerX - rect.left;
-      const mouseY = centerY - rect.top - TIMELINE_HEIGHT;
-      
-      // Calculate new pan to keep content under mouse stable
-      const newPan = {
-        x: mouseX - (mouseX - pan.x) * (newZoom / zoom),
-        y: mouseY - (mouseY - pan.y) * (newZoom / zoom)
-      };
-      
-      setPan(newPan);
-      setTargetPan(newPan);
-    }
-    
-    setZoom(newZoom);
+  const handleZoom = (delta) => {
+    setZoom(prev => Math.max(0.1, Math.min(5, prev + delta)));
   };
 
-  // Smooth scrolling for both normal and shift scroll
   const handleWheel = (e) => {
     e.preventDefault();
     
-    const deltaFactor = 0.5;
-    const smoothingFactor = 0.1;
-    
     if (e.shiftKey) {
-      // Horizontal scrolling with shift
-      setTargetPan(prev => ({
-        x: prev.x - e.deltaY * deltaFactor,
-        y: prev.y
-      }));
+      setPan(prev => ({ x: prev.x - e.deltaY * 0.5, y: prev.y }));
     } else {
-      // Normal scrolling (vertical)
-      setTargetPan(prev => ({
-        x: prev.x - e.deltaX * deltaFactor,
-        y: prev.y - e.deltaY * deltaFactor
-      }));
+      setPan(prev => ({ x: prev.x - e.deltaX * 0.5, y: prev.y - e.deltaY * 0.5 }));
     }
   };
 
-  // Event listeners for smooth dragging
-  useEffect(() => {
-    const handleMouseUpGlobal = () => handleMouseUp();
+  const handleKeyDown = useCallback((e) => {
+    const speed = 20;
     
+    switch(e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        setPan(prev => ({ ...prev, y: prev.y + speed }));
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        setPan(prev => ({ ...prev, y: prev.y - speed }));
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        setPan(prev => ({ ...prev, x: prev.x + speed }));
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        setPan(prev => ({ ...prev, x: prev.x - speed }));
+        break;
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleKeyDown]);
+
+  useEffect(() => {
     document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUpGlobal);
+    document.addEventListener('mouseup', handleMouseUp);
     
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUpGlobal);
+      document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  // Get central node for styling purposes
   const centralNode = getCentralNode();
 
   return (
-    <div className="evolution-chart-maker">
-      {/* Header */}
+    <div className="evolution-chart">
       <div className="header">
         <div className="header-left">
           <h1>🧬 Evolution Chart Maker</h1>
@@ -566,10 +499,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         </div>
         
         <div className="toolbar">
-          <button
-            onClick={onBack}
-            className="toolbar-btn primary"
-          >
+          <button onClick={onBack} className="btn btn-primary">
             ← Back to Projects
           </button>
           
@@ -578,53 +508,41 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
               setConnectionMode(!connectionMode);
               setConnectionStart(null);
             }}
-            className={`toolbar-btn ${connectionMode ? 'danger' : 'warning'}`}
+            className={`btn ${connectionMode ? 'btn-danger' : 'btn-warning'}`}
           >
-            {connectionMode ? 'Cancel' : 'Connect'}
+            {connectionMode ? 'Cancel Connection' : '🔗 Connect Nodes'}
           </button>
           
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="toolbar-btn warning"
-          >
+          <button onClick={() => fileInputRef.current?.click()} className="btn btn-info">
             <Upload size={16} /> Import
           </button>
           
-          <button
-            onClick={exportProject}
-            className="toolbar-btn info"
-          >
+          <button onClick={exportProject} className="btn btn-success">
             <Download size={16} /> Export
           </button>
           
           <div className="zoom-controls">
-            <button 
-              onClick={() => handleZoom(0.1)} 
-              className="zoom-btn"
-            >
+            <button onClick={() => handleZoom(0.2)} className="zoom-btn">
               <ZoomIn size={16} />
             </button>
-            <button 
-              onClick={() => handleZoom(-0.1)} 
-              className="zoom-btn"
-            >
+            <span className="zoom-level">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => handleZoom(-0.2)} className="zoom-btn">
               <ZoomOut size={16} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Timeline */}
       <div className="timeline">
         {getVisibleTimelineMarkers().map((marker, index) => (
           <div
             key={index}
             className="timeline-marker"
             style={{
-              left: `${(marker.position * (canvasRef.current?.offsetWidth || 800) * zoom + pan.x)}px`,
+              left: `${marker.position * (canvasRef.current?.offsetWidth || 800) * zoom + pan.x}px`,
             }}
           >
-            <div className="timeline-line" />
+            <div className="timeline-tick" />
             <span className="timeline-label">
               {formatTimelineValue(marker.value, marker.unit)}
             </span>
@@ -632,18 +550,47 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         ))}
       </div>
 
-      {/* Main Canvas */}
       <div
         ref={canvasRef}
         onClick={handleCanvasClick}
         onWheel={handleWheel}
         className="canvas"
-        style={{
-          cursor: connectionMode ? 'crosshair' : isDraggingRef.current ? 'grabbing' : 'default',
-        }}
+        style={{ cursor: connectionMode ? 'crosshair' : 'grab' }}
       >
-        {/* SVG for connections */}
-        <svg className="connections-svg">
+        <svg className="connections-layer">
+          <defs>
+            <marker
+              id="arrowhead"
+              markerWidth="10"
+              markerHeight="10"
+              refX="9"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3, 0 6" fill="rgba(255,255,255,0.8)" />
+            </marker>
+            <marker
+              id="arrowhead-selected"
+              markerWidth="10"
+              markerHeight="10"
+              refX="9"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3, 0 6" fill="#fbbf24" />
+            </marker>
+            <marker
+              id="arrowhead-central"
+              markerWidth="10"
+              markerHeight="10"
+              refX="9"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3, 0 6" fill="#60a5fa" />
+            </marker>
+          </defs>
+          
           {localConnections.map(conn => {
             const fromNode = localNodes.find(n => n.id === conn.from);
             const toNode = localNodes.find(n => n.id === conn.to);
@@ -653,30 +600,39 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
             const midpoint = getConnectionMidpoint(fromNode, toNode);
             const isSelected = selectedConnection === conn.id || 
                               (selectedNode && (selectedNode.id === fromNode.id || selectedNode.id === toNode.id));
-            const isCentralConnection = centralNode && (fromNode.id === centralNode.id || toNode.id === centralNode.id);
+            const isCentral = centralNode && (fromNode.id === centralNode.id || toNode.id === centralNode.id);
+            
+            const arrowPos = getArrowPosition(fromNode, toNode, arrowAnimations[conn.id] || 0);
             
             return (
               <g key={conn.id}>
                 <path
                   d={getConnectionPath(fromNode, toNode)}
-                  stroke={isSelected ? SELECTED_CONNECTION_COLOR : (isCentralConnection ? CENTRAL_CONNECTION_COLOR : CONNECTION_COLOR)}
-                  strokeWidth={isCentralConnection ? (isSelected ? '4' : '3') : (isSelected ? '3' : '2')}
+                  stroke={isSelected ? '#fbbf24' : (isCentral ? '#60a5fa' : 'rgba(255,255,255,0.6)')}
+                  strokeWidth={isCentral ? '3' : '2'}
                   fill="none"
-                  opacity={isCentralConnection ? "0.9" : "0.7"}
-                  transform={`translate(${pan.x}, ${pan.y + TIMELINE_HEIGHT}) scale(${zoom})`}
-                  strokeDasharray={isCentralConnection ? "none" : "5,5"}
+                  markerEnd={`url(#${isSelected ? 'arrowhead-selected' : (isCentral ? 'arrowhead-central' : 'arrowhead')})`}
                 />
+                
+                <polygon
+                  points="0,-4 8,0 0,4"
+                  fill={isSelected ? '#fbbf24' : (isCentral ? '#60a5fa' : 'rgba(255,255,255,0.8)')}
+                  transform={`translate(${arrowPos.x}, ${arrowPos.y}) rotate(${arrowPos.angle})`}
+                />
+                
                 {isSelected && (
                   <circle
-                    cx={midpoint.x * zoom + pan.x}
-                    cy={midpoint.y * zoom + pan.y + TIMELINE_HEIGHT}
-                    r={8 * zoom}
-                    fill="#e53e3e"
+                    cx={midpoint.x}
+                    cy={midpoint.y}
+                    r={10}
+                    fill="#ef4444"
+                    stroke="white"
+                    strokeWidth="2"
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteConnection(conn.id);
                     }}
-                    style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+                    style={{ cursor: 'pointer' }}
                   />
                 )}
               </g>
@@ -684,92 +640,69 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           })}
         </svg>
 
-        {/* Nodes */}
         {localNodes.map(node => {
           const isCentral = centralNode && centralNode.id === node.id;
+          const isSelected = selectedNode?.id === node.id;
+          
           return (
             <div
               key={node.id}
-              className={`node ${selectedNode?.id === node.id ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
+              className={`node ${isSelected ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
               style={{
                 left: `${getTimelinePosition(node.timeline) * zoom + pan.x}px`,
-                top: `${node.y * zoom + pan.y + TIMELINE_HEIGHT}px`,
-                width: `${NODE_WIDTH * zoom}px`,
-                height: `${NODE_HEIGHT * zoom}px`,
-                transform: selectedNode?.id === node.id && isDraggingRef.current ? 'scale(1.02)' : 'scale(1)',
-                transition: 'transform 0.1s ease'
+                top: `${node.y + pan.y + TIMELINE_HEIGHT}px`,
               }}
               onMouseDown={(e) => handleMouseDown(e, node)}
               onClick={(e) => handleNodeClick(e, node)}
               onDoubleClick={() => handleNodeDoubleClick(node)}
             >
+              {node.imageSrc && (
+                <img src={node.imageSrc} alt={node.title} className="node-image" />
+              )}
+              
               <div className="node-content">
-                {node.imageSrc && (
-                  <img
-                    src={node.imageSrc}
-                    alt={node.title}
-                    className="node-image"
-                    style={{
-                      width: `${28 * zoom}px`,
-                      height: `${28 * zoom}px`
-                    }}
-                  />
-                )}
-                
-                <div className="node-text">
-                  <div className="node-title" style={{ fontSize: `${10 * zoom}px` }}>
-                    {node.title}
-                  </div>
-                
-                  <div className="node-timeline" style={{ fontSize: `${8 * zoom}px` }}>
-                    {formatTimelineValue(node.timeline.value, node.timeline.unit)}
-                  </div>
+                <div className="node-title">{node.title}</div>
+                <div className="node-time">
+                  {formatTimelineValue(node.timeline.value, node.timeline.unit)}
                 </div>
               </div>
 
-              {selectedNode?.id === node.id && (
+              {isSelected && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     deleteNode(node.id);
                   }}
-                  className="delete-node-btn"
-                  style={{
-                    width: `${20 * zoom}px`,
-                    height: `${20 * zoom}px`
-                  }}
+                  className="delete-btn"
                 >
-                  <Trash2 size={10 * zoom} />
+                  <Trash2 size={14} />
                 </button>
               )}
             </div>
           );
         })}
 
-        {/* Connection mode indicator */}
         {connectionMode && (
-          <div className="connection-mode-indicator">
-            {connectionStart ? 'Select child node' : 'Select parent node'}
+          <div className="connection-hint">
+            {connectionStart ? '🎯 Select target node' : '🎯 Select source node'}
           </div>
         )}
 
-        {/* Instructions */}
-        <div className="instructions-panel">
-          <div>💡 <strong>Ctrl+Click:</strong> Create new node</div>
-          <div>🔗 <strong>Connect Mode:</strong> Click two nodes to link them</div>
-          <div>❌ <strong>Click connection midpoint:</strong> Delete connection</div>
-          <div>📍 <strong>Drag:</strong> Move nodes vertically</div>
-          <div>✏️ <strong>Double-click:</strong> Edit node details</div>
-          <div>🔍 <strong>Scroll:</strong> Pan | <strong>Shift+Scroll:</strong> Horizontal Pan</div>
+        <div className="help-panel">
+          <div><strong>💡 Ctrl+Click:</strong> Create node</div>
+          <div><strong>🔗 Connect:</strong> Link nodes</div>
+          <div><strong>🖱️ Drag:</strong> Move vertically</div>
+          <div><strong>✏️ Double-click:</strong> Edit</div>
+          <div><strong>🔍 Scroll:</strong> Pan canvas</div>
+          <div><strong>⬆️⬇️⬅️➡️ Arrow keys:</strong> Navigate</div>
         </div>
       </div>
 
-      {/* Node Editor */}
       {showNodeEditor && editingNode && (
-        <div className="modal-overlay">
-          <div className="modal-content">
+        <div className="modal-overlay" onClick={() => setShowNodeEditor(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Edit Node</h2>
+              <h2>✏️ Edit Node</h2>
               <button onClick={() => setShowNodeEditor(false)} className="close-btn">
                 <X size={20} />
               </button>
@@ -800,16 +733,14 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                 <label>Timeline Value</label>
                 <input
                   type="number"
+                  step="any"
                   defaultValue={editingNode.timeline.value}
                   id="nodeTimelineValue"
                 />
               </div>
               <div className="form-group">
                 <label>Time Unit</label>
-                <select 
-                  id="nodeTimelineUnit" 
-                  defaultValue={editingNode.timeline.unit}
-                >
+                <select id="nodeTimelineUnit" defaultValue={editingNode.timeline.unit}>
                   {TIME_UNITS.map(unit => (
                     <option key={unit.value} value={unit.value}>
                       {unit.value.toUpperCase()}
@@ -823,17 +754,14 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
               <label>Description</label>
               <textarea
                 defaultValue={editingNode.description}
-                placeholder="Brief description of the species..."
+                placeholder="Brief description..."
                 rows={4}
                 id="nodeDescription"
               />
             </div>
 
             <div className="form-actions">
-              <button
-                onClick={() => setShowNodeEditor(false)}
-                className="cancel-btn"
-              >
+              <button onClick={() => setShowNodeEditor(false)} className="btn btn-secondary">
                 Cancel
               </button>
               <button
@@ -850,9 +778,9 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                   };
                   updateNode(updatedNode);
                 }}
-                className="save-btn"
+                className="btn btn-primary"
               >
-                Save Changes
+                💾 Save Changes
               </button>
             </div>
           </div>
@@ -868,22 +796,24 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
       />
 
       <style jsx>{`
-        .evolution-chart-maker {
-          width: 91.7vw;
+        .evolution-chart {
+          width: 100vw;
           height: 100vh;
-          background: #4a90a4;
-          font-family: system-ui, -apple-system, sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           overflow: hidden;
-          user-select: none;
+          position: relative;
         }
         
         .header {
-          background: rgba(255, 255, 255, 0.95);
-          padding: 12px 20px;
+          background: rgba(255, 255, 255, 0.98);
+          backdrop-filter: blur(10px);
+          padding: 16px 24px;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          border-bottom: 1px solid rgba(0,0,0,0.1);
+          border-bottom: 1px solid rgba(0,0,0,0.05);
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
           z-index: 1000;
           position: relative;
         }
@@ -891,70 +821,108 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         .header-left {
           display: flex;
           align-items: center;
-          gap: 15px;
+          gap: 16px;
         }
         
         h1 {
           margin: 0;
           font-size: 24px;
           font-weight: 700;
-          color: #2d3748;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
         
         .project-name {
-          background: #4299e1;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
-          padding: 4px 12px;
+          padding: 6px 16px;
           border-radius: 20px;
           font-size: 14px;
-          font-weight: 500;
+          font-weight: 600;
         }
         
         .toolbar {
           display: flex;
-          gap: 8px;
+          gap: 10px;
+          align-items: center;
+          margin-right: 120px;
         }
         
-        .toolbar-btn {
-          color: white;
+        .btn {
           border: none;
-          padding: 8px 16px;
-          border-radius: 8px;
+          padding: 10px 18px;
+          border-radius: 10px;
           cursor: pointer;
           display: flex;
           align-items: center;
-          gap: 6px;
-          font-weight: 500;
+          gap: 8px;
+          font-weight: 600;
           font-size: 14px;
+          transition: all 0.2s;
+          color: white;
         }
         
-        .primary {
-          background: #48bb78;
+        .btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
         
-        .warning {
-          background: #ed8936;
+        .btn-primary {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
         
-        .danger {
-          background: #f56565;
+        .btn-secondary {
+          background: #94a3b8;
         }
         
-        .info {
-          background: #4299e1;
+        .btn-success {
+          background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+        }
+        
+        .btn-warning {
+          background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+        }
+        
+        .btn-danger {
+          background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+        }
+        
+        .btn-info {
+          background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
         }
         
         .zoom-controls {
           display: flex;
-          gap: 4px;
+          gap: 8px;
+          align-items: center;
+          background: #f1f5f9;
+          padding: 4px;
+          border-radius: 10px;
         }
         
         .zoom-btn {
           padding: 8px;
           border: none;
-          border-radius: 6px;
+          border-radius: 8px;
           cursor: pointer;
+          background: white;
+          display: flex;
+          align-items: center;
+          transition: all 0.2s;
+        }
+        
+        .zoom-btn:hover {
           background: #e2e8f0;
+        }
+        
+        .zoom-level {
+          font-size: 13px;
+          font-weight: 600;
+          color: #475569;
+          min-width: 45px;
+          text-align: center;
         }
         
         .timeline {
@@ -963,8 +931,9 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           left: 0;
           right: 0;
           height: ${TIMELINE_HEIGHT}px;
-          background: rgba(255, 255, 255, 0.9);
-          border-bottom: 2px solid #4299e1;
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(10px);
+          border-bottom: 3px solid rgba(102, 126, 234, 0.3);
           z-index: 100;
           overflow: hidden;
         }
@@ -976,21 +945,25 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          min-width: 60px;
+          pointer-events: none;
         }
         
-        .timeline-line {
+        .timeline-tick {
           width: 2px;
-          height: 20px;
-          background: #4299e1;
-          margin-bottom: 4px;
+          height: 30px;
+          background: linear-gradient(to bottom, #667eea, transparent);
+          margin-bottom: 8px;
         }
         
         .timeline-label {
-          font-size: 12px;
-          font-weight: 600;
-          color: #2d3748;
+          font-size: 13px;
+          font-weight: 700;
+          color: #475569;
           white-space: nowrap;
+          background: rgba(255,255,255,0.9);
+          padding: 4px 10px;
+          border-radius: 6px;
+          border: 1px solid rgba(102, 126, 234, 0.2);
         }
         
         .canvas {
@@ -1000,10 +973,9 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           right: 0;
           bottom: 0;
           overflow: hidden;
-          background: #4a90a4;
         }
         
-        .connections-svg {
+        .connections-layer {
           position: absolute;
           top: 0;
           left: 0;
@@ -1013,240 +985,282 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           z-index: 1;
         }
         
+        .connections-layer circle {
+          pointer-events: auto;
+        }
+        
         .node {
           position: absolute;
-          background: #66bb6a;
-          border-radius: 12px;
-          padding: 6px 8px;
+          width: ${NODE_WIDTH}px;
+          height: ${NODE_HEIGHT}px;
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(10px);
+          border-radius: 16px;
+          padding: 12px;
           cursor: grab;
           z-index: 10;
-          border: 2px solid rgba(255,255,255,0.3);
-          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          border: 2px solid rgba(255,255,255,0.5);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.1);
           display: flex;
           align-items: center;
-          justify-content: center;
-          overflow: hidden;
-          transition: all 0.2s ease;
+          gap: 10px;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .node:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 12px 40px rgba(0,0,0,0.15);
         }
         
         .node.selected {
-          background: #81c784;
-          border: 2px solid #2e7d32;
+          border: 2px solid #fbbf24;
+          box-shadow: 0 12px 40px rgba(251, 191, 36, 0.3);
           z-index: 100;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.3);
         }
         
         .node.central {
-          background: linear-gradient(135deg, #ff6b6b, #4ecdc4);
-          border: 3px solid #fff;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+          background: linear-gradient(135deg, rgba(102, 126, 234, 0.15), rgba(118, 75, 162, 0.15));
+          border: 3px solid #60a5fa;
+          box-shadow: 0 12px 40px rgba(96, 165, 250, 0.3);
         }
         
         .node.central.selected {
-          background: linear-gradient(135deg, #ff5252, #26a69a);
-          border: 3px solid #ffeb3b;
-          box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+          border: 3px solid #fbbf24;
+          box-shadow: 0 12px 40px rgba(251, 191, 36, 0.4);
         }
         
-        .node-content {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          width: 100%;
+        .node:active {
+          cursor: grabbing;
         }
         
         .node-image {
+          width: 36px;
+          height: 36px;
           object-fit: cover;
           border-radius: 50%;
           flex-shrink: 0;
-          pointer-events: none;
+          border: 2px solid rgba(102, 126, 234, 0.2);
         }
         
-        .node-text {
+        .node-content {
           flex: 1;
           min-width: 0;
         }
         
         .node-title {
-          color: white;
+          font-size: 14px;
+          font-weight: 700;
+          color: #1e293b;
+          margin-bottom: 4px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        
+        .node-time {
+          font-size: 11px;
           font-weight: 600;
-          text-align: left;
-          margin-bottom: 1px;
-          line-height: 1.2;
+          color: #64748b;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
         
-        .node-timeline {
-          color: rgba(255,255,255,0.9);
-          text-align: left;
-          font-weight: 500;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        
-        .delete-node-btn {
+        .delete-btn {
           position: absolute;
-          top: -6px;
-          right: -6px;
-          background: #e53e3e;
+          top: -10px;
+          right: -10px;
+          background: #ef4444;
           color: white;
-          border: none;
+          border: 2px solid white;
           border-radius: 50%;
+          width: 28px;
+          height: 28px;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 200;
+          transition: all 0.2s;
         }
         
-        .connection-mode-indicator {
+        .delete-btn:hover {
+          background: #dc2626;
+          transform: scale(1.1);
+        }
+        
+        .connection-hint {
           position: absolute;
-          bottom: 20px;
+          bottom: 30px;
           left: 50%;
           transform: translateX(-50%);
-          background: rgba(255, 255, 255, 0.9);
-          padding: 8px 16px;
-          border-radius: 20px;
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(10px);
+          padding: 12px 24px;
+          border-radius: 24px;
           font-size: 14px;
           font-weight: 600;
-          color: #2d3748;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+          color: #475569;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.15);
           z-index: 1000;
+          animation: pulse 2s infinite;
         }
         
-        .instructions-panel {
+        @keyframes pulse {
+          0%, 100% { transform: translateX(-50%) scale(1); }
+          50% { transform: translateX(-50%) scale(1.05); }
+        }
+        
+        .help-panel {
           position: absolute;
           bottom: 20px;
           left: 20px;
-          background: rgba(255, 255, 255, 0.9);
-          padding: 12px 16px;
-          border-radius: 8px;
-          font-size: 12px;
-          color: #4a5568;
-          z-index: 100;
+          background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(10px);
+          padding: 16px;
+          border-radius: 12px;
+          font-size: 12px;
+          color: #475569;
+          z-index: 100;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.1);
         }
         
-        .instructions-panel div {
-          margin-bottom: 4px;
+        .help-panel div {
+          margin-bottom: 6px;
+          line-height: 1.5;
         }
         
-        /* Modal styles */
+        .help-panel div:last-child {
+          margin-bottom: 0;
+        }
+        
         .modal-overlay {
           position: fixed;
           top: 0;
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0,0,0,0.5);
+          background: rgba(0,0,0,0.6);
+          backdrop-filter: blur(4px);
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 1000;
+          z-index: 2000;
+          animation: fadeIn 0.2s;
         }
         
-        .modal-content {
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        
+        .modal {
           background: white;
-          border-radius: 16px;
-          padding: 24px;
-          width: 400px;
-          max-height: 80vh;
-          overflow: auto;
+          border-radius: 20px;
+          padding: 28px;
+          width: 480px;
+          max-height: 85vh;
+          overflow-y: auto;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+          animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        @keyframes slideUp {
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
         
         .modal-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 20px;
+          margin-bottom: 24px;
         }
         
         .modal-header h2 {
           margin: 0;
-          color: #2d3748;
+          font-size: 22px;
+          font-weight: 700;
+          color: #1e293b;
         }
         
         .close-btn {
           background: none;
           border: none;
           cursor: pointer;
-          padding: 0;
+          padding: 4px;
+          color: #64748b;
+          transition: color 0.2s;
+        }
+        
+        .close-btn:hover {
+          color: #1e293b;
         }
         
         .form-group {
-          margin-bottom: 16px;
+          margin-bottom: 20px;
         }
         
         .form-group label {
           display: block;
-          margin-bottom: 6px;
+          margin-bottom: 8px;
           font-weight: 600;
-          color: #4a5568;
+          color: #475569;
+          font-size: 14px;
         }
         
         .form-group input,
         .form-group textarea,
         .form-group select {
           width: 100%;
-          padding: 12px;
+          padding: 12px 16px;
           border: 2px solid #e2e8f0;
-          border-radius: 8px;
+          border-radius: 10px;
           font-size: 14px;
           font-family: inherit;
+          transition: all 0.2s;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+          outline: none;
+          border-color: #667eea;
+          box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
         .form-group textarea {
           resize: vertical;
+          min-height: 100px;
         }
         
         .form-row {
           display: flex;
-          gap: 12px;
-          margin-bottom: 20px;
+          gap: 16px;
         }
         
         .form-row .form-group {
           flex: 1;
-          margin-bottom: 0;
         }
         
         .form-actions {
           display: flex;
           gap: 12px;
+          margin-top: 24px;
         }
         
-        .cancel-btn {
+        .form-actions .btn {
           flex: 1;
-          background: #e2e8f0;
-          color: #4a5568;
-          border: none;
-          padding: 12px;
-          border-radius: 8px;
-          cursor: pointer;
-          font-weight: 600;
-        }
-        
-        .save-btn {
-          flex: 1;
-          background: #48bb78;
-          color: white;
-          border: none;
-          padding: 12px;
-          border-radius: 8px;
-          cursor: pointer;
-          font-weight: 600;
+          justify-content: center;
         }
         
         select {
           appearance: none;
-          background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+          background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
           background-repeat: no-repeat;
-          background-position: right 10px center;
+          background-position: right 12px center;
           background-size: 16px;
-          padding-right: 30px;
+          padding-right: 40px;
         }
       `}</style>
     </div>
