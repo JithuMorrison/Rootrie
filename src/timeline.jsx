@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Download, Upload, ZoomIn, ZoomOut, Trash2, X } from 'lucide-react';
+import { Download, Upload, ZoomIn, ZoomOut, Trash2, X, Moon, Sun } from 'lucide-react';
 
 const TIME_UNITS = [
   { value: 'bya', label: 'Billion Years Ago (BYA)', multiplier: 1000000000 },
@@ -17,6 +17,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   const fileInputRef = useRef(null);
   const isDraggingRef = useRef(false);
   const lastPosition = useRef({ x: 0, y: 0 });
+  const animationFrameRef = useRef(null);
 
   const [localNodes, setLocalNodes] = useState(nodes || []);
   const [localConnections, setLocalConnections] = useState(connections || []);
@@ -29,6 +30,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   const [connectionMode, setConnectionMode] = useState(false);
   const [connectionStart, setConnectionStart] = useState(null);
   const [arrowAnimations, setArrowAnimations] = useState({});
+  const [darkMode, setDarkMode] = useState(false);
 
   useEffect(() => {
     if (project) {
@@ -107,7 +109,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     
     let stepYears;
     if (project.timeUnit === 'bya') {
-      // Much fewer markers for billion-year scale
       if (visibleRange > 500000000000) stepYears = 100000000000;
       else if (visibleRange > 100000000000) stepYears = 25000000000;
       else if (visibleRange > 50000000000) stepYears = 10000000000;
@@ -262,27 +263,38 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     setSelectedNode(node);
     setSelectedConnection(null);
     
-    lastPosition.current = { x: e.clientY, y: e.clientY };
+    lastPosition.current = { x: e.clientX, y: e.clientY };
   };
 
   const handleMouseMove = useCallback((e) => {
     if (!isDraggingRef.current || !selectedNode) return;
     
-    const deltaY = e.clientY - lastPosition.current.y;
-    lastPosition.current = { x: e.clientX, y: e.clientY };
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
     
-    const newY = Math.max(20, selectedNode.y + deltaY);
-    
-    const updatedNode = { ...selectedNode, y: newY };
-    
-    setLocalNodes(prev => prev.map(node => 
-      node.id === selectedNode.id ? updatedNode : node
-    ));
-    setSelectedNode(updatedNode);
-  }, [selectedNode]);
+    animationFrameRef.current = requestAnimationFrame(() => {
+      const deltaX = e.clientX - lastPosition.current.x;
+      const deltaY = e.clientY - lastPosition.current.y;
+      lastPosition.current = { x: e.clientX, y: e.clientY };
+      
+      const newX = selectedNode.x + deltaX / zoom;
+      const newY = Math.max(20, selectedNode.y + deltaY / zoom);
+      
+      const updatedNode = { ...selectedNode, x: newX, y: newY };
+      
+      setLocalNodes(prev => prev.map(node => 
+        node.id === selectedNode.id ? updatedNode : node
+      ));
+      setSelectedNode(updatedNode);
+    });
+  }, [selectedNode, zoom]);
 
   const handleMouseUp = useCallback(() => {
     isDraggingRef.current = false;
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
   }, []);
 
   const handleNodeClick = (e, node) => {
@@ -309,50 +321,65 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     }
   };
 
+  const getNodeCenter = (node) => {
+    const x = getTimelinePosition(node.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
+    const y = node.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
+    return { x, y };
+  };
+
   const getConnectionPath = (fromNode, toNode) => {
     if (!fromNode || !toNode) return '';
     
-    const fromX = getTimelinePosition(fromNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
-    const fromY = fromNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
-    const toX = getTimelinePosition(toNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
-    const toY = toNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
+    const fromCenter = getNodeCenter(fromNode);
+    const toCenter = getNodeCenter(toNode);
     
-    const dx = toX - fromX;
-    const dy = toY - fromY;
+    const dx = toCenter.x - fromCenter.x;
+    const dy = toCenter.y - fromCenter.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    const controlOffset = Math.min(distance * 0.4, 150);
     
-    const controlX1 = fromX + (dx > 0 ? controlOffset : -controlOffset);
-    const controlX2 = toX + (dx > 0 ? -controlOffset : controlOffset);
+    // Improved curvature calculation
+    const curvature = Math.min(distance * 0.3, 100);
+    const controlOffsetX = curvature;
+    const controlOffsetY = curvature * 0.6;
     
-    return `M ${fromX} ${fromY} C ${controlX1} ${fromY}, ${controlX2} ${toY}, ${toX} ${toY}`;
+    const controlX1 = fromCenter.x + controlOffsetX;
+    const controlY1 = fromCenter.y + (dy > 0 ? controlOffsetY : -controlOffsetY);
+    const controlX2 = toCenter.x - controlOffsetX;
+    const controlY2 = toCenter.y + (dy > 0 ? -controlOffsetY : controlOffsetY);
+    
+    return `M ${fromCenter.x} ${fromCenter.y} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${toCenter.x} ${toCenter.y}`;
   };
 
   const getArrowPosition = (fromNode, toNode, offset) => {
     if (!fromNode || !toNode) return { x: 0, y: 0, angle: 0 };
     
-    const fromX = getTimelinePosition(fromNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
-    const fromY = fromNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
-    const toX = getTimelinePosition(toNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
-    const toY = toNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
+    const fromCenter = getNodeCenter(fromNode);
+    const toCenter = getNodeCenter(toNode);
     
-    const dx = toX - fromX;
-    const dy = toY - fromY;
-    const controlOffset = Math.min(Math.sqrt(dx * dx + dy * dy) * 0.4, 150);
+    const dx = toCenter.x - fromCenter.x;
+    const dy = toCenter.y - fromCenter.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
     
-    const controlX1 = fromX + (dx > 0 ? controlOffset : -controlOffset);
-    const controlX2 = toX + (dx > 0 ? -controlOffset : controlOffset);
+    const curvature = Math.min(distance * 0.3, 100);
+    const controlOffsetX = curvature;
+    const controlOffsetY = curvature * 0.6;
+    
+    const controlX1 = fromCenter.x + controlOffsetX;
+    const controlY1 = fromCenter.y + (dy > 0 ? controlOffsetY : -controlOffsetY);
+    const controlX2 = toCenter.x - controlOffsetX;
+    const controlY2 = toCenter.y + (dy > 0 ? -controlOffsetY : controlOffsetY);
     
     const t = offset / 100;
     const mt = 1 - t;
     const mt2 = mt * mt;
     const t2 = t * t;
     
-    const x = mt2 * mt * fromX + 3 * mt2 * t * controlX1 + 3 * mt * t2 * controlX2 + t2 * t * toX;
-    const y = mt2 * mt * fromY + 3 * mt2 * t * fromY + 3 * mt * t2 * toY + t2 * t * toY;
+    const x = mt2 * mt * fromCenter.x + 3 * mt2 * t * controlX1 + 3 * mt * t2 * controlX2 + t2 * t * toCenter.x;
+    const y = mt2 * mt * fromCenter.y + 3 * mt2 * t * controlY1 + 3 * mt * t2 * controlY2 + t2 * t * toCenter.y;
     
-    const dx1 = 3 * mt2 * (controlX1 - fromX) + 6 * mt * t * (controlX2 - controlX1) + 3 * t2 * (toX - controlX2);
-    const dy1 = 3 * mt2 * (fromY - fromY) + 6 * mt * t * (toY - fromY) + 3 * t2 * (toY - toY);
+    // Calculate tangent for arrow direction
+    const dx1 = 3 * mt2 * (controlX1 - fromCenter.x) + 6 * mt * t * (controlX2 - controlX1) + 3 * t2 * (toCenter.x - controlX2);
+    const dy1 = 3 * mt2 * (controlY1 - fromCenter.y) + 6 * mt * t * (controlY2 - controlY1) + 3 * t2 * (toCenter.y - controlY2);
     
     const angle = Math.atan2(dy1, dx1) * 180 / Math.PI;
     
@@ -360,12 +387,10 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   };
 
   const getConnectionMidpoint = (fromNode, toNode) => {
-    const fromX = getTimelinePosition(fromNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
-    const fromY = fromNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
-    const toX = getTimelinePosition(toNode.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
-    const toY = toNode.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
+    const fromCenter = getNodeCenter(fromNode);
+    const toCenter = getNodeCenter(toNode);
     
-    return { x: (fromX + toX) / 2, y: (fromY + toY) / 2 };
+    return { x: (fromCenter.x + toCenter.x) / 2, y: (fromCenter.y + toCenter.y) / 2 };
   };
 
   const exportProject = () => {
@@ -486,13 +511,16 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
   }, [handleMouseMove, handleMouseUp]);
 
   const centralNode = getCentralNode();
 
   return (
-    <div className="evolution-chart">
+    <div className={`evolution-chart ${darkMode ? 'dark' : ''}`}>
       <div className="header">
         <div className="header-left">
           <h1>🧬 Evolution Chart Maker</h1>
@@ -520,6 +548,14 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           
           <button onClick={exportProject} className="btn btn-success">
             <Download size={16} /> Export
+          </button>
+
+          <button 
+            onClick={() => setDarkMode(!darkMode)} 
+            className="btn btn-secondary"
+          >
+            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+            {darkMode ? ' Light' : ' Dark'}
           </button>
           
           <div className="zoom-controls">
@@ -568,7 +604,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
               refY="3"
               orient="auto"
             >
-              <polygon points="0 0, 10 3, 0 6" fill="rgba(255,255,255,0.8)" />
+              <polygon points="0 0, 10 3, 0 6" className="arrowhead" />
             </marker>
             <marker
               id="arrowhead-selected"
@@ -578,7 +614,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
               refY="3"
               orient="auto"
             >
-              <polygon points="0 0, 10 3, 0 6" fill="#fbbf24" />
+              <polygon points="0 0, 10 3, 0 6" className="arrowhead-selected" />
             </marker>
             <marker
               id="arrowhead-central"
@@ -588,7 +624,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
               refY="3"
               orient="auto"
             >
-              <polygon points="0 0, 10 3, 0 6" fill="#60a5fa" />
+              <polygon points="0 0, 10 3, 0 6" className="arrowhead-central" />
             </marker>
           </defs>
           
@@ -609,7 +645,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
               <g key={conn.id}>
                 <path
                   d={getConnectionPath(fromNode, toNode)}
-                  stroke={isSelected ? '#fbbf24' : (isCentral ? '#60a5fa' : 'rgba(255,255,255,0.6)')}
+                  className={`connection-path ${isSelected ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
                   strokeWidth={isCentral ? '3' : '2'}
                   fill="none"
                   markerEnd={`url(#${isSelected ? 'arrowhead-selected' : (isCentral ? 'arrowhead-central' : 'arrowhead')})`}
@@ -617,7 +653,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                 
                 <polygon
                   points="0,-4 8,0 0,4"
-                  fill={isSelected ? '#fbbf24' : (isCentral ? '#60a5fa' : 'rgba(255,255,255,0.8)')}
+                  className={`arrow ${isSelected ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
                   transform={`translate(${arrowPos.x}, ${arrowPos.y}) rotate(${arrowPos.angle})`}
                 />
                 
@@ -626,9 +662,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                     cx={midpoint.x}
                     cy={midpoint.y}
                     r={10}
-                    fill="#ef4444"
-                    stroke="white"
-                    strokeWidth="2"
+                    className="delete-connection"
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteConnection(conn.id);
@@ -652,6 +686,8 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
               style={{
                 left: `${getTimelinePosition(node.timeline) * zoom + pan.x}px`,
                 top: `${node.y + pan.y + TIMELINE_HEIGHT}px`,
+                transform: `scale(${zoom})`,
+                transformOrigin: 'center'
               }}
               onMouseDown={(e) => handleMouseDown(e, node)}
               onClick={(e) => handleNodeClick(e, node)}
@@ -800,10 +836,16 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         .evolution-chart {
           width: 100vw;
           height: 100vh;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: white;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           overflow: hidden;
           position: relative;
+          transition: all 0.3s ease;
+        }
+        
+        .evolution-chart.dark {
+          background: #0f172a;
+          color: #f8fafc;
         }
         
         .header {
@@ -817,6 +859,12 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           box-shadow: 0 2px 10px rgba(0,0,0,0.1);
           z-index: 1000;
           position: relative;
+        }
+        
+        .dark .header {
+          background: rgba(15, 23, 42, 0.98);
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          box-shadow: 0 2px 10px rgba(0,0,0,0.3);
         }
         
         .header-left {
@@ -878,6 +926,10 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           background: #94a3b8;
         }
         
+        .dark .btn-secondary {
+          background: #475569;
+        }
+        
         .btn-success {
           background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
         }
@@ -903,6 +955,10 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           border-radius: 10px;
         }
         
+        .dark .zoom-controls {
+          background: #1e293b;
+        }
+        
         .zoom-btn {
           padding: 8px;
           border: none;
@@ -914,8 +970,17 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           transition: all 0.2s;
         }
         
+        .dark .zoom-btn {
+          background: #334155;
+          color: #f8fafc;
+        }
+        
         .zoom-btn:hover {
           background: #e2e8f0;
+        }
+        
+        .dark .zoom-btn:hover {
+          background: #475569;
         }
         
         .zoom-level {
@@ -924,6 +989,10 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           color: #475569;
           min-width: 45px;
           text-align: center;
+        }
+        
+        .dark .zoom-level {
+          color: #cbd5e1;
         }
         
         .timeline {
@@ -937,6 +1006,11 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           border-bottom: 3px solid rgba(102, 126, 234, 0.3);
           z-index: 100;
           overflow: hidden;
+        }
+        
+        .dark .timeline {
+          background: rgba(15, 23, 42, 0.95);
+          border-bottom: 3px solid rgba(102, 126, 234, 0.5);
         }
         
         .timeline-marker {
@@ -967,6 +1041,12 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           border: 1px solid rgba(102, 126, 234, 0.2);
         }
         
+        .dark .timeline-label {
+          color: #cbd5e1;
+          background: rgba(30, 41, 59, 0.9);
+          border: 1px solid rgba(102, 126, 234, 0.4);
+        }
+        
         .canvas {
           position: absolute;
           top: ${70 + TIMELINE_HEIGHT}px;
@@ -974,6 +1054,12 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           right: 0;
           bottom: 0;
           overflow: hidden;
+          background: #f8fafc;
+          transition: background 0.3s ease;
+        }
+        
+        .dark .canvas {
+          background: #0f172a;
         }
         
         .connections-layer {
@@ -986,8 +1072,67 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           z-index: 1;
         }
         
-        .connections-layer circle {
-          pointer-events: auto;
+        .connection-path {
+          stroke: rgba(102, 126, 234, 0.6);
+          transition: all 0.3s ease;
+        }
+        
+        .dark .connection-path {
+          stroke: rgba(102, 126, 234, 0.8);
+        }
+        
+        .connection-path.selected {
+          stroke: #fbbf24;
+          stroke-width: 3;
+        }
+        
+        .connection-path.central {
+          stroke: #60a5fa;
+          stroke-width: 3;
+        }
+        
+        .arrowhead {
+          fill: rgba(102, 126, 234, 0.6);
+        }
+        
+        .dark .arrowhead {
+          fill: rgba(102, 126, 234, 0.8);
+        }
+        
+        .arrowhead-selected {
+          fill: #fbbf24;
+        }
+        
+        .arrowhead-central {
+          fill: #60a5fa;
+        }
+        
+        .arrow {
+          fill: rgba(102, 126, 234, 0.6);
+        }
+        
+        .dark .arrow {
+          fill: rgba(102, 126, 234, 0.8);
+        }
+        
+        .arrow.selected {
+          fill: #fbbf24;
+        }
+        
+        .arrow.central {
+          fill: #60a5fa;
+        }
+        
+        .delete-connection {
+          fill: #ef4444;
+          stroke: white;
+          stroke-width: 2;
+          transition: all 0.2s;
+        }
+        
+        .delete-connection:hover {
+          fill: #dc2626;
+          transform: scale(1.1);
         }
         
         .node {
@@ -996,38 +1141,52 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           height: ${NODE_HEIGHT}px;
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(10px);
-          border-radius: 16px;
-          padding: 12px;
+          border-radius: 12px;
+          padding: 10px;
           cursor: grab;
           z-index: 10;
-          border: 2px solid rgba(255,255,255,0.5);
-          box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+          border: 2px solid rgba(148, 145, 145, 0.5);
+          box-shadow: 0 4px 20px rgba(0,0,0,0.1);
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
+        .dark .node {
+          background: rgba(30, 41, 59, 0.95);
+          border: 2px solid rgba(255,255,255,0.1);
+          box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        
         .node:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+          transform: translateY(-2px) scale(${zoom});
+          box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        
+        .dark .node:hover {
+          box-shadow: 0 8px 25px rgba(0,0,0,0.4);
         }
         
         .node.selected {
           border: 2px solid #fbbf24;
-          box-shadow: 0 12px 40px rgba(251, 191, 36, 0.3);
+          box-shadow: 0 8px 25px rgba(251, 191, 36, 0.3);
           z-index: 100;
         }
         
         .node.central {
           background: linear-gradient(135deg, rgba(102, 126, 234, 0.15), rgba(118, 75, 162, 0.15));
-          border: 3px solid #60a5fa;
-          box-shadow: 0 12px 40px rgba(96, 165, 250, 0.3);
+          border: 2px solid #60a5fa;
+          box-shadow: 0 8px 25px rgba(96, 165, 250, 0.3);
+        }
+        
+        .dark .node.central {
+          background: linear-gradient(135deg, rgba(102, 126, 234, 0.25), rgba(118, 75, 162, 0.25));
         }
         
         .node.central.selected {
-          border: 3px solid #fbbf24;
-          box-shadow: 0 12px 40px rgba(251, 191, 36, 0.4);
+          border: 2px solid #fbbf24;
+          box-shadow: 0 8px 25px rgba(251, 191, 36, 0.4);
         }
         
         .node:active {
@@ -1035,8 +1194,8 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         }
         
         .node-image {
-          width: 36px;
-          height: 36px;
+          width: 32px;
+          height: 32px;
           object-fit: cover;
           border-radius: 50%;
           flex-shrink: 0;
@@ -1049,13 +1208,17 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         }
         
         .node-title {
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 700;
           color: #1e293b;
-          margin-bottom: 4px;
+          margin-bottom: 2px;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+        
+        .dark .node-title {
+          color: #f8fafc;
         }
         
         .node-time {
@@ -1067,22 +1230,31 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           white-space: nowrap;
         }
         
+        .dark .node-time {
+          color: #94a3b8;
+        }
+        
         .delete-btn {
           position: absolute;
-          top: -10px;
-          right: -10px;
+          top: -8px;
+          right: -8px;
           background: #ef4444;
           color: white;
           border: 2px solid white;
           border-radius: 50%;
-          width: 28px;
-          height: 28px;
+          width: 24px;
+          height: 24px;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 200;
           transition: all 0.2s;
+          font-size: 12px;
+        }
+        
+        .dark .delete-btn {
+          border: 2px solid #0f172a;
         }
         
         .delete-btn:hover {
@@ -1107,6 +1279,12 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           animation: pulse 2s infinite;
         }
         
+        .dark .connection-hint {
+          background: rgba(30, 41, 59, 0.95);
+          color: #cbd5e1;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
         @keyframes pulse {
           0%, 100% { transform: translateX(-50%) scale(1); }
           50% { transform: translateX(-50%) scale(1.05); }
@@ -1124,6 +1302,12 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           color: #475569;
           z-index: 100;
           box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        
+        .dark .help-panel {
+          background: rgba(30, 41, 59, 0.95);
+          color: #cbd5e1;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
         
         .help-panel div {
@@ -1166,6 +1350,11 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
+        .dark .modal {
+          background: #1e293b;
+          color: #f8fafc;
+        }
+        
         @keyframes slideUp {
           from { transform: translateY(20px); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
@@ -1185,6 +1374,10 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           color: #1e293b;
         }
         
+        .dark .modal-header h2 {
+          color: #f8fafc;
+        }
+        
         .close-btn {
           background: none;
           border: none;
@@ -1194,8 +1387,16 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           transition: color 0.2s;
         }
         
+        .dark .close-btn {
+          color: #94a3b8;
+        }
+        
         .close-btn:hover {
           color: #1e293b;
+        }
+        
+        .dark .close-btn:hover {
+          color: #f8fafc;
         }
         
         .form-group {
@@ -1210,6 +1411,10 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           font-size: 14px;
         }
         
+        .dark .form-group label {
+          color: #cbd5e1;
+        }
+        
         .form-group input,
         .form-group textarea,
         .form-group select {
@@ -1220,6 +1425,16 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           font-size: 14px;
           font-family: inherit;
           transition: all 0.2s;
+          background: white;
+          color: #1e293b;
+        }
+        
+        .dark .form-group input,
+        .dark .form-group textarea,
+        .dark .form-group select {
+          background: #334155;
+          border: 2px solid #475569;
+          color: #f8fafc;
         }
         
         .form-group input:focus,
@@ -1228,6 +1443,13 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           outline: none;
           border-color: #667eea;
           box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .dark .form-group input:focus,
+        .dark .form-group textarea:focus,
+        .dark .form-group select:focus {
+          border-color: #667eea;
+          box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
         }
         
         .form-group textarea {
@@ -1262,6 +1484,10 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           background-position: right 12px center;
           background-size: 16px;
           padding-right: 40px;
+        }
+        
+        .dark select {
+          background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23cbd5e1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
         }
       `}</style>
     </div>
