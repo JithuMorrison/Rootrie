@@ -65,7 +65,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
 
   const colors = themes[theme];
 
-  // Handle keyboard events for deletion, control point movement, and modifier keys
+  // Handle keyboard events for deletion, control point movement, modifier keys, and node movement
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Control' || e.key === 'Meta') {
@@ -80,7 +80,23 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         } else if (selectedControlPoint) {
           handleDeleteControlPoint();
         }
+      } else if (selectedNode && !e.ctrlKey && !e.metaKey) {
+        // Arrow key movement for selected node
+        let dx = 0, dy = 0;
+        const step = e.shiftKey ? 10 : 2;
+        
+        switch (e.key) {
+          case 'ArrowUp': dy = -step; break;
+          case 'ArrowDown': dy = step; break;
+          case 'ArrowLeft': dx = -step; break;
+          case 'ArrowRight': dx = step; break;
+          default: return;
+        }
+        
+        e.preventDefault();
+        moveNode(selectedNode.id, dx, dy);
       } else if (selectedControlPoint && !e.ctrlKey && !e.metaKey) {
+        // Arrow key movement for selected control point
         let dx = 0, dy = 0;
         const step = e.shiftKey ? 10 : 2;
         
@@ -112,6 +128,24 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       document.removeEventListener('keyup', handleKeyUp);
     };
   }, [selectedNode, selectedEdge, selectedControlPoint]);
+
+  const moveNode = (nodeId, dx, dy) => {
+    const updatedNodes = nodes.map(node => {
+      if (node.id === nodeId) {
+        return {
+          ...node,
+          x: node.x + dx,
+          y: node.y + dy
+        };
+      }
+      return node;
+    });
+    
+    onUpdateFlowchart({
+      ...flowchart,
+      nodes: updatedNodes
+    });
+  };
 
   const moveControlPoint = (edgeId, pointIndex, dx, dy) => {
     const updatedEdges = edges.map(edge => {
@@ -210,104 +244,70 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     return relX >= leftBound && relX <= rightBound;
   };
 
-  // Advanced shape connection point calculation with accurate boundary detection
-  const getShapeConnectionPoint = (node, fromX, fromY) => {
+  const getShapeConnectionPoint = (node, targetX, targetY) => {
     const centerX = node.x + node.width / 2;
     const centerY = node.y + node.height / 2;
-    
-    if (node.type === 'circle') {
-      const radius = node.width / 2;
-      const angle = Math.atan2(fromY - centerY, fromX - centerX);
-      return {
-        x: centerX + radius * Math.cos(angle),
-        y: centerY + radius * Math.sin(angle)
-      };
-    } else if (node.type === 'oval') {
+
+    const dx = targetX - centerX;
+    const dy = targetY - centerY;
+
+    const absDX = Math.abs(dx);
+    const absDY = Math.abs(dy);
+
+    // --- Circle & Oval: only at 4 cardinal points ---
+    if (node.type === 'circle' || node.type === 'oval') {
       const radiusX = node.width / 2;
       const radiusY = node.height / 2;
-      const angle = Math.atan2(fromY - centerY, fromX - centerX);
-      
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
-      const scale = Math.sqrt(1 / (Math.pow(cos / radiusX, 2) + Math.pow(sin / radiusY, 2)));
-      
-      return {
-        x: centerX + scale * cos,
-        y: centerY + scale * sin
-      };
-    } else if (node.type === 'diamond') {
-      const dx = fromX - centerX;
-      const dy = fromY - centerY;
-      const halfWidth = node.width / 2;
-      const halfHeight = node.height / 2;
-      
-      // Calculate intersection with diamond edges using parametric equations
-      const t1 = Math.abs(dx) > 0 ? halfWidth / Math.abs(dx) : Infinity;
-      const t2 = Math.abs(dy) > 0 ? halfHeight / Math.abs(dy) : Infinity;
-      const t = Math.min(t1, t2);
-      
-      const intersectionX = centerX + (dx / Math.abs(dx)) * Math.min(Math.abs(dx), halfWidth * t);
-      const intersectionY = centerY + (dy / Math.abs(dy)) * Math.min(Math.abs(dy), halfHeight * t);
-      
-      // Ensure point is on diamond boundary
-      const normalizedX = Math.abs(intersectionX - centerX) / halfWidth;
-      const normalizedY = Math.abs(intersectionY - centerY) / halfHeight;
-      const scale = 1 / (normalizedX + normalizedY);
-      
-      return {
-        x: centerX + (intersectionX - centerX) * scale,
-        y: centerY + (intersectionY - centerY) * scale
-      };
-    } else if (node.type === 'rhombus') {
-      const dx = fromX - centerX;
-      const dy = fromY - centerY;
-      const slantOffset = node.height * 0.3;
-      
-      // Calculate which edge the line should connect to
-      const progress = Math.max(0, Math.min(1, (fromY - node.y) / node.height));
-      
-      if (Math.abs(dx) > Math.abs(dy) * 0.8) {
-        // Connect to slanted left or right edge
-        const targetX = dx > 0 ? node.x + node.width + slantOffset - progress * slantOffset * 2 : 
-                                  node.x - slantOffset + progress * slantOffset * 2;
-        const targetY = node.y + progress * node.height;
-        
-        // Find intersection point on the slanted edge
-        const edgeStartX = dx > 0 ? node.x + node.width - slantOffset : node.x + slantOffset;
-        const edgeEndX = dx > 0 ? node.x + node.width + slantOffset : node.x - slantOffset;
-        const edgeStartY = dx > 0 ? node.y : node.y;
-        const edgeEndY = dx > 0 ? node.y + node.height : node.y + node.height;
-        
+
+      if (absDX > absDY) {
+        // Left or right
         return {
-          x: Math.max(Math.min(targetX, Math.max(edgeStartX, edgeEndX)), Math.min(edgeStartX, edgeEndX)),
-          y: Math.max(Math.min(targetY, node.y + node.height), node.y)
+          x: dx > 0 ? centerX + radiusX : centerX - radiusX,
+          y: centerY
         };
       } else {
-        // Connect to top or bottom edge
-        const y = dy > 0 ? node.y + node.height : node.y;
-        const edgeSlantX = centerX + (dx * 0.7);
-        const maxSlant = slantOffset * (1 - Math.abs(dy) / node.height);
-        return { 
-          x: Math.max(node.x - maxSlant, Math.min(node.x + node.width + maxSlant, edgeSlantX)), 
-          y 
+        // Top or bottom
+        return {
+          x: centerX,
+          y: dy > 0 ? centerY + radiusY : centerY - radiusY
         };
       }
+    }
+
+    // --- Rhombus: only top or bottom connections ---
+    if (node.type === 'rhombus') {
+      return {
+        x: centerX,
+        y: dy > 0 ? node.y + node.height : node.y
+      };
+    }
+
+    // --- Diamond (4 sides) ---
+    if (node.type === 'diamond') {
+      if (absDX > absDY) {
+        return {
+          x: dx > 0 ? node.x + node.width : node.x,
+          y: centerY
+        };
+      } else {
+        return {
+          x: centerX,
+          y: dy > 0 ? node.y + node.height : node.y
+        };
+      }
+    }
+
+    // --- Rectangle fallback ---
+    if (absDX > absDY) {
+      return {
+        x: dx > 0 ? node.x + node.width : node.x,
+        y: centerY
+      };
     } else {
-      // Rectangle - improved edge detection
-      const dx = fromX - centerX;
-      const dy = fromY - centerY;
-      const halfWidth = node.width / 2;
-      const halfHeight = node.height / 2;
-      
-      if (Math.abs(dx) * halfHeight > Math.abs(dy) * halfWidth) {
-        const x = dx > 0 ? node.x + node.width : node.x;
-        const y = centerY + (dy / Math.abs(dx)) * halfWidth;
-        return { x, y: Math.max(node.y, Math.min(node.y + node.height, y)) };
-      } else {
-        const y = dy > 0 ? node.y + node.height : node.y;
-        const x = centerX + (dx / Math.abs(dy)) * halfHeight;
-        return { x: Math.max(node.x, Math.min(node.x + node.width, x)), y };
-      }
+      return {
+        x: centerX,
+        y: dy > 0 ? node.y + node.height : node.y
+      };
     }
   };
 
@@ -1689,6 +1689,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                 <br />
                 {isCtrlPressed && "🔧 Ctrl pressed: Click on node edge to start connection from specific point"}
                 {isShiftPressed && "➕ Shift pressed: Click on edge to add control point"}
+                {selectedNode && "🎯 Node selected: Use arrow keys to move (Shift for larger steps)"}
               </div>
             )}
             
@@ -1753,7 +1754,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
               Drag nodes to move • Use Connect tool for arrows • 
               Ctrl+Click on node to start connection from specific point • 
               Shift+Click on edge to add control point •
-              Press Delete to remove selected items • Use arrow keys to move control points
+              Press Delete to remove selected items • Use arrow keys to move selected nodes and control points (Shift for larger steps)
             </div>
           </div>
         ) : (
