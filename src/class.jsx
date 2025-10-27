@@ -288,6 +288,11 @@ const ClassDiagramMaker = ({
       ...classDiagram,
       classes: updatedClasses
     });
+
+    const latestEditingItem = updatedClasses.find(c => c.id === editingItem.id);
+    if (latestEditingItem) {
+      setEditingItem(latestEditingItem);
+    }
     
     closeEditor();
   };
@@ -330,11 +335,21 @@ const ClassDiagramMaker = ({
       ...classDiagram,
       classes: updatedClasses
     });
+
+    const latestEditingItem = updatedClasses.find(c => c.id === editingItem.id);
+    if (latestEditingItem) {
+      setEditingItem(latestEditingItem);
+    }
     
     closeEditor();
   };
 
   const closeEditor = () => {
+    setEditType('');
+    setEditIndex(-1);
+  };
+
+  const closeFull = () => {
     setEditingItem(null);
     setEditType('');
     setEditIndex(-1);
@@ -1508,7 +1523,7 @@ const ClassDiagramMaker = ({
           <div className="modal-content">
             <div className="modal-header">
               <h3>Edit Class: {editingItem.name}</h3>
-              <button onClick={closeEditor} className="modal-close-btn">
+              <button onClick={closeFull} className="modal-close-btn">
                 <X size={20} />
               </button>
             </div>
@@ -1596,7 +1611,7 @@ const ClassDiagramMaker = ({
             </div>
             
             <div className="modal-footer">
-              <button onClick={closeEditor} className="modal-cancel-btn">
+              <button onClick={closeFull} className="modal-cancel-btn">
                 Close
               </button>
             </div>
