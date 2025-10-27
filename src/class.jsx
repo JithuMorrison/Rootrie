@@ -14,7 +14,10 @@ import {
   X,
   ZoomIn,
   ZoomOut,
-  Palette
+  Palette,
+  Code,
+  FileText,
+  RefreshCw
 } from 'lucide-react';
 
 const ClassDiagramMaker = ({ 
@@ -44,6 +47,7 @@ const ClassDiagramMaker = ({
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [generatedCode, setGeneratedCode] = useState('');
   const canvasRef = useRef(null);
 
   // Color schemes for classes (pink theme with variations)
@@ -70,6 +74,19 @@ const ClassDiagramMaker = ({
     { value: '#', label: 'Protected (#)' },
     { value: '~', label: 'Package (~)' }
   ];
+
+  const javaTypeMapping = {
+    'String': 'String',
+    'int': 'int',
+    'float': 'float',
+    'double': 'double',
+    'boolean': 'boolean',
+    'void': 'void',
+    'char': 'char',
+    'long': 'long',
+    'short': 'short',
+    'byte': 'byte'
+  };
 
   useEffect(() => {
     setJsonInput(JSON.stringify({ classes, relationships }, null, 2));
@@ -518,6 +535,163 @@ const ClassDiagramMaker = ({
       };
     }
   }, [dragItem, resizingItem, isPanning, dragOffset, resizeStart, panStart, zoom, panOffset]);
+
+
+  const generateJavaCode = () => {
+    let code = `// Generated Java Code from Class Diagram\n// ${classDiagram.name || 'Untitled Diagram'}\n\n`;
+    
+    // Process inheritance relationships first to build hierarchy
+    const inheritanceMap = {};
+    relationships
+      .filter(rel => rel.type === 'inheritance' || rel.type === 'realization')
+      .forEach(rel => {
+        inheritanceMap[rel.to] = rel.from; // to extends from
+      });
+
+    // Generate each class
+    classes.forEach(cls => {
+      const parentClass = inheritanceMap[cls.id];
+      const parentClassName = parentClass ? classes.find(c => c.id === parentClass)?.name : null;
+      
+      // Class declaration
+      code += `public class ${cls.name}`;
+      if (parentClassName) {
+        code += ` extends ${parentClassName}`;
+      }
+      code += ` {\n\n`;
+      
+      // Attributes
+      if (cls.attributes.length > 0) {
+        cls.attributes.forEach(attr => {
+          const javaType = javaTypeMapping[attr.type] || attr.type;
+          const visibility = getJavaVisibility(attr.visibility);
+          code += `    ${visibility} ${javaType} ${attr.name};\n`;
+        });
+        code += '\n';
+      }
+      
+      // Constructor
+      code += `    public ${cls.name}() {\n    }\n\n`;
+      
+      // Methods
+      if (cls.methods.length > 0) {
+        cls.methods.forEach(method => {
+          const javaReturnType = javaTypeMapping[method.returnType] || method.returnType;
+          const visibility = getJavaVisibility(method.visibility);
+          const methodName = method.name.includes('(') ? method.name : `${method.name}()`;
+          
+          code += `    ${visibility} ${javaReturnType} ${methodName} {\n`;
+          if (javaReturnType !== 'void') {
+            // Return default value based on type
+            const defaultValue = getDefaultValue(javaReturnType);
+            code += `        return ${defaultValue};\n`;
+          }
+          code += `    }\n\n`;
+        });
+      }
+      
+      // Getters and setters for private attributes
+      const privateAttributes = cls.attributes.filter(attr => attr.visibility === '-');
+      if (privateAttributes.length > 0) {
+        privateAttributes.forEach(attr => {
+          const javaType = javaTypeMapping[attr.type] || attr.type;
+          const capitalizedName = attr.name.charAt(0).toUpperCase() + attr.name.slice(1);
+          
+          // Getter
+          code += `    public ${javaType} get${capitalizedName}() {\n`;
+          code += `        return this.${attr.name};\n`;
+          code += `    }\n\n`;
+          
+          // Setter
+          code += `    public void set${capitalizedName}(${javaType} ${attr.name}) {\n`;
+          code += `        this.${attr.name} = ${attr.name};\n`;
+          code += `    }\n\n`;
+        });
+      }
+      
+      code += `}\n\n`;
+    });
+    
+    // Generate relationship-based code (associations, dependencies, etc.)
+    const associationRelationships = relationships.filter(rel => 
+      ['association', 'navigable', 'aggregation', 'composition'].includes(rel.type)
+    );
+    
+    if (associationRelationships.length > 0) {
+      code += `// Relationship Implementations\n`;
+      associationRelationships.forEach(rel => {
+        const fromClass = classes.find(c => c.id === rel.from);
+        const toClass = classes.find(c => c.id === rel.to);
+        
+        if (fromClass && toClass) {
+          code += `// ${fromClass.name} ${getRelationshipDescription(rel.type)} ${toClass.name}`;
+          if (rel.label) {
+            code += ` (${rel.label})`;
+          }
+          code += `\n`;
+        }
+      });
+    }
+    
+    setGeneratedCode(code);
+    setActiveTab('code');
+  };
+
+  const getJavaVisibility = (umlVisibility) => {
+    switch (umlVisibility) {
+      case '+': return 'public';
+      case '-': return 'private';
+      case '#': return 'protected';
+      case '~': return ''; // package-private (default)
+      default: return 'public';
+    }
+  };
+
+  const getDefaultValue = (javaType) => {
+    switch (javaType) {
+      case 'int': case 'long': case 'short': case 'byte': return '0';
+      case 'float': case 'double': return '0.0';
+      case 'boolean': return 'false';
+      case 'char': return "'\\0'";
+      default: return 'null';
+    }
+  };
+
+  const getRelationshipDescription = (type) => {
+    switch (type) {
+      case 'association': return 'has association with';
+      case 'navigable': return 'navigates to';
+      case 'aggregation': return 'aggregates';
+      case 'composition': return 'composes';
+      default: return 'relates to';
+    }
+  };
+
+  const downloadJavaCode = () => {
+    if (!generatedCode) return;
+    
+    const blob = new Blob([generatedCode], { type: 'text/x-java-source' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${classDiagram.name || 'GeneratedClasses'}.java`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const copyJavaCode = () => {
+    if (!generatedCode) return;
+    
+    navigator.clipboard.writeText(generatedCode)
+      .then(() => {
+        alert('Java code copied to clipboard!');
+      })
+      .catch(err => {
+        console.error('Failed to copy code: ', err);
+      });
+  };
 
   const exportToJson = () => {
     const data = { classes, relationships };
@@ -1007,6 +1181,12 @@ const ClassDiagramMaker = ({
         >
           JSON Editor
         </button>
+        <button 
+          className={`tab ${activeTab === 'code' ? 'active' : ''}`}
+          onClick={() => setActiveTab('code')}
+        >
+          Java Code
+        </button>
       </div>
 
       {activeTab === 'editor' ? (
@@ -1183,7 +1363,7 @@ const ClassDiagramMaker = ({
             </div>
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'json' ? (
         <div className="json-editor">
           <div className="json-actions">
             <button 
@@ -1210,6 +1390,23 @@ const ClassDiagramMaker = ({
           >
             <Save size={16} /> Apply JSON
           </button>
+        </div>
+      ) : (
+        <div className="code-editor">
+          <div className="code-actions">
+            <button onClick={generateJavaCode} className="regenerate-btn">
+              <RefreshCw size={16} /> Regenerate Code
+            </button>
+            <button onClick={copyJavaCode} className="copy-code-btn">
+              <Copy size={16} /> Copy Code
+            </button>
+            <button onClick={downloadJavaCode} className="download-code-btn">
+              <Download size={16} /> Download Java File
+            </button>
+          </div>
+          <pre className="code-display">
+            <code>{generatedCode || '// Click "Generate Java Code" to generate code from your diagram'}</code>
+          </pre>
         </div>
       )}
 
@@ -1475,6 +1672,118 @@ const ClassDiagramMaker = ({
           display: flex;
           align-items: center;
           gap: 16px;
+        }
+
+        .generate-code-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background: #10B981;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        }
+
+        .generate-code-btn:hover {
+          background: #059669;
+        }
+
+        .code-editor {
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+          background: white;
+        }
+        
+        .code-actions {
+          display: flex;
+          gap: 8px;
+          padding: 16px;
+          border-bottom: 1px solid #e2e8f0;
+          background: #f8fafc;
+        }
+        
+        .regenerate-btn, .copy-code-btn, .download-code-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-weight: 500;
+          cursor: pointer;
+          border: none;
+          transition: background-color 0.2s;
+        }
+        
+        .regenerate-btn {
+          background: #10B981;
+          color: white;
+        }
+        
+        .regenerate-btn:hover {
+          background: #059669;
+        }
+        
+        .copy-code-btn {
+          background: #3B82F6;
+          color: white;
+        }
+        
+        .copy-code-btn:hover {
+          background: #2563EB;
+        }
+        
+        .download-code-btn {
+          background: #8B5CF6;
+          color: white;
+        }
+        
+        .download-code-btn:hover {
+          background: #7C3AED;
+        }
+        
+        .code-display {
+          flex: 1;
+          margin: 0;
+          padding: 20px;
+          background: #1e293b;
+          color: #e2e8f0;
+          overflow: auto;
+          font-family: 'Fira Code', 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+          font-size: 14px;
+          line-height: 1.5;
+          white-space: pre-wrap;
+        }
+        
+        .code-display code {
+          font-family: inherit;
+        }
+        
+        /* Syntax highlighting for Java code */
+        .code-display .comment {
+          color: #64748b;
+          font-style: italic;
+        }
+        
+        .code-display .keyword {
+          color: #F472B6;
+          font-weight: bold;
+        }
+        
+        .code-display .type {
+          color: #60A5FA;
+        }
+        
+        .code-display .string {
+          color: #34D399;
+        }
+        
+        .code-display .number {
+          color: #FBBF24;
         }
         
         .zoom-controls {
