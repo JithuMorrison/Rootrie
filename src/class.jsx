@@ -49,6 +49,7 @@ const ClassDiagramMaker = ({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [generatedCode, setGeneratedCode] = useState('');
   const canvasRef = useRef(null);
+  const codeDisplayRef = useRef(null);
 
   // Color schemes for classes (pink theme with variations)
   const colorSchemes = [
@@ -691,6 +692,84 @@ const ClassDiagramMaker = ({
       .catch(err => {
         console.error('Failed to copy code: ', err);
       });
+  };
+
+  const highlightJavaCode = (code) => {
+    if (!code) return '// Click "Generate Java Code" to generate code from your diagram';
+    
+    // Java keywords
+    const keywords = [
+      'abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char', 'class', 'const',
+      'continue', 'default', 'do', 'double', 'else', 'enum', 'extends', 'final', 'finally', 'float',
+      'for', 'goto', 'if', 'implements', 'import', 'instanceof', 'int', 'interface', 'long', 'native',
+      'new', 'package', 'private', 'protected', 'public', 'return', 'short', 'static', 'strictfp',
+      'super', 'switch', 'synchronized', 'this', 'throw', 'throws', 'transient', 'try', 'void', 'volatile', 'while'
+    ];
+    
+    // Java types
+    const types = ['String', 'int', 'float', 'double', 'boolean', 'void', 'char', 'long', 'short', 'byte'];
+    
+    // Escape HTML to prevent XSS
+    const escapeHtml = (text) => {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    };
+
+    let highlighted = escapeHtml(code);
+    
+    // Process in the right order to avoid conflicts
+    
+    // First: Highlight strings (needs to be first to avoid conflicts)
+    highlighted = highlighted.replace(
+      /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g,
+      '<span class="string">$1</span>'
+    );
+    
+    // Second: Highlight comments (after strings to avoid conflicts with strings containing //)
+    highlighted = highlighted.replace(
+      /(\/\/[^\n]*$)/gm,
+      '<span class="comment">$1</span>'
+    );
+    
+    // Third: Highlight multi-line comments
+    highlighted = highlighted.replace(
+      /(\/\*[\s\S]*?\*\/)/g,
+      '<span class="comment">$1</span>'
+    );
+    
+    // Fourth: Highlight numbers (but not inside strings or comments)
+    // This regex avoids matching numbers that are part of other words
+    highlighted = highlighted.replace(
+      /(\b\d+\.?\d*|\.\d+)([fFlL]?)\b(?!([^<]*>)|([^<]*<\/span>))/g,
+      '<span class="number">$1$2</span>'
+    );
+    
+    // Fifth: Highlight class names (before keywords to avoid conflicts)
+    highlighted = highlighted.replace(
+      /\b(class|extends|implements)\s+(\w+)\b/g,
+      '$1 <span class="class-name">$2</span>'
+    );
+    
+    // Sixth: Highlight types (before general keywords)
+    types.forEach(type => {
+      const regex = new RegExp(`\\b${type}\\b(?!([^<]*>)|([^<]*<\\/span>))`, 'g');
+      highlighted = highlighted.replace(
+        regex,
+        `<span class="type">${type}</span>`
+      );
+    });
+    
+    // Seventh: Highlight keywords (last to avoid overriding other highlights)
+    keywords.forEach(keyword => {
+      const regex = new RegExp(`\\b${keyword}\\b(?!([^<]*>)|([^<]*<\\/span>))`, 'g');
+      highlighted = highlighted.replace(
+        regex,
+        `<span class="keyword">${keyword}</span>`
+      );
+    });
+    
+    return highlighted;
   };
 
   const exportToJson = () => {
@@ -1404,9 +1483,22 @@ const ClassDiagramMaker = ({
               <Download size={16} /> Download Java File
             </button>
           </div>
-          <pre className="code-display">
-            <code>{generatedCode || '// Click "Generate Java Code" to generate code from your diagram'}</code>
-          </pre>
+          <div 
+            ref={codeDisplayRef}
+            className="code-display"
+            style={{ 
+              overflow: 'auto',
+              maxHeight: 'calc(100vh - 200px)'
+            }}
+          >
+            <pre>
+              <code 
+                dangerouslySetInnerHTML={{ 
+                  __html: highlightJavaCode(generatedCode) 
+                }} 
+              />
+            </pre>
+          </div>
         </div>
       )}
 
@@ -1757,33 +1849,78 @@ const ClassDiagramMaker = ({
           font-size: 14px;
           line-height: 1.5;
           white-space: pre-wrap;
+          word-wrap: break-word;
+          min-height: 0; /* Important for scrolling */
+        }
+        
+        .code-display pre {
+          margin: 0;
+          padding: 0;
+          background: transparent;
+          border: none;
+          overflow: visible;
         }
         
         .code-display code {
           font-family: inherit;
+          display: block;
+          white-space: pre-wrap;
+          word-wrap: break-word;
         }
         
         /* Syntax highlighting for Java code */
         .code-display .comment {
-          color: #64748b;
+          color: #94a3b8;
           font-style: italic;
         }
         
         .code-display .keyword {
-          color: #F472B6;
+          color: #f472b6;
           font-weight: bold;
         }
         
         .code-display .type {
-          color: #60A5FA;
+          color: #60a5fa;
+          font-weight: 500;
         }
         
         .code-display .string {
-          color: #34D399;
+          color: #34d399;
         }
         
         .code-display .number {
-          color: #FBBF24;
+          color: #fbbf24;
+        }
+        
+        .code-display .class-name {
+          color: #f59e0b;
+          font-weight: bold;
+        }
+        
+        /* Scrollbar styling */
+        .code-display::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        
+        .code-display::-webkit-scrollbar-track {
+          background: #374151;
+          border-radius: 4px;
+        }
+        
+        .code-display::-webkit-scrollbar-thumb {
+          background: #6b7280;
+          border-radius: 4px;
+        }
+        
+        .code-display::-webkit-scrollbar-thumb:hover {
+          background: #9ca3af;
+        }
+        
+        /* Firefox scrollbar */
+        .code-display {
+          scrollbar-width: thin;
+          scrollbar-color: #6b7280 #374151;
         }
         
         .zoom-controls {
