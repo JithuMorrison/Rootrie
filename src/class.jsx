@@ -41,7 +41,7 @@ const ClassDiagramMaker = ({
   const [editingItem, setEditingItem] = useState(null);
   const [editType, setEditType] = useState(''); // 'attribute' or 'method'
   const [editIndex, setEditIndex] = useState(-1); // -1 for new item
-  const [newAttribute, setNewAttribute] = useState({ visibility: '+', name: '', type: 'String' });
+  const [newAttribute, setNewAttribute] = useState({ visibility: '+', name: '', type: 'String', defaultValue: '' });
   const [newMethod, setNewMethod] = useState({ visibility: '+', name: '', returnType: 'void' });
   const [zoom, setZoom] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -581,13 +581,43 @@ const ClassDiagramMaker = ({
         cls.attributes.forEach(attr => {
           const javaType = javaTypeMapping[attr.type] || attr.type;
           const visibility = getJavaVisibility(attr.visibility);
-          code += `    ${visibility} ${javaType} ${attr.name};\n`;
+          
+          // Use default value if provided, otherwise use type-appropriate default
+          const defaultValue = attr.defaultValue 
+            ? formatDefaultValue(attr.defaultValue, javaType)
+            : getDefaultValue(javaType);
+            
+          code += `    ${visibility} ${javaType} ${attr.name}${attr.defaultValue ? ` = ${defaultValue}` : ``};\n`;
         });
         code += '\n';
       }
       
-      // Constructor
-      code += `    public ${cls.name}() {\n    }\n\n`;
+      // Constructor - initialize attributes with default values
+      code += `    public ${cls.name}() {\n`;
+      if (cls.attributes.length > 0) {
+        cls.attributes.forEach(attr => {
+          if (attr.defaultValue) {
+            const javaType = javaTypeMapping[attr.type] || attr.type;
+            const defaultValue = formatDefaultValue(attr.defaultValue, javaType);
+            code += `        this.${attr.name} = ${defaultValue};\n`;
+          }
+        });
+      }
+      code += `    }\n\n`;
+      
+      // Parameterized constructor
+      if (cls.attributes.length > 0) {
+        const params = cls.attributes.map(attr => {
+          const javaType = javaTypeMapping[attr.type] || attr.type;
+          return `${javaType} ${attr.name}`;
+        }).join(', ');
+        
+        code += `    public ${cls.name}(${params}) {\n`;
+        cls.attributes.forEach(attr => {
+          code += `        this.${attr.name} = ${attr.name};\n`;
+        });
+        code += `    }\n\n`;
+      }
       
       // Methods
       if (cls.methods.length > 0) {
@@ -651,6 +681,34 @@ const ClassDiagramMaker = ({
     
     setGeneratedCode(code);
     setActiveTab('code');
+  };
+
+  // Add helper function to format default values
+  const formatDefaultValue = (value, javaType) => {
+    if (value.trim() === '') {
+      return getDefaultValue(javaType);
+    }
+    
+    // Handle string types
+    if (javaType === 'String' && !value.startsWith('"') && !value.endsWith('"')) {
+      return `"${value}"`;
+    }
+    
+    // Handle character types
+    if (javaType === 'char' && value.length === 1 && !value.startsWith("'")) {
+      return `'${value}'`;
+    }
+    
+    // Handle boolean values
+    if (javaType === 'boolean') {
+      const lowerValue = value.toLowerCase();
+      if (lowerValue === 'true' || lowerValue === 'false') {
+        return lowerValue;
+      }
+    }
+    
+    // Return as-is for numbers and other types
+    return value;
   };
 
   const getJavaVisibility = (umlVisibility) => {
@@ -1678,6 +1736,18 @@ const ClassDiagramMaker = ({
                           marginTop: '8px'
                         }}
                       />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>Default Value (for code generation)</label>
+                    <input
+                      type="text"
+                      value={newAttribute.defaultValue}
+                      onChange={(e) => setNewAttribute({...newAttribute, defaultValue: e.target.value})}
+                      placeholder="Optional default value (e.g., 0, null, 'default')"
+                    />
+                    <div className="help-text">
+                      This value will be used in code generation but won't be shown in the diagram
                     </div>
                   </div>
                 </>
