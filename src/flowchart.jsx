@@ -20,6 +20,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [connectionStartPoint, setConnectionStartPoint] = useState(null);
+  const [draggedAttachmentPoint, setDraggedAttachmentPoint] = useState(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -35,19 +36,21 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       edgeStroke: '#646cff',
       highlight: '#a855f7',
       secondaryText: '#64748b',
-      buttonHover: '#333'
+      buttonHover: '#333',
+      nodeText: '#ffffff'
     },
     light: {
       background: '#f5f5f5',
       panel: '#ffffff',
       border: '#ddd',
-      text: '#333',
+      text: '#1a1a1a',
       nodeFill: '#4f46e5',
       nodeStroke: '#7c3aed',
       edgeStroke: '#4f46e5',
       highlight: '#7c3aed',
       secondaryText: '#666',
-      buttonHover: '#eee'
+      buttonHover: '#eee',
+      nodeText: '#ffffff'
     },
     blue: {
       background: '#0f172a',
@@ -59,7 +62,8 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       edgeStroke: '#3b82f6',
       highlight: '#6366f1',
       secondaryText: '#94a3b8',
-      buttonHover: '#1e293b'
+      buttonHover: '#1e293b',
+      nodeText: '#ffffff'
     }
   };
 
@@ -244,71 +248,77 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     return relX >= leftBound && relX <= rightBound;
   };
 
-  const getShapeConnectionPoint = (node, targetX, targetY) => {
+  // Get all attachment points for a shape
+  const getAttachmentPoints = (node) => {
     const centerX = node.x + node.width / 2;
     const centerY = node.y + node.height / 2;
 
-    const dx = targetX - centerX;
-    const dy = targetY - centerY;
-
-    const absDX = Math.abs(dx);
-    const absDY = Math.abs(dy);
-
-    // --- Circle & Oval: only at 4 cardinal points ---
     if (node.type === 'circle' || node.type === 'oval') {
       const radiusX = node.width / 2;
       const radiusY = node.height / 2;
-
-      if (absDX > absDY) {
-        // Left or right
-        return {
-          x: dx > 0 ? centerX + radiusX : centerX - radiusX,
-          y: centerY
-        };
-      } else {
-        // Top or bottom
-        return {
-          x: centerX,
-          y: dy > 0 ? centerY + radiusY : centerY - radiusY
-        };
-      }
+      return [
+        { x: centerX, y: node.y, label: 'top' },
+        { x: node.x + node.width, y: centerY, label: 'right' },
+        { x: centerX, y: node.y + node.height, label: 'bottom' },
+        { x: node.x, y: centerY, label: 'left' }
+      ];
     }
 
-    // --- Rhombus: only top or bottom connections ---
     if (node.type === 'rhombus') {
-      return {
-        x: centerX,
-        y: dy > 0 ? node.y + node.height : node.y
-      };
+      return [
+        { x: centerX, y: node.y, label: 'top' },
+        { x: centerX, y: node.y + node.height, label: 'bottom' }
+      ];
     }
 
-    // --- Diamond (4 sides) ---
     if (node.type === 'diamond') {
-      if (absDX > absDY) {
-        return {
-          x: dx > 0 ? node.x + node.width : node.x,
-          y: centerY
-        };
-      } else {
-        return {
-          x: centerX,
-          y: dy > 0 ? node.y + node.height : node.y
-        };
+      return [
+        { x: centerX, y: node.y, label: 'top' },
+        { x: node.x + node.width, y: centerY, label: 'right' },
+        { x: centerX, y: node.y + node.height, label: 'bottom' },
+        { x: node.x, y: centerY, label: 'left' }
+      ];
+    }
+
+    // Rectangle
+    return [
+      { x: centerX, y: node.y, label: 'top' },
+      { x: node.x + node.width, y: centerY, label: 'right' },
+      { x: centerX, y: node.y + node.height, label: 'bottom' },
+      { x: node.x, y: centerY, label: 'left' }
+    ];
+  };
+
+  // Find nearest attachment point
+  const findNearestAttachmentPoint = (node, targetX, targetY) => {
+    const attachmentPoints = getAttachmentPoints(node);
+    let nearestPoint = attachmentPoints[0];
+    let minDistance = Infinity;
+
+    for (const point of attachmentPoints) {
+      const distance = Math.sqrt(
+        Math.pow(point.x - targetX, 2) + Math.pow(point.y - targetY, 2)
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestPoint = point;
       }
     }
 
-    // --- Rectangle fallback ---
-    if (absDX > absDY) {
-      return {
-        x: dx > 0 ? node.x + node.width : node.x,
-        y: centerY
-      };
-    } else {
-      return {
-        x: centerX,
-        y: dy > 0 ? node.y + node.height : node.y
-      };
+    return nearestPoint;
+  };
+
+  const getShapeConnectionPoint = (node, targetX, targetY, specifiedLabel = null) => {
+    const attachmentPoints = getAttachmentPoints(node);
+    
+    // If a specific attachment point is specified, use it
+    if (specifiedLabel) {
+      const point = attachmentPoints.find(p => p.label === specifiedLabel);
+      if (point) return point;
     }
+
+    // Otherwise find nearest
+    return findNearestAttachmentPoint(node, targetX, targetY);
   };
 
   // Check if a point intersects with any node
@@ -320,7 +330,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         const centerX = node.x + node.width / 2;
         const centerY = node.y + node.height / 2;
         const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
-        return distance <= node.width / 2 + 5; // 5px buffer
+        return distance <= node.width / 2 + 5;
       } else if (node.type === 'oval') {
         const centerX = node.x + node.width / 2;
         const centerY = node.y + node.height / 2;
@@ -338,14 +348,23 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     });
   };
 
-  // Advanced connection path calculation with obstacle avoidance
-  const calculateConnectionPath = (fromNode, toNode, controlPoints = []) => {
-    const fromCenter = { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 };
-    const toCenter = { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 };
+  // Advanced connection path calculation with automatic control points
+  const calculateConnectionPath = (fromNode, toNode, edge) => {
+    const controlPoints = edge.controlPoints || [];
     
-    // Get connection points on shape edges
-    const fromPoint = getShapeConnectionPoint(fromNode, toCenter.x, toCenter.y);
-    const toPoint = getShapeConnectionPoint(toNode, fromCenter.x, fromCenter.y);
+    // Get attachment points
+    const fromPoint = getShapeConnectionPoint(
+      fromNode, 
+      toNode.x + toNode.width / 2, 
+      toNode.y + toNode.height / 2,
+      edge.fromAttachment
+    );
+    const toPoint = getShapeConnectionPoint(
+      toNode, 
+      fromNode.x + fromNode.width / 2, 
+      fromNode.y + fromNode.height / 2,
+      edge.toAttachment
+    );
     
     // If we have custom control points, use them
     if (controlPoints && controlPoints.length > 0) {
@@ -364,8 +383,31 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       return [fromPoint, toPoint];
     }
     
-    // Create path with obstacle avoidance
+    // Create path with automatic control points at bends
     const path = createObstacleAvoidingPath(fromPoint, toPoint, fromNode, toNode);
+    
+    // Add control points at the bends automatically
+    if (path.length > 2) {
+      const autoControlPoints = path.slice(1, -1);
+      
+      // Update edge with automatic control points if not already present
+      if (!edge.controlPoints || edge.controlPoints.length === 0) {
+        setTimeout(() => {
+          const updatedEdges = edges.map(e => {
+            if (e.id === edge.id) {
+              return { ...e, controlPoints: autoControlPoints };
+            }
+            return e;
+          });
+          
+          onUpdateFlowchart({
+            ...flowchart,
+            edges: updatedEdges
+          });
+        }, 0);
+      }
+    }
+    
     return path;
   };
 
@@ -511,7 +553,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       
       if (!fromNode || !toNode) continue;
       
-      const path = calculateConnectionPath(fromNode, toNode, edge.controlPoints);
+      const path = calculateConnectionPath(fromNode, toNode, edge);
       
       for (let i = 0; i < path.length - 1; i++) {
         if (isPointOnLineSegment({ x, y }, path[i], path[i + 1])) {
@@ -537,6 +579,33 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     return null;
   };
 
+  // Check if clicking on an attachment point
+  const getClickedAttachmentPoint = (x, y) => {
+    for (const edge of edges) {
+      const fromNode = nodes.find(n => n.id === edge.from);
+      const toNode = nodes.find(n => n.id === edge.to);
+      
+      if (!fromNode || !toNode) continue;
+      
+      const path = calculateConnectionPath(fromNode, toNode, edge);
+      
+      // Check start point (from attachment)
+      const startPoint = path[0];
+      const startDist = Math.sqrt(Math.pow(x - startPoint.x, 2) + Math.pow(y - startPoint.y, 2));
+      if (startDist <= 10) {
+        return { edge, type: 'from', point: startPoint };
+      }
+      
+      // Check end point (to attachment)
+      const endPoint = path[path.length - 1];
+      const endDist = Math.sqrt(Math.pow(x - endPoint.x, 2) + Math.pow(y - endPoint.y, 2));
+      if (endDist <= 10) {
+        return { edge, type: 'to', point: endPoint };
+      }
+    }
+    return null;
+  };
+
   const handleCanvasClick = (e) => {
     if (editingNode || editingEdge) return;
     
@@ -545,7 +614,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     const x = (e.clientX - rect.left - flowchart.pan.x) / flowchart.zoom;
     const y = (e.clientY - rect.top - flowchart.pan.y) / flowchart.zoom;
     
-    // Check for control point click first
+    // Check for control point click
     const clickedControlPoint = getClickedControlPoint(x, y);
     if (clickedControlPoint) {
       setSelectedControlPoint(clickedControlPoint);
@@ -882,16 +951,51 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         ...flowchart,
         edges: updatedEdges
       });
+    } else if (draggedAttachmentPoint) {
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left - flowchart.pan.x) / flowchart.zoom;
+      const y = (e.clientY - rect.top - flowchart.pan.y) / flowchart.zoom;
+      
+      const edge = draggedAttachmentPoint.edge;
+      const type = draggedAttachmentPoint.type;
+      
+      const node = type === 'from' 
+        ? nodes.find(n => n.id === edge.from)
+        : nodes.find(n => n.id === edge.to);
+      
+      if (!node) return;
+      
+      // Find nearest attachment point
+      const nearestPoint = findNearestAttachmentPoint(node, x, y);
+      
+      // Update edge with new attachment point
+      const updatedEdges = edges.map(e => {
+        if (e.id === edge.id) {
+          if (type === 'from') {
+            return { ...e, fromAttachment: nearestPoint.label };
+          } else {
+            return { ...e, toAttachment: nearestPoint.label };
+          }
+        }
+        return e;
+      });
+      
+      onUpdateFlowchart({
+        ...flowchart,
+        edges: updatedEdges
+      });
     }
-  }, [dragState, controlPointDrag, nodes, edges, flowchart, onUpdateFlowchart]);
+  }, [dragState, controlPointDrag, draggedAttachmentPoint, nodes, edges, flowchart, onUpdateFlowchart]);
 
   const handleMouseUp = useCallback(() => {
     setDragState(null);
     setControlPointDrag(null);
+    setDraggedAttachmentPoint(null);
   }, []);
 
   useEffect(() => {
-    if (dragState || controlPointDrag) {
+    if (dragState || controlPointDrag || draggedAttachmentPoint) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
       
@@ -900,7 +1004,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [dragState, controlPointDrag, handleMouseMove, handleMouseUp]);
+  }, [dragState, controlPointDrag, draggedAttachmentPoint, handleMouseMove, handleMouseUp]);
 
   const handleArrowTool = () => {
     setSelectedTool('arrow');
@@ -951,7 +1055,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       const toNodeData = nodes.find(n => n.id === edge.to);
       
       if (fromNodeData && toNodeData) {
-        const path = calculateConnectionPath(fromNodeData, toNodeData, edge.controlPoints);
+        const path = calculateConnectionPath(fromNodeData, toNodeData, edge);
         path.forEach(point => {
           minX = Math.min(minX, point.x);
           minY = Math.min(minY, point.y);
@@ -982,7 +1086,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       const toNodeData = nodes.find(n => n.id === edge.to);
       
       if (fromNodeData && toNodeData) {
-        const path = calculateConnectionPath(fromNodeData, toNodeData, edge.controlPoints);
+        const path = calculateConnectionPath(fromNodeData, toNodeData, edge);
         const adjustedPath = path.map(p => ({ x: p.x - minX, y: p.y - minY }));
         
         ctx.strokeStyle = colors.edgeStroke;
@@ -1069,7 +1173,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
         ctx.stroke();
       }
       
-      ctx.fillStyle = colors.text;
+      ctx.fillStyle = colors.nodeText;
       ctx.font = '12px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -1097,7 +1201,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',
-      color: colors.text,
+      color: colors.nodeText,
       cursor: 'move',
       fontSize: '12px',
       fontWeight: '500',
@@ -1143,7 +1247,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             style={{
               background: 'rgba(255,255,255,0.2)',
               border: 'none',
-              color: colors.text,
+              color: colors.nodeText,
               textAlign: 'center',
               fontSize: '12px',
               fontWeight: '500',
@@ -1167,7 +1271,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
     
     if (!fromNodeData || !toNodeData) return null;
     
-    const path = calculateConnectionPath(fromNodeData, toNodeData, edge.controlPoints);
+    const path = calculateConnectionPath(fromNodeData, toNodeData, edge);
     const isSelected = selectedEdge?.id === edge.id;
     const isEditing = editingEdge === edge.id;
     
@@ -1210,6 +1314,63 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             />
           );
         })}
+        
+        {/* Render attachment points as draggable circles */}
+        {isSelected && (
+          <>
+            {/* Start attachment point */}
+            <div
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left - flowchart.pan.x) / flowchart.zoom;
+                const y = (e.clientY - rect.top - flowchart.pan.y) / flowchart.zoom;
+                setDraggedAttachmentPoint({ edge, type: 'from', point: path[0] });
+              }}
+              style={{
+                position: 'absolute',
+                left: `${path[0].x - 5}px`,
+                top: `${path[0].y - 5}px`,
+                width: '10px',
+                height: '10px',
+                backgroundColor: '#f59e0b',
+                border: '2px solid white',
+                borderRadius: '50%',
+                cursor: 'move',
+                zIndex: 20,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+              }}
+              title="Drag to change start attachment point"
+            />
+            
+            {/* End attachment point */}
+            <div
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left - flowchart.pan.x) / flowchart.zoom;
+                const y = (e.clientY - rect.top - flowchart.pan.y) / flowchart.zoom;
+                setDraggedAttachmentPoint({ edge, type: 'to', point: path[path.length - 1] });
+              }}
+              style={{
+                position: 'absolute',
+                left: `${path[path.length - 1].x - 5}px`,
+                top: `${path[path.length - 1].y - 5}px`,
+                width: '10px',
+                height: '10px',
+                backgroundColor: '#10b981',
+                border: '2px solid white',
+                borderRadius: '50%',
+                cursor: 'move',
+                zIndex: 20,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+              }}
+              title="Drag to change end attachment point"
+            />
+          </>
+        )}
         
         {/* Render control points */}
         {edge.controlPoints && edge.controlPoints.map((cp, index) => (
@@ -1433,7 +1594,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
           <button 
             onClick={() => setActiveTab('editor')} 
             style={{
-              padding: '12px 24px',
+              padding : '12px 24px',
               border: 'none',
               backgroundColor: activeTab === 'editor' ? colors.nodeFill : 'transparent',
               color: activeTab === 'editor' ? 'white' : colors.text,
@@ -1668,7 +1829,7 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             </div>
             
             {/* Instructions */}
-            {(selectedTool || connectionMode) && (
+            {(selectedTool || connectionMode || selectedEdge) && (
               <div style={{
                 padding: '16px',
                 backgroundColor: 'rgba(100, 108, 255, 0.1)',
@@ -1683,12 +1844,13 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   (fromNode ? 
                     `🎯 Click on target node to connect from "${fromNode.text}"` : 
                     '🎯 Click on a node to start connection'
-                  ) :
-                  `🎨 Click on canvas to place a ${selectedTool}`
+                  ) : selectedEdge ? 
+                    '🔶 Edge selected: Drag orange (start) or green (end) circles to change attachment points' :
+                    `🎨 Click on canvas to place a ${selectedTool}`
                 }
                 <br />
                 {isCtrlPressed && "🔧 Ctrl pressed: Click on node edge to start connection from specific point"}
-                {isShiftPressed && "➕ Shift pressed: Click on edge to add control point"}
+                {isShiftPressed && selectedEdge && "➕ Shift pressed: Click on edge to add control point"}
                 {selectedNode && "🎯 Node selected: Use arrow keys to move (Shift for larger steps)"}
               </div>
             )}
@@ -1752,8 +1914,8 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
             }}>
               💡 <strong>Pro Tips:</strong> Single click to select • Double click to edit text • 
               Drag nodes to move • Use Connect tool for arrows • 
-              Ctrl+Click on node to start connection from specific point • 
-              Shift+Click on edge to add control point •
+              Select edge and drag colored circles to change attachment points • 
+              Shift+Click on edge to add control point • 
               Press Delete to remove selected items • Use arrow keys to move selected nodes and control points (Shift for larger steps)
             </div>
           </div>
