@@ -24,7 +24,7 @@ const UseCaseDiagramMaker = ({
   const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
   const [lastCanvasMousePos, setLastCanvasMousePos] = useState({ x: 0, y: 0 });
-  const [systemBoundary, setSystemBoundary] = useState({
+  const [systemBoundary, setSystemBoundary] = useState(useCaseDiagram.systemBoundary || {
     x: 200,
     y: 100,
     width: 600,
@@ -48,8 +48,8 @@ const UseCaseDiagramMaker = ({
   const USECASE_HEIGHT = 40;
 
   useEffect(() => {
-    setJsonInput(JSON.stringify({ actors, useCases, relationships }, null, 2));
-  }, [actors, useCases, relationships]);
+    setJsonInput(JSON.stringify({ actors, useCases, relationships,systemBoundary }, null, 2));
+  }, [actors, useCases, relationships, systemBoundary]);
 
   const snapToGridIfEnabled = (value) => {
     return snapToGrid ? Math.round(value / GRID_SIZE) * GRID_SIZE : value;
@@ -271,11 +271,10 @@ const UseCaseDiagramMaker = ({
       
       if (dragItem.type === 'systemBoundary') {
         const constrained = constrainToCanvas(x, y, systemBoundary.width, systemBoundary.height);
-        setSystemBoundary(prev => ({
-          ...prev,
+        updateSystemBoundary({
           x: constrained.x,
           y: constrained.y
-        }));
+        });
       } else {
         if (dragItem.type === 'actor') {
           const updatedActors = actors.map(actor => 
@@ -329,7 +328,7 @@ const UseCaseDiagramMaker = ({
     const useCaseSpacingX = 200;
     const useCaseSpacingY = 80;
 
-    const systemBoundary = useCaseDiagram.systemBoundary || { x: 300, y: 50, width: 600, height: 400 };
+    const systemBoundary = systemBoundary || { x: 300, y: 50, width: 600, height: 400 };
 
     // Dynamically calculate how many use cases per row can fit
     const itemsPerRow = Math.max(
@@ -374,7 +373,7 @@ const UseCaseDiagramMaker = ({
   }, [dragItem, isDraggingCanvas, dragOffset, canvasOffset, zoom, actors, useCases, onUpdateUseCaseDiagram, useCaseDiagram, lastCanvasMousePos, snapToGrid]);
 
   const exportToJson = () => {
-    const data = { actors, useCases, relationships };
+    const data = { actors, useCases, relationships, systemBoundary };
     return JSON.stringify(data, null, 2);
   };
 
@@ -390,8 +389,13 @@ const UseCaseDiagramMaker = ({
           ...useCaseDiagram,
           actors: data.actors,
           useCases: data.useCases,
-          relationships: data.relationships
+          relationships: data.relationships,
+          systemBoundary: data.systemBoundary || systemBoundary
         });
+
+        if (data.systemBoundary) {
+          setSystemBoundary(data.systemBoundary);
+        }
       } else {
         alert('Invalid JSON format. Expected actors, useCases, and relationships arrays.');
       }
@@ -605,6 +609,17 @@ const UseCaseDiagramMaker = ({
     );
   };
 
+  const updateSystemBoundary = (updates) => {
+    const newSystemBoundary = { ...systemBoundary, ...updates };
+    setSystemBoundary(newSystemBoundary);
+    
+    // Also update in the main diagram data
+    onUpdateUseCaseDiagram({
+      ...useCaseDiagram,
+      systemBoundary: newSystemBoundary
+    });
+  };
+
   const handleSystemBoundaryMouseDown = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -694,11 +709,10 @@ const UseCaseDiagramMaker = ({
       useCases: updatedUseCases
     });
     
-    setSystemBoundary(prev => ({
-      ...prev,
+    updateSystemBoundary({
       x: constrainedBoundary.x,
       y: constrainedBoundary.y
-    }));
+    });
   };
 
   const centerAllElements = () => {
@@ -788,11 +802,10 @@ const UseCaseDiagramMaker = ({
       useCases: updatedUseCases
     });
     
-    setSystemBoundary(prev => ({
-      ...prev,
+    updateSystemBoundary({
       x: constrainedBoundary.x,
       y: constrainedBoundary.y
-    }));
+    });
   };
 
   useEffect(() => {
@@ -1243,7 +1256,7 @@ const UseCaseDiagramMaker = ({
                   <input
                     type="checkbox"
                     checked={systemBoundary.visible}
-                    onChange={(e) => setSystemBoundary(prev => ({...prev, visible: e.target.checked}))}
+                    onChange={(e) => updateSystemBoundary({ visible: e.target.checked })}
                     style={{width: '15px'}}
                   />
                   Show System Boundary
@@ -1261,7 +1274,7 @@ const UseCaseDiagramMaker = ({
                 <input
                   type="number"
                   value={systemBoundary.width}
-                  onChange={(e) => setSystemBoundary(prev => ({...prev, width: parseInt(e.target.value) || 600}))}
+                  onChange={(e) => updateSystemBoundary({ width: parseInt(e.target.value) || 600 })}
                 />
               </div>
               <div className="form-group">
@@ -1269,7 +1282,7 @@ const UseCaseDiagramMaker = ({
                 <input
                   type="number"
                   value={systemBoundary.height}
-                  onChange={(e) => setSystemBoundary(prev => ({...prev, height: parseInt(e.target.value) || 400}))}
+                  onChange={(e) => updateSystemBoundary({ height: parseInt(e.target.value) || 400 })}
                 />
               </div>
               <button 
