@@ -24,6 +24,20 @@ const UseCaseDiagramMaker = ({
   const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
   const [lastCanvasMousePos, setLastCanvasMousePos] = useState({ x: 0, y: 0 });
+  const [systemBoundary, setSystemBoundary] = useState({
+    x: 200,
+    y: 100,
+    width: 600,
+    height: 400,
+    visible: true
+  });
+  
+  // Increase canvas size
+  const [canvasSize, setCanvasSize] = useState({
+    width: 1600,
+    height: 1200
+  });
+  const [moveStep, setMoveStep] = useState(20);
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
@@ -200,14 +214,10 @@ const UseCaseDiagramMaker = ({
   };
 
   const constrainToCanvas = (x, y, itemWidth, itemHeight) => {
-    const container = containerRef.current;
-    if (!container) return { x, y };
-    
-    const canvasRect = container.getBoundingClientRect();
-    const minX = Math.max(0, -canvasOffset.x);
-    const minY = Math.max(0, -canvasOffset.y);
-    const maxX = Math.min(canvasRect.width / zoom - itemWidth, (canvasRect.width / zoom) - canvasOffset.x - itemWidth);
-    const maxY = Math.min(canvasRect.height / zoom - itemHeight, (canvasRect.height / zoom) - canvasOffset.y - itemHeight);
+    const minX = 0;
+    const minY = 0;
+    const maxX = Math.max(canvasSize.width - itemWidth, minX);
+    const maxY = Math.max(canvasSize.height - itemHeight, minY);
     
     return {
       x: Math.max(minX, Math.min(maxX, x)),
@@ -259,22 +269,31 @@ const UseCaseDiagramMaker = ({
       
       const constrained = constrainToCanvas(x, y, itemWidth, itemHeight);
       
-      if (dragItem.type === 'actor') {
-        const updatedActors = actors.map(actor => 
-          actor.id === dragItem.id ? { ...actor, x: constrained.x, y: constrained.y } : actor
-        );
-        onUpdateUseCaseDiagram({
-          ...useCaseDiagram,
-          actors: updatedActors
-        });
-      } else if (dragItem.type === 'useCase') {
-        const updatedUseCases = useCases.map(useCase => 
-          useCase.id === dragItem.id ? { ...useCase, x: constrained.x, y: constrained.y } : useCase
-        );
-        onUpdateUseCaseDiagram({
-          ...useCaseDiagram,
-          useCases: updatedUseCases
-        });
+      if (dragItem.type === 'systemBoundary') {
+        const constrained = constrainToCanvas(x, y, systemBoundary.width, systemBoundary.height);
+        setSystemBoundary(prev => ({
+          ...prev,
+          x: constrained.x,
+          y: constrained.y
+        }));
+      } else {
+        if (dragItem.type === 'actor') {
+          const updatedActors = actors.map(actor => 
+            actor.id === dragItem.id ? { ...actor, x: constrained.x, y: constrained.y } : actor
+          );
+          onUpdateUseCaseDiagram({
+            ...useCaseDiagram,
+            actors: updatedActors
+          });
+        } else if (dragItem.type === 'useCase') {
+          const updatedUseCases = useCases.map(useCase => 
+            useCase.id === dragItem.id ? { ...useCase, x: constrained.x, y: constrained.y } : useCase
+          );
+          onUpdateUseCaseDiagram({
+            ...useCaseDiagram,
+            useCases: updatedUseCases
+          });
+        }
       }
     }
   };
@@ -305,18 +324,33 @@ const UseCaseDiagramMaker = ({
   };
 
   const autoLayout = () => {
+    const margin = 50;
+    const actorSpacing = 120;
+    const useCaseSpacingX = 200;
+    const useCaseSpacingY = 80;
+
+    const systemBoundary = useCaseDiagram.systemBoundary || { x: 300, y: 50, width: 600, height: 400 };
+
+    // Dynamically calculate how many use cases per row can fit
+    const itemsPerRow = Math.max(
+      1,
+      Math.floor(systemBoundary.width / useCaseSpacingX) + 1
+    );
+
+    // Arrange actors vertically on the left
     const updatedActors = actors.map((actor, index) => ({
       ...actor,
-      x: 50,
-      y: 100 + index * 120
+      x: systemBoundary.x - 150, // position left of boundary
+      y: systemBoundary.y + margin + index * actorSpacing
     }));
-    
+
+    // Arrange use cases inside the boundary dynamically
     const updatedUseCases = useCases.map((useCase, index) => ({
       ...useCase,
-      x: 400,
-      y: 100 + index * 80
+      x: systemBoundary.x + margin + (index % itemsPerRow) * useCaseSpacingX,
+      y: systemBoundary.y + margin + Math.floor(index / itemsPerRow) * useCaseSpacingY
     }));
-    
+
     onUpdateUseCaseDiagram({
       ...useCaseDiagram,
       actors: updatedActors,
@@ -380,21 +414,121 @@ const UseCaseDiagramMaker = ({
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
-    const originalTransform = canvasRef.current.style.transform;
-    canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
+    // Calculate the exact bounds of all content
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    
+    // Check actors
+    actors.forEach(actor => {
+      minX = Math.min(minX, actor.x);
+      maxX = Math.max(maxX, actor.x + ACTOR_WIDTH);
+      minY = Math.min(minY, actor.y);
+      maxY = Math.max(maxY, actor.y + ACTOR_HEIGHT);
+    });
+    
+    // Check use cases
+    useCases.forEach(useCase => {
+      minX = Math.min(minX, useCase.x);
+      maxX = Math.max(maxX, useCase.x + USECASE_WIDTH);
+      minY = Math.min(minY, useCase.y);
+      maxY = Math.max(maxY, useCase.y + USECASE_HEIGHT);
+    });
+    
+    // Check system boundary if visible
+    if (systemBoundary.visible) {
+      minX = Math.min(minX, systemBoundary.x);
+      maxX = Math.max(maxX, systemBoundary.x + systemBoundary.width);
+      minY = Math.min(minY, systemBoundary.y);
+      maxY = Math.max(maxY, systemBoundary.y + systemBoundary.height);
+    }
+    
+    // Check relationship endpoints
+    relationships.forEach(relationship => {
+      let source, target;
+      let sourceIsActor = false;
+      let targetIsActor = false;
+      
+      source = actors.find(a => a.id === relationship.source);
+      if (source) {
+        sourceIsActor = true;
+      } else {
+        source = useCases.find(uc => uc.id === relationship.source);
+      }
+      
+      target = actors.find(a => a.id === relationship.target);
+      if (target) {
+        targetIsActor = true;
+      } else {
+        target = useCases.find(uc => uc.id === relationship.target);
+      }
+      
+      if (source && target) {
+        const sourceCenter = getElementCenter(source, sourceIsActor);
+        const targetCenter = getElementCenter(target, targetIsActor);
+        
+        minX = Math.min(minX, sourceCenter.x, targetCenter.x);
+        maxX = Math.max(maxX, sourceCenter.x, targetCenter.x);
+        minY = Math.min(minY, sourceCenter.y, targetCenter.y);
+        maxY = Math.max(maxY, sourceCenter.y, targetCenter.y);
+      }
+    });
+    
+    // If no content exists
+    if (minX === Infinity || (actors.length === 0 && useCases.length === 0)) {
+      alert('No diagram content to export');
+      return;
+    }
+    
+    // Add some padding around the content
+    const padding = 10;
+    const contentX = Math.max(0, minX - padding);
+    const contentY = Math.max(0, minY - padding);
+    const contentWidth = (maxX - minX) + padding * 2;
+    const contentHeight = (maxY - minY) + padding * 2;
+    
+    // Create a temporary container for capture
+    const tempContainer = document.createElement('div');
+    tempContainer.style.width = `${contentWidth}px`;
+    tempContainer.style.height = `${contentHeight}px`;
+    tempContainer.style.position = 'fixed';
+    tempContainer.style.top = '0';
+    tempContainer.style.left = '0';
+    tempContainer.style.background = '#f8fafc';
+    tempContainer.style.zIndex = '-9999';
+    tempContainer.style.overflow = 'hidden';
+    
+    // Clone the canvas content
+    const canvasClone = canvasRef.current.cloneNode(true);
+    canvasClone.style.position = 'absolute';
+    canvasClone.style.left = `-${contentX}px`;
+    canvasClone.style.top = `-${contentY}px`;
+    canvasClone.style.transform = 'none';
+    canvasClone.style.width = `${canvasSize.width}px`;
+    canvasClone.style.height = `${canvasSize.height}px`;
+    canvasClone.style.background = '#f8fafc';
+    
+    tempContainer.appendChild(canvasClone);
+    document.body.appendChild(tempContainer);
     
     import('html2canvas').then(html2canvas => {
-      html2canvas.default(canvasRef.current, {
+      html2canvas.default(tempContainer, {
         backgroundColor: '#f8fafc',
         scale: 2,
-        useCORS: true
+        useCORS: true,
+        width: contentWidth,
+        height: contentHeight,
+        scrollX: 0,
+        scrollY: 0
       }).then(canvas => {
         const link = document.createElement('a');
         link.download = `${useCaseDiagram.name || 'use-case-diagram'}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
         
-        canvasRef.current.style.transform = originalTransform;
+        // Clean up
+        document.body.removeChild(tempContainer);
+      }).catch(error => {
+        console.error('Error capturing image:', error);
+        document.body.removeChild(tempContainer);
       });
     });
   };
@@ -470,6 +604,230 @@ const UseCaseDiagramMaker = ({
       </div>
     );
   };
+
+  const handleSystemBoundaryMouseDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left - canvasOffset.x) / zoom;
+    const y = (e.clientY - rect.top - canvasOffset.y) / zoom;
+    
+    setDragItem({ 
+      id: 'system-boundary', 
+      type: 'systemBoundary',
+      x: systemBoundary.x,
+      y: systemBoundary.y
+    });
+    
+    setDragOffset({
+      x: x - systemBoundary.x,
+      y: y - systemBoundary.y
+    });
+  };
+
+  const moveAllElements = (direction) => {
+    let deltaX = 0;
+    let deltaY = 0;
+
+    switch (direction) {
+      case 'up':
+        deltaY = -moveStep;
+        break;
+      case 'down':
+        deltaY = moveStep;
+        break;
+      case 'left':
+        deltaX = -moveStep;
+        break;
+      case 'right':
+        deltaX = moveStep;
+        break;
+      default:
+        return;
+    }
+
+    // Move actors
+    const updatedActors = actors.map(actor => {
+      const newX = actor.x + deltaX;
+      const newY = actor.y + deltaY;
+      
+      // Check if new position is within canvas bounds
+      const constrained = constrainToCanvas(newX, newY, ACTOR_WIDTH, ACTOR_HEIGHT);
+      
+      return {
+        ...actor,
+        x: constrained.x,
+        y: constrained.y
+      };
+    });
+
+    // Move use cases
+    const updatedUseCases = useCases.map(useCase => {
+      const newX = useCase.x + deltaX;
+      const newY = useCase.y + deltaY;
+      
+      const constrained = constrainToCanvas(newX, newY, USECASE_WIDTH, USECASE_HEIGHT);
+      
+      return {
+        ...useCase,
+        x: constrained.x,
+        y: constrained.y
+      };
+    });
+
+    // Move system boundary
+    const newBoundaryX = systemBoundary.x + deltaX;
+    const newBoundaryY = systemBoundary.y + deltaY;
+    
+    const constrainedBoundary = constrainToCanvas(
+      newBoundaryX, 
+      newBoundaryY, 
+      systemBoundary.width, 
+      systemBoundary.height
+    );
+
+    // Update all elements
+    onUpdateUseCaseDiagram({
+      ...useCaseDiagram,
+      actors: updatedActors,
+      useCases: updatedUseCases
+    });
+    
+    setSystemBoundary(prev => ({
+      ...prev,
+      x: constrainedBoundary.x,
+      y: constrainedBoundary.y
+    }));
+  };
+
+  const centerAllElements = () => {
+    // Calculate bounds of all elements
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    
+    // Check actors
+    actors.forEach(actor => {
+      minX = Math.min(minX, actor.x);
+      maxX = Math.max(maxX, actor.x + ACTOR_WIDTH);
+      minY = Math.min(minY, actor.y);
+      maxY = Math.max(maxY, actor.y + ACTOR_HEIGHT);
+    });
+    
+    // Check use cases
+    useCases.forEach(useCase => {
+      minX = Math.min(minX, useCase.x);
+      maxX = Math.max(maxX, useCase.x + USECASE_WIDTH);
+      minY = Math.min(minY, useCase.y);
+      maxY = Math.max(maxY, useCase.y + USECASE_HEIGHT);
+    });
+    
+    // Check system boundary
+    if (systemBoundary.visible) {
+      minX = Math.min(minX, systemBoundary.x);
+      maxX = Math.max(maxX, systemBoundary.x + systemBoundary.width);
+      minY = Math.min(minY, systemBoundary.y);
+      maxY = Math.max(maxY, systemBoundary.y + systemBoundary.height);
+    }
+    
+    if (minX === Infinity) return; // No elements
+    
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+    
+    // Calculate center position
+    const centerX = (canvasSize.width - contentWidth) / 2;
+    const centerY = (canvasSize.height - contentHeight) / 2;
+    
+    // Calculate offset to move everything
+    const deltaX = centerX - minX;
+    const deltaY = centerY - minY;
+    
+    // Move actors
+    const updatedActors = actors.map(actor => {
+      const newX = actor.x + deltaX;
+      const newY = actor.y + deltaY;
+      
+      const constrained = constrainToCanvas(newX, newY, ACTOR_WIDTH, ACTOR_HEIGHT);
+      
+      return {
+        ...actor,
+        x: constrained.x,
+        y: constrained.y
+      };
+    });
+
+    // Move use cases
+    const updatedUseCases = useCases.map(useCase => {
+      const newX = useCase.x + deltaX;
+      const newY = useCase.y + deltaY;
+      
+      const constrained = constrainToCanvas(newX, newY, USECASE_WIDTH, USECASE_HEIGHT);
+      
+      return {
+        ...useCase,
+        x: constrained.x,
+        y: constrained.y
+      };
+    });
+
+    // Move system boundary
+    const newBoundaryX = systemBoundary.x + deltaX;
+    const newBoundaryY = systemBoundary.y + deltaY;
+    
+    const constrainedBoundary = constrainToCanvas(
+      newBoundaryX, 
+      newBoundaryY, 
+      systemBoundary.width, 
+      systemBoundary.height
+    );
+
+    // Update all elements
+    onUpdateUseCaseDiagram({
+      ...useCaseDiagram,
+      actors: updatedActors,
+      useCases: updatedUseCases
+    });
+    
+    setSystemBoundary(prev => ({
+      ...prev,
+      x: constrainedBoundary.x,
+      y: constrainedBoundary.y
+    }));
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Check if Ctrl key is pressed with arrow keys
+      if (e.ctrlKey) {
+        switch (e.key) {
+          case 'ArrowUp':
+            e.preventDefault();
+            moveAllElements('up');
+            break;
+          case 'ArrowDown':
+            e.preventDefault();
+            moveAllElements('down');
+            break;
+          case 'ArrowLeft':
+            e.preventDefault();
+            moveAllElements('left');
+            break;
+          case 'ArrowRight':
+            e.preventDefault();
+            moveAllElements('right');
+            break;
+          default:
+            break;
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [actors, useCases, systemBoundary, moveStep]);
 
   const renderUseCase = (useCase) => {
     return (
@@ -715,6 +1073,9 @@ const UseCaseDiagramMaker = ({
         <div className="diagram-container">
           <div className="diagram-sidebar">
             <div className="sidebar-section">
+              <div style={{fontSize: '11px', color: '#64748b', marginBottom: '8px'}}>
+                Use Ctrl + Arrow keys for moving entire diagram
+              </div>
               <h3>Actors</h3>
               <div className="form-group">
                 <input
@@ -875,6 +1236,71 @@ const UseCaseDiagramMaker = ({
                 })}
               </div>
             </div>
+            <div className="sidebar-section">
+              <h3>System Boundary</h3>
+              <div className="form-group" style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={systemBoundary.visible}
+                    onChange={(e) => setSystemBoundary(prev => ({...prev, visible: e.target.checked}))}
+                    style={{width: '15px'}}
+                  />
+                  Show System Boundary
+                </label>
+                <button 
+                  onClick={centerAllElements}
+                  className="add-btn"
+                  style={{marginTop: '8px', width: '40%', height: '32px'}}
+                >
+                  Center All
+                </button>
+              </div>
+              <div className="form-group">
+                <label>Width</label>
+                <input
+                  type="number"
+                  value={systemBoundary.width}
+                  onChange={(e) => setSystemBoundary(prev => ({...prev, width: parseInt(e.target.value) || 600}))}
+                />
+              </div>
+              <div className="form-group">
+                <label>Height</label>
+                <input
+                  type="number"
+                  value={systemBoundary.height}
+                  onChange={(e) => setSystemBoundary(prev => ({...prev, height: parseInt(e.target.value) || 400}))}
+                />
+              </div>
+              <button 
+                onClick={() => {
+                  // Auto-position use cases inside boundary
+                  const itemsPerRow = Math.max(1, Math.floor((systemBoundary.width / 200)));
+
+                  const updatedUseCases = useCases.map((useCase, index) => ({
+                    ...useCase,
+                    x: systemBoundary.x + 25 + (index % itemsPerRow) * 200,
+                    y: systemBoundary.y + 25 + Math.floor(index / itemsPerRow) * 80
+                  }));
+                  
+                  // Auto-position actors outside boundary
+                  const updatedActors = actors.map((actor, index) => ({
+                    ...actor,
+                    x: systemBoundary.x - 100,
+                    y: systemBoundary.y + 10 + index * 120
+                  }));
+                  
+                  onUpdateUseCaseDiagram({
+                    ...useCaseDiagram,
+                    useCases: updatedUseCases,
+                    actors: updatedActors
+                  });
+                }}
+                className="add-btn"
+              >
+                Auto Arrange
+              </button>
+            </div>
           </div>
           
           <div 
@@ -882,15 +1308,34 @@ const UseCaseDiagramMaker = ({
             ref={containerRef}
             onMouseDown={handleCanvasMouseDown}
           >
-            <div 
-              className="diagram-canvas" 
+            <div className="diagram-canvas" 
               ref={canvasRef}
               style={{
                 transform: `scale(${zoom}) translate(${canvasOffset.x / zoom}px, ${canvasOffset.y / zoom}px)`,
-                transformOrigin: '0 0'
+                transformOrigin: '0 0',
+                width: `${canvasSize.width}px`,
+                height: `${canvasSize.height}px`,
+                position: 'relative'
               }}
             >
               {renderGrid()}
+              
+              {/* System Boundary */}
+              {systemBoundary.visible && (
+                <div 
+                  className="system-boundary"
+                  style={{
+                    left: `${systemBoundary.x}px`,
+                    top: `${systemBoundary.y}px`,
+                    width: `${systemBoundary.width}px`,
+                    height: `${systemBoundary.height}px`
+                  }}
+                  onMouseDown={(e) => handleSystemBoundaryMouseDown(e)}
+                >
+                  <div className="system-boundary-label">System</div>
+                </div>
+              )}
+              
               {relationships.map(renderRelationship)}
               {actors.map(renderActor)}
               {useCases.map(renderUseCase)}
@@ -1211,6 +1656,40 @@ const UseCaseDiagramMaker = ({
           height: 100%;
           pointer-events: none;
           z-index: 0;
+        }
+
+        .system-boundary {
+          position: absolute;
+          border: 2px dashed #64748b;
+          background: rgba(248, 250, 252, 0.8);
+          cursor: move;
+          z-index: 1;
+        }
+
+        .system-boundary:hover {
+          border-color: #3b82f6;
+          background: rgba(59, 130, 246, 0.05);
+        }
+
+        .system-boundary-label {
+          position: absolute;
+          top: -25px;
+          left: 10px;
+          background: white;
+          padding: 2px 8px;
+          border: 1px solid #e2e8f0;
+          border-radius: 4px;
+          font-size: 12px;
+          font-weight: 500;
+          color: #64748b;
+        }
+
+        .diagram-canvas {
+          /* Update existing style */
+          min-width: ${canvasSize.width}px;
+          min-height: ${canvasSize.height}px;
+          background: #f8fafc;
+          position: relative;
         }
         
         .actor {
