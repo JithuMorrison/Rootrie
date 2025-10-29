@@ -1659,9 +1659,9 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                   flexWrap: 'wrap'
                 }}>
                   {[
-                    { tool: 'rectangle', icon: '⬜', label: 'Process' },
+                    { tool: 'rectangle', icon: '▭', label: 'Process' },
                     { tool: 'diamond', icon: '◆', label: 'Diamond' },
-                    { tool: 'rhombus', icon: '🔷', label: 'Slanted' },
+                    { tool: 'rhombus', icon: '◇', label: 'Slanted' },
                     { tool: 'circle', icon: '●', label: 'Circle' },
                     { tool: 'oval', icon: '⬭', label: 'Oval' }
                   ].map(({ tool, icon, label }) => (
@@ -1769,62 +1769,62 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
                     </button>
                   )}
                 </div>
-              </div>
               
-              <div style={{
-                display: 'flex',
-                gap: '8px',
-                justifyContent: 'center',
-                flexWrap: 'wrap'
-              }}>
-                <button 
-                  onClick={handleExportImage}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#f59e0b',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  📸 Export PNG
-                </button>
-                <button 
-                  onClick={() => navigator.clipboard.writeText(handleExportJson())}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#a855f7',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  📋 Copy JSON
-                </button>
-                <button 
-                  onClick={handleFetchCurrentJson}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#10b981',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  📥 Export JSON
-                </button>
+                <div style={{
+                  display: 'flex',
+                  gap: '8px',
+                  justifyContent: 'center',
+                  flexWrap: 'wrap'
+                }}>
+                  <button 
+                    onClick={handleExportImage}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#f59e0b',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    📸 Export PNG
+                  </button>
+                  <button 
+                    onClick={() => navigator.clipboard.writeText(handleExportJson())}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#a855f7',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    📋 Copy JSON
+                  </button>
+                  <button 
+                    onClick={handleFetchCurrentJson}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    📥 Export JSON
+                  </button>
+                </div>
               </div>
             </div>
             
