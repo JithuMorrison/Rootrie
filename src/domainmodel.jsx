@@ -223,11 +223,21 @@ const DomainModelMaker = ({
       ...domainModel,
       entities: updatedEntities
     });
+
+    const latestEditingItem = updatedEntities.find(e => e.id === editingItem.id);
+    if (latestEditingItem) {
+      setEditingItem(latestEditingItem);
+    }
     
     closeEditor();
   };
 
   const closeEditor = () => {
+    setEditType('');
+    setEditIndex(-1);
+  };
+
+  const closeFull = () => {
     setEditingItem(null);
     setEditType('');
     setEditIndex(-1);
@@ -302,6 +312,12 @@ const DomainModelMaker = ({
       ...domainModel,
       entities: updatedEntities
     });
+
+    const latestEditingItem = updatedEntities.find(e => e.id === entityId);
+    if (latestEditingItem) {
+      setEditingItem(latestEditingItem);
+    }
+    
   };
 
   const deleteRelationship = (relationshipId) => {
@@ -1120,7 +1136,7 @@ const DomainModelMaker = ({
           <div className="modal-content">
             <div className="modal-header">
               <h3>Edit Entity: {editingItem.name}</h3>
-              <button onClick={closeEditor} className="modal-close-btn">
+              <button onClick={closeFull} className="modal-close-btn">
                 <X size={20} />
               </button>
             </div>
@@ -1169,7 +1185,7 @@ const DomainModelMaker = ({
             </div>
             
             <div className="modal-footer">
-              <button onClick={closeEditor} className="modal-cancel-btn">
+              <button onClick={closeFull} className="modal-cancel-btn">
                 Close
               </button>
             </div>
