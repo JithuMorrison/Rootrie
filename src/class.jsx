@@ -420,6 +420,11 @@ const ClassDiagramMaker = ({
       ...classDiagram,
       classes: updatedClasses
     });
+
+    const latestEditingItem = updatedClasses.find(e => e.id === classId);
+    if (latestEditingItem) {
+      setEditingItem(latestEditingItem);
+    }
   };
 
   const deleteMethod = (classId, methodIndex) => {
@@ -445,6 +450,11 @@ const ClassDiagramMaker = ({
       ...classDiagram,
       classes: updatedClasses
     });
+
+    const latestEditingItem = updatedClasses.find(e => e.id === classId);
+    if (latestEditingItem) {
+      setEditingItem(latestEditingItem);
+    }
   };
 
   const deleteRelationship = (relationshipId) => {
