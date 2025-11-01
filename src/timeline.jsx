@@ -321,65 +321,95 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     }
   };
 
-  const getNodeCenter = (node) => {
-    const x = getTimelinePosition(node.timeline) * zoom + pan.x + (NODE_WIDTH / 2);
-    const y = node.y + pan.y + TIMELINE_HEIGHT + (NODE_HEIGHT / 2);
-    return { x, y };
+  const getNodeEdgePoint = (node, targetNode) => {
+    const nodeX = getTimelinePosition(node.timeline) * zoom + pan.x;
+    const nodeY = node.y + pan.y + TIMELINE_HEIGHT;
+    const nodeCenterX = nodeX + (NODE_WIDTH / 2);
+    const nodeCenterY = nodeY + (NODE_HEIGHT / 2);
+    
+    const targetX = getTimelinePosition(targetNode.timeline) * zoom + pan.x;
+    const targetY = targetNode.y + pan.y + TIMELINE_HEIGHT;
+    const targetCenterX = targetX + (NODE_WIDTH / 2);
+    const targetCenterY = targetY + (NODE_HEIGHT / 2);
+    
+    const dx = targetCenterX - nodeCenterX;
+    const dy = targetCenterY - nodeCenterY;
+    const angle = Math.atan2(dy, dx);
+    
+    // Calculate edge points based on angle
+    let edgeX, edgeY;
+    const rectAngle = Math.atan2(NODE_HEIGHT / 2, NODE_WIDTH / 2);
+    
+    if (Math.abs(angle) <= rectAngle) {
+      // Right edge
+      edgeX = nodeX + NODE_WIDTH;
+      edgeY = nodeCenterY + Math.tan(angle) * (NODE_WIDTH / 2);
+    } else if (Math.abs(angle) >= Math.PI - rectAngle) {
+      // Left edge
+      edgeX = nodeX;
+      edgeY = nodeCenterY - Math.tan(angle) * (NODE_WIDTH / 2);
+    } else if (angle > 0) {
+      // Bottom edge
+      edgeY = nodeY + NODE_HEIGHT;
+      edgeX = nodeCenterX + (NODE_HEIGHT / 2) / Math.tan(angle);
+    } else {
+      // Top edge
+      edgeY = nodeY;
+      edgeX = nodeCenterX - (NODE_HEIGHT / 2) / Math.tan(angle);
+    }
+    
+    return { x: edgeX, y: edgeY };
   };
 
   const getConnectionPath = (fromNode, toNode) => {
     if (!fromNode || !toNode) return '';
     
-    const fromCenter = getNodeCenter(fromNode);
-    const toCenter = getNodeCenter(toNode);
+    const fromPoint = getNodeEdgePoint(fromNode, toNode);
+    const toPoint = getNodeEdgePoint(toNode, fromNode);
     
-    const dx = toCenter.x - fromCenter.x;
-    const dy = toCenter.y - fromCenter.y;
+    const dx = toPoint.x - fromPoint.x;
+    const dy = toPoint.y - fromPoint.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    // Improved curvature calculation
-    const curvature = Math.min(distance * 0.3, 100);
-    const controlOffsetX = curvature;
-    const controlOffsetY = curvature * 0.6;
+    // Create smooth S-curve with horizontal control points
+    const curvature = Math.min(distance * 0.4, 150);
     
-    const controlX1 = fromCenter.x + controlOffsetX;
-    const controlY1 = fromCenter.y + (dy > 0 ? controlOffsetY : -controlOffsetY);
-    const controlX2 = toCenter.x - controlOffsetX;
-    const controlY2 = toCenter.y + (dy > 0 ? -controlOffsetY : controlOffsetY);
+    const controlX1 = fromPoint.x + curvature;
+    const controlY1 = fromPoint.y;
+    const controlX2 = toPoint.x - curvature;
+    const controlY2 = toPoint.y;
     
-    return `M ${fromCenter.x} ${fromCenter.y} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${toCenter.x} ${toCenter.y}`;
+    return `M ${fromPoint.x} ${fromPoint.y} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${toPoint.x} ${toPoint.y}`;
   };
 
   const getArrowPosition = (fromNode, toNode, offset) => {
     if (!fromNode || !toNode) return { x: 0, y: 0, angle: 0 };
     
-    const fromCenter = getNodeCenter(fromNode);
-    const toCenter = getNodeCenter(toNode);
+    const fromPoint = getNodeEdgePoint(fromNode, toNode);
+    const toPoint = getNodeEdgePoint(toNode, fromNode);
     
-    const dx = toCenter.x - fromCenter.x;
-    const dy = toCenter.y - fromCenter.y;
+    const dx = toPoint.x - fromPoint.x;
+    const dy = toPoint.y - fromPoint.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    const curvature = Math.min(distance * 0.3, 100);
-    const controlOffsetX = curvature;
-    const controlOffsetY = curvature * 0.6;
+    const curvature = Math.min(distance * 0.4, 150);
     
-    const controlX1 = fromCenter.x + controlOffsetX;
-    const controlY1 = fromCenter.y + (dy > 0 ? controlOffsetY : -controlOffsetY);
-    const controlX2 = toCenter.x - controlOffsetX;
-    const controlY2 = toCenter.y + (dy > 0 ? -controlOffsetY : controlOffsetY);
+    const controlX1 = fromPoint.x + curvature;
+    const controlY1 = fromPoint.y;
+    const controlX2 = toPoint.x - curvature;
+    const controlY2 = toPoint.y;
     
     const t = offset / 100;
     const mt = 1 - t;
     const mt2 = mt * mt;
     const t2 = t * t;
     
-    const x = mt2 * mt * fromCenter.x + 3 * mt2 * t * controlX1 + 3 * mt * t2 * controlX2 + t2 * t * toCenter.x;
-    const y = mt2 * mt * fromCenter.y + 3 * mt2 * t * controlY1 + 3 * mt * t2 * controlY2 + t2 * t * toCenter.y;
+    const x = mt2 * mt * fromPoint.x + 3 * mt2 * t * controlX1 + 3 * mt * t2 * controlX2 + t2 * t * toPoint.x;
+    const y = mt2 * mt * fromPoint.y + 3 * mt2 * t * controlY1 + 3 * mt * t2 * controlY2 + t2 * t * toPoint.y;
     
     // Calculate tangent for arrow direction
-    const dx1 = 3 * mt2 * (controlX1 - fromCenter.x) + 6 * mt * t * (controlX2 - controlX1) + 3 * t2 * (toCenter.x - controlX2);
-    const dy1 = 3 * mt2 * (controlY1 - fromCenter.y) + 6 * mt * t * (controlY2 - controlY1) + 3 * t2 * (toCenter.y - controlY2);
+    const dx1 = 3 * mt2 * (controlX1 - fromPoint.x) + 6 * mt * t * (controlX2 - controlX1) + 3 * t2 * (toPoint.x - controlX2);
+    const dy1 = 3 * mt2 * (controlY1 - fromPoint.y) + 6 * mt * t * (controlY2 - controlY1) + 3 * t2 * (toPoint.y - controlY2);
     
     const angle = Math.atan2(dy1, dx1) * 180 / Math.PI;
     
@@ -387,10 +417,10 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   };
 
   const getConnectionMidpoint = (fromNode, toNode) => {
-    const fromCenter = getNodeCenter(fromNode);
-    const toCenter = getNodeCenter(toNode);
+    const fromPoint = getNodeEdgePoint(fromNode, toNode);
+    const toPoint = getNodeEdgePoint(toNode, fromNode);
     
-    return { x: (fromCenter.x + toCenter.x) / 2, y: (fromCenter.y + toCenter.y) / 2 };
+    return { x: (fromPoint.x + toPoint.x) / 2, y: (fromPoint.y + toPoint.y) / 2 };
   };
 
   const exportProject = () => {
@@ -467,10 +497,28 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   const handleWheel = (e) => {
     e.preventDefault();
     
-    if (e.shiftKey) {
-      setPan(prev => ({ x: prev.x - e.deltaY * 0.5, y: prev.y }));
+    const rect = canvasRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    if (e.ctrlKey || e.metaKey) {
+      // Zoom with Ctrl/Cmd + wheel
+      const delta = -e.deltaY * 0.001;
+      const newZoom = Math.max(0.1, Math.min(5, zoom + delta));
+      
+      // Zoom towards mouse position
+      const zoomRatio = newZoom / zoom;
+      setPan(prev => ({
+        x: mouseX - (mouseX - prev.x) * zoomRatio,
+        y: mouseY - (mouseY - prev.y) * zoomRatio
+      }));
+      setZoom(newZoom);
     } else {
-      setPan(prev => ({ x: prev.x - e.deltaX * 0.5, y: prev.y - e.deltaY * 0.5 }));
+      // Pan canvas with wheel
+      setPan(prev => ({ 
+        x: prev.x - e.deltaX, 
+        y: prev.y - e.deltaY 
+      }));
     }
   };
 
@@ -587,151 +635,154 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         ))}
       </div>
 
-      <div
-        ref={canvasRef}
-        onClick={handleCanvasClick}
-        onWheel={handleWheel}
-        className="canvas"
-        style={{ cursor: connectionMode ? 'crosshair' : 'grab' }}
-      >
-        <svg className="connections-layer">
-          <defs>
-            <marker
-              id="arrowhead"
-              markerWidth="10"
-              markerHeight="10"
-              refX="9"
-              refY="3"
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3, 0 6" className="arrowhead" />
-            </marker>
-            <marker
-              id="arrowhead-selected"
-              markerWidth="10"
-              markerHeight="10"
-              refX="9"
-              refY="3"
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3, 0 6" className="arrowhead-selected" />
-            </marker>
-            <marker
-              id="arrowhead-central"
-              markerWidth="10"
-              markerHeight="10"
-              refX="9"
-              refY="3"
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3, 0 6" className="arrowhead-central" />
-            </marker>
-          </defs>
-          
-          {localConnections.map(conn => {
-            const fromNode = localNodes.find(n => n.id === conn.from);
-            const toNode = localNodes.find(n => n.id === conn.to);
+      <div className="canvas-wrapper">
+        <div
+          ref={canvasRef}
+          onClick={handleCanvasClick}
+          onWheel={handleWheel}
+          className="canvas"
+          style={{ cursor: connectionMode ? 'crosshair' : 'grab' }}
+        >
+          <svg className="connections-layer">
+            <defs>
+              <marker
+                id="arrowhead"
+                markerWidth="10"
+                markerHeight="10"
+                refX="9"
+                refY="3"
+                orient="auto"
+              >
+                <polygon points="0 0, 10 3, 0 6" className="arrowhead" />
+              </marker>
+              <marker
+                id="arrowhead-selected"
+                markerWidth="10"
+                markerHeight="10"
+                refX="9"
+                refY="3"
+                orient="auto"
+              >
+                <polygon points="0 0, 10 3, 0 6" className="arrowhead-selected" />
+              </marker>
+              <marker
+                id="arrowhead-central"
+                markerWidth="10"
+                markerHeight="10"
+                refX="9"
+                refY="3"
+                orient="auto"
+              >
+                <polygon points="0 0, 10 3, 0 6" className="arrowhead-central" />
+              </marker>
+            </defs>
             
-            if (!fromNode || !toNode) return null;
-            
-            const midpoint = getConnectionMidpoint(fromNode, toNode);
-            const isSelected = selectedConnection === conn.id || 
-                              (selectedNode && (selectedNode.id === fromNode.id || selectedNode.id === toNode.id));
-            const isCentral = centralNode && (fromNode.id === centralNode.id || toNode.id === centralNode.id);
-            
-            const arrowPos = getArrowPosition(fromNode, toNode, arrowAnimations[conn.id] || 0);
+            {localConnections.map(conn => {
+              const fromNode = localNodes.find(n => n.id === conn.from);
+              const toNode = localNodes.find(n => n.id === conn.to);
+              
+              if (!fromNode || !toNode) return null;
+              
+              const midpoint = getConnectionMidpoint(fromNode, toNode);
+              const isSelected = selectedConnection === conn.id || 
+                                (selectedNode && (selectedNode.id === fromNode.id || selectedNode.id === toNode.id));
+              const isCentral = centralNode && (fromNode.id === centralNode.id || toNode.id === centralNode.id);
+              
+              const arrowPos = getArrowPosition(fromNode, toNode, arrowAnimations[conn.id] || 0);
+              
+              return (
+                <g key={conn.id}>
+                  <path
+                    d={getConnectionPath(fromNode, toNode)}
+                    className={`connection-path ${isSelected ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
+                    strokeWidth={isCentral ? '3' : '2'}
+                    fill="none"
+                    markerEnd={`url(#${isSelected ? 'arrowhead-selected' : (isCentral ? 'arrowhead-central' : 'arrowhead')})`}
+                  />
+                  
+                  <polygon
+                    points="0,-4 8,0 0,4"
+                    className={`arrow ${isSelected ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
+                    transform={`translate(${arrowPos.x}, ${arrowPos.y}) rotate(${arrowPos.angle})`}
+                  />
+                  
+                  {isSelected && (
+                    <circle
+                      cx={midpoint.x}
+                      cy={midpoint.y}
+                      r={10}
+                      className="delete-connection"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteConnection(conn.id);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {localNodes.map(node => {
+            const isCentral = centralNode && centralNode.id === node.id;
+            const isSelected = selectedNode?.id === node.id;
             
             return (
-              <g key={conn.id}>
-                <path
-                  d={getConnectionPath(fromNode, toNode)}
-                  className={`connection-path ${isSelected ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
-                  strokeWidth={isCentral ? '3' : '2'}
-                  fill="none"
-                  markerEnd={`url(#${isSelected ? 'arrowhead-selected' : (isCentral ? 'arrowhead-central' : 'arrowhead')})`}
-                />
+              <div
+                key={node.id}
+                className={`node ${isSelected ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
+                style={{
+                  left: `${getTimelinePosition(node.timeline) * zoom + pan.x}px`,
+                  top: `${node.y + pan.y + TIMELINE_HEIGHT}px`,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'center'
+                }}
+                onMouseDown={(e) => handleMouseDown(e, node)}
+                onClick={(e) => handleNodeClick(e, node)}
+                onDoubleClick={() => handleNodeDoubleClick(node)}
+              >
+                {node.imageSrc && (
+                  <img src={node.imageSrc} alt={node.title} className="node-image" />
+                )}
                 
-                <polygon
-                  points="0,-4 8,0 0,4"
-                  className={`arrow ${isSelected ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
-                  transform={`translate(${arrowPos.x}, ${arrowPos.y}) rotate(${arrowPos.angle})`}
-                />
-                
+                <div className="node-content">
+                  <div className="node-title">{node.title}</div>
+                  <div className="node-time">
+                    {formatTimelineValue(node.timeline.value, node.timeline.unit)}
+                  </div>
+                </div>
+
                 {isSelected && (
-                  <circle
-                    cx={midpoint.x}
-                    cy={midpoint.y}
-                    r={10}
-                    className="delete-connection"
+                  <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      deleteConnection(conn.id);
+                      deleteNode(node.id);
                     }}
-                    style={{ cursor: 'pointer' }}
-                  />
+                    className="delete-btn"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 )}
-              </g>
+              </div>
             );
           })}
-        </svg>
 
-        {localNodes.map(node => {
-          const isCentral = centralNode && centralNode.id === node.id;
-          const isSelected = selectedNode?.id === node.id;
-          
-          return (
-            <div
-              key={node.id}
-              className={`node ${isSelected ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
-              style={{
-                left: `${getTimelinePosition(node.timeline) * zoom + pan.x}px`,
-                top: `${node.y + pan.y + TIMELINE_HEIGHT}px`,
-                transform: `scale(${zoom})`,
-                transformOrigin: 'center'
-              }}
-              onMouseDown={(e) => handleMouseDown(e, node)}
-              onClick={(e) => handleNodeClick(e, node)}
-              onDoubleClick={() => handleNodeDoubleClick(node)}
-            >
-              {node.imageSrc && (
-                <img src={node.imageSrc} alt={node.title} className="node-image" />
-              )}
-              
-              <div className="node-content">
-                <div className="node-title">{node.title}</div>
-                <div className="node-time">
-                  {formatTimelineValue(node.timeline.value, node.timeline.unit)}
-                </div>
-              </div>
-
-              {isSelected && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteNode(node.id);
-                  }}
-                  className="delete-btn"
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
+          {connectionMode && (
+            <div className="connection-hint">
+              {connectionStart ? '🎯 Select target node' : '🎯 Select source node'}
             </div>
-          );
-        })}
+          )}
 
-        {connectionMode && (
-          <div className="connection-hint">
-            {connectionStart ? '🎯 Select target node' : '🎯 Select source node'}
+          <div className="help-panel">
+            <div><strong>💡 Ctrl+Click:</strong> Create node</div>
+            <div><strong>🔗 Connect:</strong> Link nodes</div>
+            <div><strong>🖱️ Drag:</strong> Move vertically</div>
+            <div><strong>✏️ Double-click:</strong> Edit</div>
+            <div><strong>🔍 Scroll:</strong> Pan canvas</div>
+            <div><strong>⚡ Ctrl+Scroll:</strong> Zoom</div>
+            <div><strong>⬆️⬇️⬅️➡️ Arrow keys:</strong> Navigate</div>
           </div>
-        )}
-
-        <div className="help-panel">
-          <div><strong>💡 Ctrl+Click:</strong> Create node</div>
-          <div><strong>🔗 Connect:</strong> Link nodes</div>
-          <div><strong>🖱️ Drag:</strong> Move vertically</div>
-          <div><strong>✏️ Double-click:</strong> Edit</div>
-          <div><strong>🔍 Scroll:</strong> Pan canvas</div>
-          <div><strong>⬆️⬇️⬅️➡️ Arrow keys:</strong> Navigate</div>
         </div>
       </div>
 
@@ -1047,12 +1098,19 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           border: 1px solid rgba(102, 126, 234, 0.4);
         }
         
-        .canvas {
+        .canvas-wrapper {
           position: absolute;
           top: ${70 + TIMELINE_HEIGHT}px;
           left: 0;
           right: 0;
           bottom: 0;
+          overflow: hidden;
+        }
+        
+        .canvas {
+          position: relative;
+          width: 100%;
+          height: 100%;
           overflow: hidden;
           background: #f8fafc;
           transition: background 0.3s ease;
