@@ -947,7 +947,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           display: flex;
           gap: 10px;
           align-items: center;
-          margin-right: 120px;
+          margin-right: 290px;
         }
         
         .btn {
