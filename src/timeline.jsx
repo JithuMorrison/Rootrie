@@ -14,6 +14,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   const NODE_HEIGHT = 25;
 
   const canvasRef = useRef(null);
+  const scrollContainerRef = useRef(null);
   const fileInputRef = useRef(null);
   const isDraggingRef = useRef(false);
   const lastPosition = useRef({ x: 0, y: 0 });
@@ -75,14 +76,14 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     
     const range = startInYears - endInYears;
     const position = (startInYears - valueInYears) / range;
-    const canvasWidth = canvasRef.current?.offsetWidth || 800;
+    const canvasWidth = 3000; // Fixed large canvas width
     
     return position * canvasWidth;
   }, [project]);
 
   const getTimelineFromX = useCallback((x) => {
     if (!project) return 0;
-    const canvasWidth = canvasRef.current?.offsetWidth || 800;
+    const canvasWidth = 3000;
     const startInYears = convertToYears(project.timelineStart, project.timeUnit);
     const endInYears = convertToYears(project.timelineEnd, project.timeUnit);
     const range = startInYears - endInYears;
@@ -101,7 +102,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   const getVisibleTimelineMarkers = useCallback(() => {
     if (!project) return [];
     
-    const canvasWidth = canvasRef.current?.offsetWidth || 800;
+    const canvasWidth = 3000;
     const startInYears = convertToYears(project.timelineStart, project.timeUnit);
     const endInYears = convertToYears(project.timelineEnd, project.timeUnit);
     const range = startInYears - endInYears;
@@ -144,11 +145,8 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     }
     
     const markers = [];
-    const leftTime = getTimelineFromX(-pan.x / zoom);
-    const rightTime = getTimelineFromX((canvasWidth - pan.x) / zoom);
-    
-    const start = Math.ceil(Math.min(leftTime, rightTime) / stepYears) * stepYears;
-    const end = Math.floor(Math.max(leftTime, rightTime) / stepYears) * stepYears;
+    const start = Math.floor(endInYears / stepYears) * stepYears;
+    const end = Math.ceil(startInYears / stepYears) * stepYears;
     
     for (let i = start; i <= end; i += stepYears) {
       if (i >= endInYears && i <= startInYears) {
@@ -175,7 +173,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     }
     
     return markers;
-  }, [project, zoom, pan, getTimelineFromX]);
+  }, [project, zoom]);
 
   const getCentralNode = () => {
     const nodeConnectionCount = {};
@@ -202,19 +200,22 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   };
 
   const createNode = (clientX, clientY) => {
-    if (!project) return;
+    if (!project || !scrollContainerRef.current) return;
     
-    const rect = canvasRef.current.getBoundingClientRect();
-    const canvasX = clientX - rect.left;
-    const canvasY = clientY - rect.top - TIMELINE_HEIGHT;
+    const rect = scrollContainerRef.current.getBoundingClientRect();
+    const scrollLeft = scrollContainerRef.current.scrollLeft;
+    const scrollTop = scrollContainerRef.current.scrollTop;
     
-    const years = getTimelineFromX((canvasX - pan.x) / zoom);
+    const canvasX = clientX - rect.left + scrollLeft;
+    const canvasY = clientY - rect.top + scrollTop - TIMELINE_HEIGHT;
+    
+    const years = getTimelineFromX(canvasX / zoom);
     const displayValue = years / (TIME_UNITS.find(u => u.value === project.timeUnit)?.multiplier || 1);
     
     const newNode = {
       id: Date.now(),
-      x: (canvasX - pan.x) / zoom,
-      y: Math.max(20, (canvasY - pan.y)),
+      x: canvasX / zoom,
+      y: Math.max(20, canvasY / zoom),
       title: 'New Species',
       description: 'Description here...',
       imageSrc: '',
@@ -322,40 +323,35 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   };
 
   const getNodeEdgePoint = (node, targetNode) => {
-    const nodeX = getTimelinePosition(node.timeline) * zoom + pan.x;
-    const nodeY = node.y + pan.y + TIMELINE_HEIGHT;
-    const nodeCenterX = nodeX + (NODE_WIDTH / 2);
-    const nodeCenterY = nodeY + (NODE_HEIGHT / 2);
+    const nodeX = getTimelinePosition(node.timeline) * zoom;
+    const nodeY = node.y * zoom + TIMELINE_HEIGHT;
+    const nodeCenterX = nodeX + (NODE_WIDTH * zoom / 2);
+    const nodeCenterY = nodeY + (NODE_HEIGHT * zoom / 2);
     
-    const targetX = getTimelinePosition(targetNode.timeline) * zoom + pan.x;
-    const targetY = targetNode.y + pan.y + TIMELINE_HEIGHT;
-    const targetCenterX = targetX + (NODE_WIDTH / 2);
-    const targetCenterY = targetY + (NODE_HEIGHT / 2);
+    const targetX = getTimelinePosition(targetNode.timeline) * zoom;
+    const targetY = targetNode.y * zoom + TIMELINE_HEIGHT;
+    const targetCenterX = targetX + (NODE_WIDTH * zoom / 2);
+    const targetCenterY = targetY + (NODE_HEIGHT * zoom / 2);
     
     const dx = targetCenterX - nodeCenterX;
     const dy = targetCenterY - nodeCenterY;
     const angle = Math.atan2(dy, dx);
     
-    // Calculate edge points based on angle
     let edgeX, edgeY;
-    const rectAngle = Math.atan2(NODE_HEIGHT / 2, NODE_WIDTH / 2);
+    const rectAngle = Math.atan2(NODE_HEIGHT * zoom / 2, NODE_WIDTH * zoom / 2);
     
     if (Math.abs(angle) <= rectAngle) {
-      // Right edge
-      edgeX = nodeX + NODE_WIDTH;
-      edgeY = nodeCenterY + Math.tan(angle) * (NODE_WIDTH / 2);
+      edgeX = nodeX + NODE_WIDTH * zoom;
+      edgeY = nodeCenterY + Math.tan(angle) * (NODE_WIDTH * zoom / 2);
     } else if (Math.abs(angle) >= Math.PI - rectAngle) {
-      // Left edge
       edgeX = nodeX;
-      edgeY = nodeCenterY - Math.tan(angle) * (NODE_WIDTH / 2);
+      edgeY = nodeCenterY - Math.tan(angle) * (NODE_WIDTH * zoom / 2);
     } else if (angle > 0) {
-      // Bottom edge
-      edgeY = nodeY + NODE_HEIGHT;
-      edgeX = nodeCenterX + (NODE_HEIGHT / 2) / Math.tan(angle);
+      edgeY = nodeY + NODE_HEIGHT * zoom;
+      edgeX = nodeCenterX + (NODE_HEIGHT * zoom / 2) / Math.tan(angle);
     } else {
-      // Top edge
       edgeY = nodeY;
-      edgeX = nodeCenterX - (NODE_HEIGHT / 2) / Math.tan(angle);
+      edgeX = nodeCenterX - (NODE_HEIGHT * zoom / 2) / Math.tan(angle);
     }
     
     return { x: edgeX, y: edgeY };
@@ -371,7 +367,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     const dy = toPoint.y - fromPoint.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    // Create smooth S-curve with horizontal control points
     const curvature = Math.min(distance * 0.4, 150);
     
     const controlX1 = fromPoint.x + curvature;
@@ -407,7 +402,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
     const x = mt2 * mt * fromPoint.x + 3 * mt2 * t * controlX1 + 3 * mt * t2 * controlX2 + t2 * t * toPoint.x;
     const y = mt2 * mt * fromPoint.y + 3 * mt2 * t * controlY1 + 3 * mt * t2 * controlY2 + t2 * t * toPoint.y;
     
-    // Calculate tangent for arrow direction
     const dx1 = 3 * mt2 * (controlX1 - fromPoint.x) + 6 * mt * t * (controlX2 - controlX1) + 3 * t2 * (toPoint.x - controlX2);
     const dy1 = 3 * mt2 * (controlY1 - fromPoint.y) + 6 * mt * t * (controlY2 - controlY1) + 3 * t2 * (toPoint.y - controlY2);
     
@@ -495,52 +489,49 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   };
 
   const handleWheel = (e) => {
-    e.preventDefault();
-    
-    const rect = canvasRef.current.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    
     if (e.ctrlKey || e.metaKey) {
-      // Zoom with Ctrl/Cmd + wheel
+      e.preventDefault();
+      
+      const rect = scrollContainerRef.current.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
       const delta = -e.deltaY * 0.001;
       const newZoom = Math.max(0.1, Math.min(5, zoom + delta));
       
-      // Zoom towards mouse position
-      const zoomRatio = newZoom / zoom;
-      setPan(prev => ({
-        x: mouseX - (mouseX - prev.x) * zoomRatio,
-        y: mouseY - (mouseY - prev.y) * zoomRatio
-      }));
       setZoom(newZoom);
-    } else {
-      // Pan canvas with wheel
-      setPan(prev => ({ 
-        x: prev.x - e.deltaX, 
-        y: prev.y - e.deltaY 
-      }));
     }
   };
 
   const handleKeyDown = useCallback((e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    
     const speed = 20;
     
     switch(e.key) {
       case 'ArrowUp':
         e.preventDefault();
-        setPan(prev => ({ ...prev, y: prev.y + speed }));
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop -= speed;
+        }
         break;
       case 'ArrowDown':
         e.preventDefault();
-        setPan(prev => ({ ...prev, y: prev.y - speed }));
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop += speed;
+        }
         break;
       case 'ArrowLeft':
         e.preventDefault();
-        setPan(prev => ({ ...prev, x: prev.x + speed }));
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollLeft -= speed;
+        }
         break;
       case 'ArrowRight':
         e.preventDefault();
-        setPan(prev => ({ ...prev, x: prev.x - speed }));
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollLeft += speed;
+        }
         break;
     }
   }, []);
@@ -624,7 +615,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
             key={index}
             className="timeline-marker"
             style={{
-              left: `${marker.position * (canvasRef.current?.offsetWidth || 800) * zoom + pan.x}px`,
+              left: `${marker.position * 3000 * zoom}px`,
             }}
           >
             <div className="timeline-tick" />
@@ -635,15 +626,23 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         ))}
       </div>
 
-      <div className="canvas-wrapper">
+      <div 
+        ref={scrollContainerRef}
+        className="scroll-container"
+        onWheel={handleWheel}
+      >
         <div
           ref={canvasRef}
           onClick={handleCanvasClick}
-          onWheel={handleWheel}
           className="canvas"
-          style={{ cursor: connectionMode ? 'crosshair' : 'grab' }}
+          style={{ 
+            cursor: connectionMode ? 'crosshair' : 'default',
+            width: `${3000 * zoom}px`,
+            height: `${2000 * zoom}px`,
+            minHeight: '100%'
+          }}
         >
-          <svg className="connections-layer">
+          <svg className="connections-layer" style={{ width: '100%', height: '100%' }}>
             <defs>
               <marker
                 id="arrowhead"
@@ -716,7 +715,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                         e.stopPropagation();
                         deleteConnection(conn.id);
                       }}
-                      style={{ cursor: 'pointer' }}
+                      style={{ cursor: 'pointer', pointerEvents: 'all' }}
                     />
                   )}
                 </g>
@@ -733,17 +732,26 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                 key={node.id}
                 className={`node ${isSelected ? 'selected' : ''} ${isCentral ? 'central' : ''}`}
                 style={{
-                  left: `${getTimelinePosition(node.timeline) * zoom + pan.x}px`,
-                  top: `${node.y + pan.y + TIMELINE_HEIGHT}px`,
-                  transform: `scale(${zoom})`,
-                  transformOrigin: 'center'
+                  left: `${getTimelinePosition(node.timeline) * zoom}px`,
+                  top: `${node.y * zoom + TIMELINE_HEIGHT}px`,
+                  width: `${NODE_WIDTH * zoom}px`,
+                  height: `${NODE_HEIGHT * zoom}px`,
+                  fontSize: `${13 * zoom}px`
                 }}
                 onMouseDown={(e) => handleMouseDown(e, node)}
                 onClick={(e) => handleNodeClick(e, node)}
                 onDoubleClick={() => handleNodeDoubleClick(node)}
               >
                 {node.imageSrc && (
-                  <img src={node.imageSrc} alt={node.title} className="node-image" />
+                  <img 
+                    src={node.imageSrc} 
+                    alt={node.title} 
+                    className="node-image"
+                    style={{
+                      width: `${32 * zoom}px`,
+                      height: `${32 * zoom}px`
+                    }}
+                  />
                 )}
                 
                 <div className="node-content">
@@ -760,8 +768,14 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                       deleteNode(node.id);
                     }}
                     className="delete-btn"
+                    style={{
+                      width: `${24 * zoom}px`,
+                      height: `${24 * zoom}px`,
+                      top: `${-8 * zoom}px`,
+                      right: `${-8 * zoom}px`
+                    }}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={14 * zoom} />
                   </button>
                 )}
               </div>
@@ -779,7 +793,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
             <div><strong>🔗 Connect:</strong> Link nodes</div>
             <div><strong>🖱️ Drag:</strong> Move vertically</div>
             <div><strong>✏️ Double-click:</strong> Edit</div>
-            <div><strong>🔍 Scroll:</strong> Pan canvas</div>
+            <div><strong>📜 Scrollbars:</strong> Navigate canvas</div>
             <div><strong>⚡ Ctrl+Scroll:</strong> Zoom</div>
             <div><strong>⬆️⬇️⬅️➡️ Arrow keys:</strong> Navigate</div>
           </div>
@@ -1098,20 +1112,52 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           border: 1px solid rgba(102, 126, 234, 0.4);
         }
         
-        .canvas-wrapper {
+        .scroll-container {
           position: absolute;
           top: ${70 + TIMELINE_HEIGHT}px;
           left: 0;
           right: 0;
           bottom: 0;
-          overflow: hidden;
+          overflow: auto;
+          background: #f8fafc;
+        }
+        
+        .dark .scroll-container {
+          background: #0f172a;
+        }
+        
+        .scroll-container::-webkit-scrollbar {
+          width: 12px;
+          height: 12px;
+        }
+        
+        .scroll-container::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.05);
+        }
+        
+        .dark .scroll-container::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .scroll-container::-webkit-scrollbar-thumb {
+          background: rgba(102, 126, 234, 0.3);
+          border-radius: 6px;
+        }
+        
+        .scroll-container::-webkit-scrollbar-thumb:hover {
+          background: rgba(102, 126, 234, 0.5);
+        }
+        
+        .dark .scroll-container::-webkit-scrollbar-thumb {
+          background: rgba(102, 126, 234, 0.5);
+        }
+        
+        .dark .scroll-container::-webkit-scrollbar-thumb:hover {
+          background: rgba(102, 126, 234, 0.7);
         }
         
         .canvas {
           position: relative;
-          width: 100%;
-          height: 100%;
-          overflow: hidden;
           background: #f8fafc;
           transition: background 0.3s ease;
         }
@@ -1124,8 +1170,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           position: absolute;
           top: 0;
           left: 0;
-          width: 100%;
-          height: 100%;
           pointer-events: none;
           z-index: 1;
         }
@@ -1195,8 +1239,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         
         .node {
           position: absolute;
-          width: ${NODE_WIDTH}px;
-          height: ${NODE_HEIGHT}px;
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(10px);
           border-radius: 12px;
@@ -1218,7 +1260,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         }
         
         .node:hover {
-          transform: translateY(-2px) scale(${zoom});
+          transform: translateY(-2px);
           box-shadow: 0 8px 25px rgba(0,0,0,0.15);
         }
         
@@ -1252,8 +1294,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         }
         
         .node-image {
-          width: 32px;
-          height: 32px;
           object-fit: cover;
           border-radius: 50%;
           flex-shrink: 0;
@@ -1266,7 +1306,6 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         }
         
         .node-title {
-          font-size: 13px;
           font-weight: 700;
           color: #1e293b;
           margin-bottom: 2px;
@@ -1280,7 +1319,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         }
         
         .node-time {
-          font-size: 11px;
+          font-size: 0.85em;
           font-weight: 600;
           color: #64748b;
           overflow: hidden;
@@ -1294,21 +1333,16 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         
         .delete-btn {
           position: absolute;
-          top: -8px;
-          right: -8px;
           background: #ef4444;
           color: white;
           border: 2px solid white;
           border-radius: 50%;
-          width: 24px;
-          height: 24px;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 200;
           transition: all 0.2s;
-          font-size: 12px;
         }
         
         .dark .delete-btn {
@@ -1321,7 +1355,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         }
         
         .connection-hint {
-          position: absolute;
+          position: fixed;
           bottom: 30px;
           left: 50%;
           transform: translateX(-50%);
@@ -1349,7 +1383,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
         }
         
         .help-panel {
-          position: absolute;
+          position: fixed;
           bottom: 20px;
           left: 20px;
           background: rgba(255, 255, 255, 0.95);
