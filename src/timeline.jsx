@@ -32,6 +32,21 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   const [connectionStart, setConnectionStart] = useState(null);
   const [arrowAnimations, setArrowAnimations] = useState({});
   const [darkMode, setDarkMode] = useState(false);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (scrollContainerRef.current) {
+        setScrollLeft(scrollContainerRef.current.scrollLeft);
+      }
+    };
+
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
 
   useEffect(() => {
     if (project) {
@@ -615,7 +630,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
             key={index}
             className="timeline-marker"
             style={{
-              left: `${marker.position * 3000 * zoom}px`,
+              left: `${marker.position * 3000 * zoom - scrollLeft}px`,
             }}
           >
             <div className="timeline-tick" />
