@@ -1931,6 +1931,7 @@ const ClassDiagramMaker = ({
           flex-direction: column;
           flex: 1;
           background: white;
+          min-height: 0;
         }
         
         .code-actions {
