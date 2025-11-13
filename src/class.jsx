@@ -50,6 +50,7 @@ const ClassDiagramMaker = ({
   const [generatedCode, setGeneratedCode] = useState('');
   const canvasRef = useRef(null);
   const codeDisplayRef = useRef(null);
+  const [isMouseOverCanvas, setIsMouseOverCanvas] = useState(false);
 
   // Color schemes for classes (pink theme with variations)
   const colorSchemes = [
@@ -545,9 +546,13 @@ const ClassDiagramMaker = ({
   };
 
   const handleWheel = (e) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom(prev => Math.max(0.3, Math.min(3, prev * delta)));
+    // Only zoom if Ctrl key is pressed or if we're not over the canvas
+    if (e.ctrlKey || !isMouseOverCanvas) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setZoom(prev => Math.max(0.3, Math.min(3, prev * delta)));
+    }
+    // Otherwise, let the natural scrolling behavior happen
   };
 
   useEffect(() => {
@@ -562,6 +567,30 @@ const ClassDiagramMaker = ({
     }
   }, [dragItem, resizingItem, isPanning, dragOffset, resizeStart, panStart, zoom, panOffset]);
 
+  // Calculate canvas boundaries for scrolling
+  const calculateCanvasBoundaries = () => {
+    if (classes.length === 0) {
+      return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
+    }
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    
+    classes.forEach(cls => {
+      minX = Math.min(minX, cls.x);
+      maxX = Math.max(maxX, cls.x + cls.width);
+      minY = Math.min(minY, cls.y);
+      maxY = Math.max(maxY, cls.y + cls.height);
+    });
+
+    // Add padding around the content
+    const padding = 200;
+    return {
+      minX: Math.min(minX, 0) - padding,
+      maxX: Math.max(maxX, 1000) + padding,
+      minY: Math.min(minY, 0) - padding,
+      maxY: Math.max(maxY, 1000) + padding
+    };
+  };
 
   const generateJavaCode = () => {
     let code = `// Generated Java Code from Class Diagram\n// ${classDiagram.name || 'Untitled Diagram'}\n\n`;
@@ -1279,6 +1308,8 @@ const ClassDiagramMaker = ({
     }
   };
 
+  const boundaries = calculateCanvasBoundaries();
+
   return (
     <div className="class-diagram-maker">
       <div className="toolbar">
@@ -1496,7 +1527,7 @@ const ClassDiagramMaker = ({
                   <div>• Double-click class to edit</div>
                   <div>• Drag to move classes</div>
                   <div>• Drag resize handle to resize</div>
-                  <div>• Mouse wheel to zoom</div>
+                  <div>• Mouse wheel + Ctrl to zoom</div>
                   <div>• Drag empty space to pan</div>
                 </div>
               </div>
@@ -1504,24 +1535,44 @@ const ClassDiagramMaker = ({
           </div>
           
           <div 
-            className="diagram-canvas" 
-            ref={canvasRef}
-            onDoubleClick={handleCanvasDoubleClick}
-            onMouseDown={(e) => handleMouseDown(e)}
-            onWheel={handleWheel}
+            className="diagram-canvas-container"
+            style={{
+              position: 'relative',
+              flex: 1,
+              overflow: 'auto',
+              background: 'linear-gradient(45deg, #f1f5f9 25%, transparent 25%), linear-gradient(-45deg, #f1f5f9 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f1f5f9 75%), linear-gradient(-45deg, transparent 75%, #f1f5f9 75%)',
+              backgroundSize: '20px 20px',
+              backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px'
+            }}
           >
             <div 
-              className="diagram-content"
+              className="diagram-canvas" 
+              ref={canvasRef}
+              onMouseEnter={() => setIsMouseOverCanvas(true)}
+              onMouseLeave={() => setIsMouseOverCanvas(false)}
+              onDoubleClick={handleCanvasDoubleClick}
+              onMouseDown={(e) => handleMouseDown(e)}
+              onWheel={handleWheel}
               style={{
-                transform: `scale(${zoom}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-                transformOrigin: '0 0',
-                width: '5000px',
-                height: '5000px',
-                position: 'relative'
+                width: `${boundaries.maxX - boundaries.minX}px`,
+                height: `${boundaries.maxY - boundaries.minY}px`,
+                position: 'relative',
+                cursor: isPanning ? 'grabbing' : 'grab'
               }}
             >
-              {relationships.map(renderRelationship)}
-              {classes.map(renderClass)}
+              <div 
+                className="diagram-content"
+                style={{
+                  transform: `scale(${zoom}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                  transformOrigin: '0 0',
+                  width: '100%',
+                  height: '100%',
+                  position: 'relative'
+                }}
+              >
+                {relationships.map(renderRelationship)}
+                {classes.map(renderClass)}
+              </div>
             </div>
           </div>
         </div>
@@ -1556,8 +1607,8 @@ const ClassDiagramMaker = ({
       ) : (
         <div className="code-editor">
           <div className="code-actions">
-            <button onClick={generateJavaCode} className="regenerate-btn">
-              <RefreshCw size={16} /> Regenerate Code
+            <button onClick={generateJavaCode} className="generate-code-btn">
+              <Code size={16} /> Generate Java Code
             </button>
             <button onClick={copyJavaCode} className="copy-code-btn">
               <Copy size={16} /> Copy Code
@@ -1569,10 +1620,6 @@ const ClassDiagramMaker = ({
           <div 
             ref={codeDisplayRef}
             className="code-display"
-            style={{ 
-              overflow: 'auto',
-              maxHeight: 'calc(100vh - 200px)'
-            }}
           >
             <pre>
               <code 
@@ -1894,7 +1941,7 @@ const ClassDiagramMaker = ({
           background: #f8fafc;
         }
         
-        .regenerate-btn, .copy-code-btn, .download-code-btn {
+        .copy-code-btn, .download-code-btn {
           display: flex;
           align-items: center;
           gap: 8px;
@@ -1904,15 +1951,6 @@ const ClassDiagramMaker = ({
           cursor: pointer;
           border: none;
           transition: background-color 0.2s;
-        }
-        
-        .regenerate-btn {
-          background: #10B981;
-          color: white;
-        }
-        
-        .regenerate-btn:hover {
-          background: #059669;
         }
         
         .copy-code-btn {
@@ -1945,7 +1983,6 @@ const ClassDiagramMaker = ({
           line-height: 1.5;
           white-space: pre-wrap;
           word-wrap: break-word;
-          min-height: 0; /* Important for scrolling */
         }
         
         .code-display pre {
@@ -1953,14 +1990,10 @@ const ClassDiagramMaker = ({
           padding: 0;
           background: transparent;
           border: none;
-          overflow: visible;
         }
         
         .code-display code {
           font-family: inherit;
-          display: block;
-          white-space: pre-wrap;
-          word-wrap: break-word;
         }
         
         /* Syntax highlighting for Java code */
@@ -1990,32 +2023,6 @@ const ClassDiagramMaker = ({
         .code-display .class-name {
           color: #f59e0b;
           font-weight: bold;
-        }
-        
-        /* Scrollbar styling */
-        .code-display::-webkit-scrollbar {
-          width: 8px;
-          height: 8px;
-        }
-        
-        .code-display::-webkit-scrollbar-track {
-          background: #374151;
-          border-radius: 4px;
-        }
-        
-        .code-display::-webkit-scrollbar-thumb {
-          background: #6b7280;
-          border-radius: 4px;
-        }
-        
-        .code-display::-webkit-scrollbar-thumb:hover {
-          background: #9ca3af;
-        }
-        
-        /* Firefox scrollbar */
-        .code-display {
-          scrollbar-width: thin;
-          scrollbar-color: #6b7280 #374151;
         }
         
         .zoom-controls {
@@ -2289,16 +2296,14 @@ const ClassDiagramMaker = ({
           background: #fecaca;
         }
         
-        .diagram-canvas {
-          flex: 1;
-          background: linear-gradient(45deg, #f1f5f9 25%, transparent 25%), 
-                      linear-gradient(-45deg, #f1f5f9 25%, transparent 25%), 
-                      linear-gradient(45deg, transparent 75%, #f1f5f9 75%), 
-                      linear-gradient(-45deg, transparent 75%, #f1f5f9 75%);
-          background-size: 20px 20px;
-          background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        .diagram-canvas-container {
           position: relative;
-          overflow: hidden;
+          flex: 1;
+          overflow: auto;
+        }
+        
+        .diagram-canvas {
+          position: relative;
           cursor: grab;
         }
         
