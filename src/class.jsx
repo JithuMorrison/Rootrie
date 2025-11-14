@@ -715,6 +715,7 @@ const ClassDiagramMaker = ({
         }
       });
     }
+    code += "}\n\n";
   });
 
   setGeneratedCode(code);
