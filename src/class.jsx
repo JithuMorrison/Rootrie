@@ -594,159 +594,132 @@ const ClassDiagramMaker = ({
   };
 
   const generateJavaCode = () => {
-    let code = `// Generated Java Code from Class Diagram\n// ${classDiagram.name || 'Untitled Diagram'}\n\n`;
-    
-    const inheritanceMap = {};
-    relationships
-      .filter(rel => rel.type === 'inheritance' || rel.type === 'realization')
-      .forEach(rel => {
-        inheritanceMap[rel.from] = rel.to;
-      });
+  let code = `// Generated Java Code from Class Diagram\n// ${classDiagram.name || 'Untitled Diagram'}\n\n`;
 
-    classes.forEach(cls => {
-      const parentClassId = inheritanceMap[cls.id];
-      const parentClass = parentClassId ? classes.find(c => c.id === parentClassId) : null;
-      
-      // Handle interface
-      if (cls.classType === 'interface') {
-        code += `public interface ${cls.name}`;
-        if (parentClass && parentClass.classType === 'interface') {
-          code += ` extends ${parentClass.name}`;
-        }
-        code += ` {\n\n`;
-        
-        // Interface methods (all abstract, no visibility modifiers)
-        if (cls.methods && cls.methods.length > 0) {
-          cls.methods.forEach(method => {
-            const javaReturnType = javaTypeMapping[method.returnType] || method.returnType;
-            const methodName = method.name.includes('(') ? method.name : `${method.name}()`;
-            code += `    ${javaReturnType} ${methodName};\n\n`;
-          });
-        }
-        
-        code += `}\n\n`;
-        return;
-      }
-      
-      // Handle abstract class
-      if (cls.classType === 'abstract') {
-        code += `public abstract class ${cls.name}`;
-      } else {
-        code += `public class ${cls.name}`;
-      }
-      
-      if (parentClass) {
-        if (parentClass.classType === 'interface') {
-          code += ` implements ${parentClass.name}`;
-        } else {
-          code += ` extends ${parentClass.name}`;
-        }
-      }
-      code += ` {\n\n`;
-      
-      // Attributes
-      if (cls.attributes && cls.attributes.length > 0) {
-        cls.attributes.forEach(attr => {
-          const javaType = javaTypeMapping[attr.type] || attr.type;
-          const visibility = getJavaVisibility(attr.visibility);
-          const defaultValue = attr.defaultValue 
-            ? formatDefaultValue(attr.defaultValue, javaType)
-            : getDefaultValue(javaType);
-          code += `    ${visibility} ${javaType} ${attr.name}${attr.defaultValue ? ` = ${defaultValue}` : ``};\n`;
-        });
-        code += '\n';
-      }
-      
-      // Constructor
-      code += `    public ${cls.name}() {\n`;
-      if (cls.attributes && cls.attributes.length > 0) {
-        cls.attributes.forEach(attr => {
-          if (attr.defaultValue) {
-            const javaType = javaTypeMapping[attr.type] || attr.type;
-            const defaultValue = formatDefaultValue(attr.defaultValue, javaType);
-            code += `        this.${attr.name} = ${defaultValue};\n`;
-          }
-        });
-      }
-      code += `    }\n\n`;
-      
-      // Parameterized constructor
-      if (cls.attributes && cls.attributes.length > 0) {
-        const params = cls.attributes.map(attr => {
-          const javaType = javaTypeMapping[attr.type] || attr.type;
-          return `${javaType} ${attr.name}`;
-        }).join(', ');
-        
-        code += `    public ${cls.name}(${params}) {\n`;
-        cls.attributes.forEach(attr => {
-          code += `        this.${attr.name} = ${attr.name};\n`;
-        });
-        code += `    }\n\n`;
-      }
-      
-      // Methods
-      if (cls.methods && cls.methods.length > 0) {
-        cls.methods.forEach(method => {
-          const javaReturnType = javaTypeMapping[method.returnType] || method.returnType;
-          const visibility = getJavaVisibility(method.visibility);
-          const methodName = method.name.includes('(') ? method.name : `${method.name}()`;
-          
-          if (method.isAbstract) {
-            code += `    ${visibility} abstract ${javaReturnType} ${methodName};\n\n`;
-          } else {
-            code += `    ${visibility} ${javaReturnType} ${methodName} {\n`;
-            if (javaReturnType !== 'void') {
-              const defaultValue = getDefaultValue(javaReturnType);
-              code += `        return ${defaultValue};\n`;
-            }
-            code += `    }\n\n`;
-          }
-        });
-      }
-      
-      // Getters and setters for private attributes
-      const privateAttributes = cls.attributes ? cls.attributes.filter(attr => attr.visibility === '-') : [];
-      if (privateAttributes.length > 0) {
-        privateAttributes.forEach(attr => {
-          const javaType = javaTypeMapping[attr.type] || attr.type;
-          const capitalizedName = attr.name.charAt(0).toUpperCase() + attr.name.slice(1);
-          
-          code += `    public ${javaType} get${capitalizedName}() {\n`;
-          code += `        return this.${attr.name};\n`;
-          code += `    }\n\n`;
-          
-          code += `    public void set${capitalizedName}(${javaType} ${attr.name}) {\n`;
-          code += `        this.${attr.name} = ${attr.name};\n`;
-          code += `    }\n\n`;
-        });
-      }
-      
-      code += `}\n\n`;
+  // FIX: Store ALL parents instead of one
+  const inheritanceMap = {};
+  relationships
+    .filter(rel => rel.type === "inheritance" || rel.type === "realization")
+    .forEach(rel => {
+      if (!inheritanceMap[rel.from]) inheritanceMap[rel.from] = [];
+      inheritanceMap[rel.from].push(rel.to);
     });
-    
-    const associationRelationships = relationships.filter(rel => 
-      ['association', 'navigable', 'aggregation', 'composition'].includes(rel.type)
-    );
-    
-    if (associationRelationships.length > 0) {
-      code += `// Relationship Implementations\n`;
-      associationRelationships.forEach(rel => {
-        const fromClass = classes.find(c => c.id === rel.from);
-        const toClass = classes.find(c => c.id === rel.to);
-        
-        if (fromClass && toClass) {
-          code += `// ${fromClass.name} ${getRelationshipDescription(rel.type)} ${toClass.name}`;
-          if (rel.label) {
-            code += ` (${rel.label})`;
+
+  classes.forEach(cls => {
+    const parentIds = inheritanceMap[cls.id] || [];
+
+    let parentClass = null;
+    let parentInterfaces = [];
+
+    // Separate class vs interfaces
+    parentIds.forEach(pid => {
+      const p = classes.find(c => c.id === pid);
+      if (!p) return;
+
+      if (p.classType === "class" || p.classType === "abstract") {
+        parentClass = p;   // Only ONE allowed
+      } else if (p.classType === "interface") {
+        parentInterfaces.push(p.name); // MANY allowed
+      }
+    });
+
+    // ───────────────────────────────────
+    // INTERFACE
+    // ───────────────────────────────────
+    if (cls.classType === "interface") {
+      code += `public interface ${cls.name}`;
+      if (parentInterfaces.length > 0) {
+        code += ` extends ${parentInterfaces.join(", ")}`;
+      }
+      code += " {\n\n";
+
+      if (cls.methods?.length > 0) {
+        cls.methods.forEach(method => {
+          const javaReturn = javaTypeMapping[method.returnType] || method.returnType;
+          const name = method.name.includes("(") ? method.name : `${method.name}()`;
+          code += `    ${javaReturn} ${name};\n\n`;
+        });
+      }
+
+      code += "}\n\n";
+      return;
+    }
+
+    // ───────────────────────────────────
+    // CLASS / ABSTRACT CLASS
+    // ───────────────────────────────────
+    if (cls.classType === "abstract") {
+      code += `public abstract class ${cls.name}`;
+    } else {
+      code += `public class ${cls.name}`;
+    }
+
+    if (parentClass) code += ` extends ${parentClass.name}`;
+    if (parentInterfaces.length > 0) code += ` implements ${parentInterfaces.join(", ")}`;
+
+    code += " {\n\n";
+
+    // 🎯 Attributes
+    if (cls.attributes?.length > 0) {
+      cls.attributes.forEach(attr => {
+        const javaType = javaTypeMapping[attr.type] || attr.type;
+        const vis = getJavaVisibility(attr.visibility);
+        const defaultVal = attr.defaultValue
+          ? formatDefaultValue(attr.defaultValue, javaType)
+          : getDefaultValue(javaType);
+
+        code += `    ${vis} ${javaType} ${attr.name}${attr.defaultValue ? ` = ${defaultVal}` : ""};\n`;
+      });
+      code += "\n";
+    }
+
+    // 🎯 Default Constructor
+    code += `    public ${cls.name}() {\n`;
+    (cls.attributes || []).forEach(attr => {
+      if (attr.defaultValue) {
+        const javaType = javaTypeMapping[attr.type] || attr.type;
+        const def = formatDefaultValue(attr.defaultValue, javaType);
+        code += `        this.${attr.name} = ${def};\n`;
+      }
+    });
+    code += `    }\n\n`;
+
+    // 🎯 Parameterized Constructor
+    if (cls.attributes?.length > 0) {
+      const params = cls.attributes
+        .map(attr => `${javaTypeMapping[attr.type] || attr.type} ${attr.name}`)
+        .join(", ");
+
+      code += `    public ${cls.name}(${params}) {\n`;
+      cls.attributes.forEach(attr => {
+        code += `        this.${attr.name} = ${attr.name};\n`;
+      });
+      code += "    }\n\n";
+    }
+
+    // 🎯 Methods
+    if (cls.methods?.length > 0) {
+      cls.methods.forEach(method => {
+        const javaReturn = javaTypeMapping[method.returnType] || method.returnType;
+        const vis = getJavaVisibility(method.visibility);
+        const name = method.name.includes("(") ? method.name : `${method.name}()`;
+
+        if (method.isAbstract) {
+          code += `    ${vis} abstract ${javaReturn} ${name};\n\n`;
+        } else {
+          code += `    ${vis} ${javaReturn} ${name} {\n`;
+          if (javaReturn !== "void") {
+            code += `        return ${getDefaultValue(javaReturn)};\n`;
           }
-          code += `\n`;
+          code += "    }\n\n";
         }
       });
     }
-    
-    setGeneratedCode(code);
-    setActiveTab('code');
-  };
+  });
+
+  setGeneratedCode(code);
+  setActiveTab("code");
+};
 
   const formatDefaultValue = (value, javaType) => {
     if (value.trim() === '') {
