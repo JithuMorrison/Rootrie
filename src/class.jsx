@@ -842,10 +842,20 @@ const ClassDiagramMaker = ({
       '<span class="number">$1$2</span>'
     );
     
-    highlighted = highlighted.replace(
-      /\b(class|extends|implements|interface)\s+(\w+)\b/g,
-      '$1 <span class="class-name">$2</span>'
-    );
+    highlighted = highlighted
+      .replace(/\b(class|extends|interface)\s+(\w+)\b/g,
+              '$1 <span class="class-name">$2</span>')
+      .replace(/\bimplements\s+([\w\s,]+)\b/g, match => {
+        // Split interfaces by comma and highlight each
+        const parts = match
+          .replace(/^implements\s+/, '')
+          .split(',')
+          .map(s => s.trim())
+          .map(name => `<span class="class-name">${name}</span>`)
+          .join(', ');
+
+        return `implements ${parts}`;
+      });
     
     types.forEach(type => {
       const regex = new RegExp(`\\b${type}\\b(?!([^<]*>)|([^<]*<\\/span>))`, 'g');
