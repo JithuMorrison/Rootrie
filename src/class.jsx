@@ -32,6 +32,7 @@ const ClassDiagramMaker = ({
   const [fromClass, setFromClass] = useState('');
   const [toClass, setToClass] = useState('');
   const [relationshipType, setRelationshipType] = useState('association');
+  const [classType, setClassType] = useState('class'); // 'class', 'abstract', 'interface'
   const [activeTab, setActiveTab] = useState('editor');
   const [jsonInput, setJsonInput] = useState('');
   const [dragItem, setDragItem] = useState(null);
@@ -42,7 +43,7 @@ const ClassDiagramMaker = ({
   const [editType, setEditType] = useState(''); // 'attribute' or 'method'
   const [editIndex, setEditIndex] = useState(-1); // -1 for new item
   const [newAttribute, setNewAttribute] = useState({ visibility: '+', name: '', type: 'String', defaultValue: '' });
-  const [newMethod, setNewMethod] = useState({ visibility: '+', name: '', returnType: 'void' });
+  const [newMethod, setNewMethod] = useState({ visibility: '+', name: '', returnType: 'void', isAbstract: false });
   const [zoom, setZoom] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -135,12 +136,13 @@ const ClassDiagramMaker = ({
     const minWidth = 180;
     const padding = 32; // 16px on each side
     
-    // Calculate width based on class name
-    const classNameWidth = calculateTextWidth(cls.name, '16px', "'Inter', sans-serif") + padding;
+    // Calculate width based on class name (consider stereotype for interfaces)
+    const nameToMeasure = cls.classType === 'interface' ? `<<interface>> ${cls.name}` : cls.name;
+    const classNameWidth = calculateTextWidth(nameToMeasure, '16px', "'Inter', sans-serif") + padding;
     
     // Calculate width based on attributes
     let maxAttributeWidth = 0;
-    cls.attributes.forEach(attr => {
+    (cls.attributes || []).forEach(attr => {
       const attrText = `${attr.visibility} ${attr.name} : ${attr.type}`;
       const width = calculateTextWidth(attrText) + padding;
       if (width > maxAttributeWidth) maxAttributeWidth = width;
@@ -148,7 +150,7 @@ const ClassDiagramMaker = ({
     
     // Calculate width based on methods
     let maxMethodWidth = 0;
-    cls.methods.forEach(method => {
+    (cls.methods || []).forEach(method => {
       const methodText = `${method.visibility} ${method.name} : ${method.returnType}`;
       const width = calculateTextWidth(methodText) + padding;
       if (width > maxMethodWidth) maxMethodWidth = width;
@@ -163,29 +165,29 @@ const ClassDiagramMaker = ({
     );
     
     // Calculate height based on content with tighter spacing
-    const headerHeight = 40; // Header height
-    const itemHeight = 26; // Reduced from 22 to 18
-    const sectionPadding = 6; // Reduced from 4 to 2 - padding around sections
-    const dividerHeight = 1; // Height of divider line between sections
+    const headerHeight = cls.classType === 'interface' ? 50 : 40; // Extra height for stereotype
+    const itemHeight = 26;
+    const sectionPadding = 6;
+    const dividerHeight = 1;
     
     // Calculate attributes height
-    const attributesHeight = cls.attributes.length > 0 
-      ? (cls.attributes.length * itemHeight) + sectionPadding * 2 // Top and bottom padding
+    const attributesHeight = (cls.attributes || []).length > 0 
+      ? ((cls.attributes || []).length * itemHeight) + sectionPadding * 2
       : 0;
       
     // Calculate methods height
-    const methodsHeight = cls.methods.length > 0
-      ? (cls.methods.length * itemHeight) + sectionPadding * 2 // Top and bottom padding
+    const methodsHeight = (cls.methods || []).length > 0
+      ? ((cls.methods || []).length * itemHeight) + sectionPadding * 2
       : 0;
     
     // Add divider height only if both sections exist
-    const dividerSpace = (cls.attributes.length > 0 && cls.methods.length > 0) ? dividerHeight : 0;
+    const dividerSpace = ((cls.attributes || []).length > 0 && (cls.methods || []).length > 0) ? dividerHeight : 0;
     
     const calculatedHeight = headerHeight + attributesHeight + methodsHeight + dividerSpace;
     
     return {
-      width: Math.min(calculatedWidth, 400), // Cap at 400px to prevent too wide
-      height: Math.max(calculatedHeight, 60) // Reduced minimum height from 80 to 60
+      width: Math.min(calculatedWidth, 400),
+      height: Math.max(calculatedHeight, 60)
     };
   };
 
@@ -193,24 +195,25 @@ const ClassDiagramMaker = ({
     if (!newClassName.trim()) return;
     
     const colorScheme = getRandomColorScheme();
-    const dimensions = calculateClassDimensions({
+    const newClass = {
+      id: Date.now(),
       name: newClassName,
+      classType: classType,
       attributes: [],
-      methods: []
-    });
+      methods: [],
+      x: 50 + Math.random() * 200,
+      y: 50 + Math.random() * 200,
+      colorScheme
+    };
+    
+    const dimensions = calculateClassDimensions(newClass);
     
     const updatedClasses = [
       ...classes,
       {
-        id: Date.now(),
-        name: newClassName,
-        attributes: [],
-        methods: [],
-        x: 50 + Math.random() * 200,
-        y: 50 + Math.random() * 200,
+        ...newClass,
         width: dimensions.width,
-        height: dimensions.height,
-        colorScheme
+        height: dimensions.height
       }
     ];
     
@@ -220,6 +223,7 @@ const ClassDiagramMaker = ({
     });
     
     setNewClassName('');
+    setClassType('class');
   };
 
   const openClassEditor = (classId) => {
@@ -253,7 +257,12 @@ const ClassDiagramMaker = ({
     if (index >= 0) {
       setNewMethod({ ...cls.methods[index] });
     } else {
-      setNewMethod({ visibility: '+', name: '', returnType: 'void' });
+      setNewMethod({ 
+        visibility: '+', 
+        name: '', 
+        returnType: 'void',
+        isAbstract: cls.classType === 'abstract' || cls.classType === 'interface'
+      });
     }
   };
 
@@ -269,7 +278,6 @@ const ClassDiagramMaker = ({
           newAttributes.push({ ...newAttribute });
         }
         
-        // Recalculate dimensions after adding attribute
         const updatedClass = {
           ...cls,
           attributes: newAttributes
@@ -301,7 +309,6 @@ const ClassDiagramMaker = ({
   const saveMethod = () => {
     if (!newMethod.name.trim()) return;
     
-    // Ensure method name ends with ()
     let methodName = newMethod.name;
     if (!methodName.includes('(')) {
       methodName += '()';
@@ -316,7 +323,6 @@ const ClassDiagramMaker = ({
           newMethods.push({ ...newMethod, name: methodName });
         }
         
-        // Recalculate dimensions after adding method
         const updatedClass = {
           ...cls,
           methods: newMethods
@@ -483,7 +489,6 @@ const ClassDiagramMaker = ({
         });
       }
     } else {
-      // Start panning
       setIsPanning(true);
       setPanStart({
         x: e.clientX - panOffset.x,
@@ -546,13 +551,11 @@ const ClassDiagramMaker = ({
   };
 
   const handleWheel = (e) => {
-    // Only zoom if Ctrl key is pressed or if we're not over the canvas
     if (e.ctrlKey || !isMouseOverCanvas) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       setZoom(prev => Math.max(0.3, Math.min(3, prev * delta)));
     }
-    // Otherwise, let the natural scrolling behavior happen
   };
 
   useEffect(() => {
@@ -567,7 +570,6 @@ const ClassDiagramMaker = ({
     }
   }, [dragItem, resizingItem, isPanning, dragOffset, resizeStart, panStart, zoom, panOffset]);
 
-  // Calculate canvas boundaries for scrolling
   const calculateCanvasBoundaries = () => {
     if (classes.length === 0) {
       return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
@@ -582,7 +584,6 @@ const ClassDiagramMaker = ({
       maxY = Math.max(maxY, cls.y + cls.height);
     });
 
-    // Add padding around the content
     const padding = 200;
     return {
       minX: Math.min(minX, 0) - padding,
@@ -595,45 +596,70 @@ const ClassDiagramMaker = ({
   const generateJavaCode = () => {
     let code = `// Generated Java Code from Class Diagram\n// ${classDiagram.name || 'Untitled Diagram'}\n\n`;
     
-    // Process inheritance relationships first to build hierarchy
     const inheritanceMap = {};
     relationships
       .filter(rel => rel.type === 'inheritance' || rel.type === 'realization')
       .forEach(rel => {
-        inheritanceMap[rel.to] = rel.from; // to extends from
+        inheritanceMap[rel.from] = rel.to;
       });
 
-    // Generate each class
     classes.forEach(cls => {
-      const parentClass = inheritanceMap[cls.id];
-      const parentClassName = parentClass ? classes.find(c => c.id === parentClass)?.name : null;
+      const parentClassId = inheritanceMap[cls.id];
+      const parentClass = parentClassId ? classes.find(c => c.id === parentClassId) : null;
       
-      // Class declaration
-      code += `public class ${cls.name}`;
-      if (parentClassName) {
-        code += ` extends ${parentClassName}`;
+      // Handle interface
+      if (cls.classType === 'interface') {
+        code += `public interface ${cls.name}`;
+        if (parentClass && parentClass.classType === 'interface') {
+          code += ` extends ${parentClass.name}`;
+        }
+        code += ` {\n\n`;
+        
+        // Interface methods (all abstract, no visibility modifiers)
+        if (cls.methods && cls.methods.length > 0) {
+          cls.methods.forEach(method => {
+            const javaReturnType = javaTypeMapping[method.returnType] || method.returnType;
+            const methodName = method.name.includes('(') ? method.name : `${method.name}()`;
+            code += `    ${javaReturnType} ${methodName};\n\n`;
+          });
+        }
+        
+        code += `}\n\n`;
+        return;
+      }
+      
+      // Handle abstract class
+      if (cls.classType === 'abstract') {
+        code += `public abstract class ${cls.name}`;
+      } else {
+        code += `public class ${cls.name}`;
+      }
+      
+      if (parentClass) {
+        if (parentClass.classType === 'interface') {
+          code += ` implements ${parentClass.name}`;
+        } else {
+          code += ` extends ${parentClass.name}`;
+        }
       }
       code += ` {\n\n`;
       
       // Attributes
-      if (cls.attributes.length > 0) {
+      if (cls.attributes && cls.attributes.length > 0) {
         cls.attributes.forEach(attr => {
           const javaType = javaTypeMapping[attr.type] || attr.type;
           const visibility = getJavaVisibility(attr.visibility);
-          
-          // Use default value if provided, otherwise use type-appropriate default
           const defaultValue = attr.defaultValue 
             ? formatDefaultValue(attr.defaultValue, javaType)
             : getDefaultValue(javaType);
-            
           code += `    ${visibility} ${javaType} ${attr.name}${attr.defaultValue ? ` = ${defaultValue}` : ``};\n`;
         });
         code += '\n';
       }
       
-      // Constructor - initialize attributes with default values
+      // Constructor
       code += `    public ${cls.name}() {\n`;
-      if (cls.attributes.length > 0) {
+      if (cls.attributes && cls.attributes.length > 0) {
         cls.attributes.forEach(attr => {
           if (attr.defaultValue) {
             const javaType = javaTypeMapping[attr.type] || attr.type;
@@ -645,7 +671,7 @@ const ClassDiagramMaker = ({
       code += `    }\n\n`;
       
       // Parameterized constructor
-      if (cls.attributes.length > 0) {
+      if (cls.attributes && cls.attributes.length > 0) {
         const params = cls.attributes.map(attr => {
           const javaType = javaTypeMapping[attr.type] || attr.type;
           return `${javaType} ${attr.name}`;
@@ -659,35 +685,36 @@ const ClassDiagramMaker = ({
       }
       
       // Methods
-      if (cls.methods.length > 0) {
+      if (cls.methods && cls.methods.length > 0) {
         cls.methods.forEach(method => {
           const javaReturnType = javaTypeMapping[method.returnType] || method.returnType;
           const visibility = getJavaVisibility(method.visibility);
           const methodName = method.name.includes('(') ? method.name : `${method.name}()`;
           
-          code += `    ${visibility} ${javaReturnType} ${methodName} {\n`;
-          if (javaReturnType !== 'void') {
-            // Return default value based on type
-            const defaultValue = getDefaultValue(javaReturnType);
-            code += `        return ${defaultValue};\n`;
+          if (method.isAbstract) {
+            code += `    ${visibility} abstract ${javaReturnType} ${methodName};\n\n`;
+          } else {
+            code += `    ${visibility} ${javaReturnType} ${methodName} {\n`;
+            if (javaReturnType !== 'void') {
+              const defaultValue = getDefaultValue(javaReturnType);
+              code += `        return ${defaultValue};\n`;
+            }
+            code += `    }\n\n`;
           }
-          code += `    }\n\n`;
         });
       }
       
       // Getters and setters for private attributes
-      const privateAttributes = cls.attributes.filter(attr => attr.visibility === '-');
+      const privateAttributes = cls.attributes ? cls.attributes.filter(attr => attr.visibility === '-') : [];
       if (privateAttributes.length > 0) {
         privateAttributes.forEach(attr => {
           const javaType = javaTypeMapping[attr.type] || attr.type;
           const capitalizedName = attr.name.charAt(0).toUpperCase() + attr.name.slice(1);
           
-          // Getter
           code += `    public ${javaType} get${capitalizedName}() {\n`;
           code += `        return this.${attr.name};\n`;
           code += `    }\n\n`;
           
-          // Setter
           code += `    public void set${capitalizedName}(${javaType} ${attr.name}) {\n`;
           code += `        this.${attr.name} = ${attr.name};\n`;
           code += `    }\n\n`;
@@ -697,7 +724,6 @@ const ClassDiagramMaker = ({
       code += `}\n\n`;
     });
     
-    // Generate relationship-based code (associations, dependencies, etc.)
     const associationRelationships = relationships.filter(rel => 
       ['association', 'navigable', 'aggregation', 'composition'].includes(rel.type)
     );
@@ -722,23 +748,19 @@ const ClassDiagramMaker = ({
     setActiveTab('code');
   };
 
-  // Add helper function to format default values
   const formatDefaultValue = (value, javaType) => {
     if (value.trim() === '') {
       return getDefaultValue(javaType);
     }
     
-    // Handle string types
     if (javaType === 'String' && !value.startsWith('"') && !value.endsWith('"')) {
       return `"${value}"`;
     }
     
-    // Handle character types
     if (javaType === 'char' && value.length === 1 && !value.startsWith("'")) {
       return `'${value}'`;
     }
     
-    // Handle boolean values
     if (javaType === 'boolean') {
       const lowerValue = value.toLowerCase();
       if (lowerValue === 'true' || lowerValue === 'false') {
@@ -746,7 +768,6 @@ const ClassDiagramMaker = ({
       }
     }
     
-    // Return as-is for numbers and other types
     return value;
   };
 
@@ -755,7 +776,7 @@ const ClassDiagramMaker = ({
       case '+': return 'public';
       case '-': return 'private';
       case '#': return 'protected';
-      case '~': return ''; // package-private (default)
+      case '~': return '';
       default: return 'public';
     }
   };
@@ -809,7 +830,6 @@ const ClassDiagramMaker = ({
   const highlightJavaCode = (code) => {
     if (!code) return '// Click "Generate Java Code" to generate code from your diagram';
     
-    // Java keywords
     const keywords = [
       'abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char', 'class', 'const',
       'continue', 'default', 'do', 'double', 'else', 'enum', 'extends', 'final', 'finally', 'float',
@@ -818,10 +838,8 @@ const ClassDiagramMaker = ({
       'super', 'switch', 'synchronized', 'this', 'throw', 'throws', 'transient', 'try', 'void', 'volatile', 'while'
     ];
     
-    // Java types
     const types = ['String', 'int', 'float', 'double', 'boolean', 'void', 'char', 'long', 'short', 'byte'];
     
-    // Escape HTML to prevent XSS
     const escapeHtml = (text) => {
       const div = document.createElement('div');
       div.textContent = text;
@@ -830,40 +848,31 @@ const ClassDiagramMaker = ({
 
     let highlighted = escapeHtml(code);
     
-    // Process in the right order to avoid conflicts
-    
-    // First: Highlight strings (needs to be first to avoid conflicts)
     highlighted = highlighted.replace(
       /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g,
       '<span class="string">$1</span>'
     );
     
-    // Second: Highlight comments (after strings to avoid conflicts with strings containing //)
     highlighted = highlighted.replace(
       /(\/\/[^\n]*$)/gm,
       '<span class="comment">$1</span>'
     );
     
-    // Third: Highlight multi-line comments
     highlighted = highlighted.replace(
       /(\/\*[\s\S]*?\*\/)/g,
       '<span class="comment">$1</span>'
     );
     
-    // Fourth: Highlight numbers (but not inside strings or comments)
-    // This regex avoids matching numbers that are part of other words
     highlighted = highlighted.replace(
       /(\b\d+\.?\d*|\.\d+)([fFlL]?)\b(?!([^<]*>)|([^<]*<\/span>))/g,
       '<span class="number">$1$2</span>'
     );
     
-    // Fifth: Highlight class names (before keywords to avoid conflicts)
     highlighted = highlighted.replace(
-      /\b(class|extends|implements)\s+(\w+)\b/g,
+      /\b(class|extends|implements|interface)\s+(\w+)\b/g,
       '$1 <span class="class-name">$2</span>'
     );
     
-    // Sixth: Highlight types (before general keywords)
     types.forEach(type => {
       const regex = new RegExp(`\\b${type}\\b(?!([^<]*>)|([^<]*<\\/span>))`, 'g');
       highlighted = highlighted.replace(
@@ -872,7 +881,6 @@ const ClassDiagramMaker = ({
       );
     });
     
-    // Seventh: Highlight keywords (last to avoid overriding other highlights)
     keywords.forEach(keyword => {
       const regex = new RegExp(`\\b${keyword}\\b(?!([^<]*>)|([^<]*<\\/span>))`, 'g');
       highlighted = highlighted.replace(
@@ -900,7 +908,7 @@ const ClassDiagramMaker = ({
       if (Array.isArray(data.classes) && Array.isArray(data.relationships)) {
         const classo = data.classes.map(cls => ({
           ...cls,
-          ...calculateClassDimensions(cls) // merges width/height into cls
+          ...calculateClassDimensions(cls)
         }));
 
         onUpdateClassDiagram({
@@ -949,7 +957,6 @@ const ClassDiagramMaker = ({
     });
   };
 
-  // Get nearest edge connection point
   const getNearestEdgePoint = (fromRect, toRect) => {
     const fromCenter = {
       x: fromRect.x + fromRect.width / 2,
@@ -960,11 +967,9 @@ const ClassDiagramMaker = ({
       y: toRect.y + toRect.height / 2
     };
 
-    // Calculate which edge of 'from' rectangle is closest to 'to' rectangle
     const dx = toCenter.x - fromCenter.x;
     const dy = toCenter.y - fromCenter.y;
     
-    // Determine the closest edge
     const fromEdge = {
       x: fromCenter.x + (dx > 0 ? fromRect.width / 2 : -fromRect.width / 2),
       y: fromCenter.y + (Math.abs(dx) * fromRect.height / fromRect.width > Math.abs(dy) ? 
@@ -979,7 +984,6 @@ const ClassDiagramMaker = ({
           (dy < 0 ? toRect.height / 2 : -toRect.height / 2) * (toRect.width / toRect.height))
     };
 
-    // Adjust to actual edge boundaries
     const fromPoint = {
       x: Math.max(fromRect.x, Math.min(fromRect.x + fromRect.width, 
           Math.abs(dx) > Math.abs(dy) * (fromRect.width / fromRect.height) ? 
@@ -1001,31 +1005,27 @@ const ClassDiagramMaker = ({
     return { fromPoint, toPoint };
   };
 
-  // Create orthogonal routing path for distant classes
   const createOrthogonalPath = (from, to) => {
     const distance = Math.sqrt(Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2));
     
     if (distance < 300) {
-      // Direct line for close classes
       return `M${from.x},${from.y} L${to.x},${to.y}`;
     }
     
-    // Orthogonal routing for distant classes
     const midX = from.x + (to.x - from.x) * 0.5;
     const midY = from.y + (to.y - from.y) * 0.5;
     
-    // Create 90-degree turns
     if (Math.abs(to.x - from.x) > Math.abs(to.y - from.y)) {
-      // Horizontal preference
       return `M${from.x},${from.y} L${midX},${from.y} L${midX},${to.y} L${to.x},${to.y}`;
     } else {
-      // Vertical preference
       return `M${from.x},${from.y} L${from.x},${midY} L${to.x},${midY} L${to.x},${to.y}`;
     }
   };
 
   const renderClass = (cls) => {
     const colorScheme = cls.colorScheme || colorSchemes[0];
+    const isInterface = cls.classType === 'interface';
+    const isAbstract = cls.classType === 'abstract';
     
     return (
       <div 
@@ -1050,13 +1050,16 @@ const ClassDiagramMaker = ({
             color: 'white'
           }}
         >
-          <div className="class-name">
+          {isInterface && (
+            <div className="stereotype">&lt;&lt;interface&gt;&gt;</div>
+          )}
+          <div className={`class-name ${isAbstract ? 'italic' : ''}`}>
             {cls.name}
           </div>
         </div>
         
         <div className="class-content">
-          {cls.attributes.length > 0 && (
+          {cls.attributes && cls.attributes.length > 0 && (
             <div className="attributes-section">
               {cls.attributes.map((attr, i) => (
                 <div 
@@ -1084,11 +1087,11 @@ const ClassDiagramMaker = ({
             </div>
           )}
           
-          {cls.attributes.length > 0 && cls.methods.length > 0 && (
+          {cls.attributes && cls.methods && cls.attributes.length > 0 && cls.methods.length > 0 && (
             <div className="section-divider" style={{ backgroundColor: colorScheme.border }} />
           )}
           
-          {cls.methods.length > 0 && (
+          {cls.methods && cls.methods.length > 0 && (
             <div className="methods-section">
               {cls.methods.map((method, i) => (
                 <div 
@@ -1099,7 +1102,7 @@ const ClassDiagramMaker = ({
                     openMethodEditor(cls.id, i);
                   }}
                 >
-                  <span className="item-text">
+                  <span className={`item-text ${method.isAbstract ? 'italic' : ''}`}>
                     {method.visibility} {method.name} : {method.returnType}
                   </span>
                   <button 
@@ -1148,7 +1151,6 @@ const ClassDiagramMaker = ({
     const { fromPoint, toPoint } = getNearestEdgePoint(fromRect, toRect);
     const path = createOrthogonalPath(fromPoint, toPoint);
 
-    // Calculate label position (midpoint of the path)
     const labelX = (fromPoint.x + toPoint.x) / 2;
     const labelY = (fromPoint.y + toPoint.y) / 2;
 
@@ -1222,7 +1224,7 @@ const ClassDiagramMaker = ({
                   strokeWidth: 2,
                   markerEnd: `url(#arrowhead-${relationship.id})`
                 };
-              default: // association
+              default:
                 return {
                   stroke: '#475569',
                   strokeWidth: 2
@@ -1271,7 +1273,6 @@ const ClassDiagramMaker = ({
 
   const handleCanvasDoubleClick = (e) => {
     if (e.target === canvasRef.current) {
-      // Double click on empty canvas - add a new class
       const rect = canvasRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left) / zoom - panOffset.x;
       const y = (e.clientY - rect.top) / zoom - panOffset.y;
@@ -1279,24 +1280,25 @@ const ClassDiagramMaker = ({
       const className = prompt('Enter class name:');
       if (className && className.trim()) {
         const colorScheme = getRandomColorScheme();
-        const dimensions = calculateClassDimensions({
+        const newClass = {
+          id: Date.now(),
           name: className.trim(),
+          classType: 'class',
           attributes: [],
-          methods: []
-        });
+          methods: [],
+          x: x - 90,
+          y: y - 40,
+          colorScheme
+        };
+        
+        const dimensions = calculateClassDimensions(newClass);
         
         const updatedClasses = [
           ...classes,
           {
-            id: Date.now(),
-            name: className.trim(),
-            attributes: [],
-            methods: [],
-            x: x - (dimensions.width / 2), // Center the class on click point
-            y: y - 40, // Offset to account for header
+            ...newClass,
             width: dimensions.width,
-            height: dimensions.height,
-            colorScheme
+            height: dimensions.height
           }
         ];
         
@@ -1395,14 +1397,27 @@ const ClassDiagramMaker = ({
                   placeholder="New class name"
                   onKeyPress={(e) => e.key === 'Enter' && addClass()}
                 />
+                <select
+                  value={classType}
+                  onChange={(e) => setClassType(e.target.value)}
+                  style={{ marginTop: '8px' }}
+                >
+                  <option value="class">Class</option>
+                  <option value="abstract">Abstract Class</option>
+                  <option value="interface">Interface</option>
+                </select>
                 <button onClick={addClass} className="add-btn">
-                  <Plus size={16} /> Add Class
+                  <Plus size={16} /> Add {classType === 'interface' ? 'Interface' : classType === 'abstract' ? 'Abstract Class' : 'Class'}
                 </button>
               </div>
               <div className="class-list">
                 {classes.map(cls => (
                   <div key={cls.id} className="list-item">
-                    <div className="item-name">{cls.name}</div>
+                    <div className="item-name">
+                      {cls.name}
+                      {cls.classType === 'interface' && <span className="class-type-badge">Interface</span>}
+                      {cls.classType === 'abstract' && <span className="class-type-badge">Abstract</span>}
+                    </div>
                     <button 
                       onClick={() => deleteClass(cls.id)}
                       className="delete-btn"
@@ -1512,14 +1527,10 @@ const ClassDiagramMaker = ({
                   <div>~ Package</div>
                 </div>
                 <div className="guide-item">
-                  <strong>Attributes:</strong>
-                  <div>+name : String</div>
-                  <div>-age : int</div>
-                </div>
-                <div className="guide-item">
-                  <strong>Methods:</strong>
-                  <div>+getName() : String</div>
-                  <div>-calculate() : void</div>
+                  <strong>Class Types:</strong>
+                  <div>Regular Class</div>
+                  <div><em>Abstract Class</em> (italic)</div>
+                  <div>&lt;&lt;interface&gt;&gt;</div>
                 </div>
                 <div className="guide-item">
                   <strong>Quick Tips:</strong>
@@ -1633,11 +1644,11 @@ const ClassDiagramMaker = ({
       )}
 
       {/* Class Editor Modal */}
-      {editingItem && (
+      {editingItem && !editType && (
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
-              <h3>Edit Class: {editingItem.name}</h3>
+              <h3>Edit {editingItem.classType === 'interface' ? 'Interface' : editingItem.classType === 'abstract' ? 'Abstract Class' : 'Class'}: {editingItem.name}</h3>
               <button onClick={closeFull} className="modal-close-btn">
                 <X size={20} />
               </button>
@@ -1656,7 +1667,7 @@ const ClassDiagramMaker = ({
                     </button>
                   </div>
                   <div className="items-list">
-                    {editingItem.attributes.map((attr, i) => (
+                    {editingItem.attributes && editingItem.attributes.map((attr, i) => (
                       <div 
                         key={i} 
                         className="item-row"
@@ -1678,7 +1689,7 @@ const ClassDiagramMaker = ({
                         </div>
                       </div>
                     ))}
-                    {editingItem.attributes.length === 0 && (
+                    {(!editingItem.attributes || editingItem.attributes.length === 0) && (
                       <div className="empty-message">No attributes defined</div>
                     )}
                   </div>
@@ -1695,14 +1706,15 @@ const ClassDiagramMaker = ({
                     </button>
                   </div>
                   <div className="items-list">
-                    {editingItem.methods.map((method, i) => (
+                    {editingItem.methods && editingItem.methods.map((method, i) => (
                       <div 
                         key={i} 
                         className="item-row"
                         onClick={() => openMethodEditor(editingItem.id, i)}
                       >
-                        <div className="item-text">
+                        <div className={`item-text ${method.isAbstract ? 'italic' : ''}`}>
                           {method.visibility} {method.name} : {method.returnType}
+                          {method.isAbstract && <span className="abstract-badge">abstract</span>}
                         </div>
                         <div className="item-actions">
                           <button 
@@ -1717,7 +1729,7 @@ const ClassDiagramMaker = ({
                         </div>
                       </div>
                     ))}
-                    {editingItem.methods.length === 0 && (
+                    {(!editingItem.methods || editingItem.methods.length === 0) && (
                       <div className="empty-message">No methods defined</div>
                     )}
                   </div>
@@ -1799,7 +1811,7 @@ const ClassDiagramMaker = ({
                     <label>Default Value (for code generation)</label>
                     <input
                       type="text"
-                      value={newAttribute.defaultValue}
+                      value={newAttribute.defaultValue || ''}
                       onChange={(e) => setNewAttribute({...newAttribute, defaultValue: e.target.value})}
                       placeholder="Optional default value (e.g., 0, null, 'default')"
                     />
@@ -1853,6 +1865,18 @@ const ClassDiagramMaker = ({
                       />
                     </div>
                   </div>
+                  {(editingItem.classType === 'abstract' || editingItem.classType === 'interface') && (
+                    <div className="form-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={newMethod.isAbstract || false}
+                          onChange={(e) => setNewMethod({...newMethod, isAbstract: e.target.checked})}
+                        />
+                        <span>Abstract Method</span>
+                      </label>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -1881,6 +1905,7 @@ const ClassDiagramMaker = ({
           flex-direction: column;
           background: #f8fafc;
           font-family: 'Inter', system-ui, -apple-system, sans-serif;
+          overflow: hidden;
         }
         
         .toolbar {
@@ -1890,6 +1915,7 @@ const ClassDiagramMaker = ({
           background: white;
           border-bottom: 1px solid #e2e8f0;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          flex-shrink: 0;
         }
         
         .toolbar h2 {
@@ -1932,6 +1958,7 @@ const ClassDiagramMaker = ({
           flex: 1;
           background: white;
           min-height: 0;
+          overflow: hidden;
         }
         
         .code-actions {
@@ -1940,6 +1967,7 @@ const ClassDiagramMaker = ({
           padding: 16px;
           border-bottom: 1px solid #e2e8f0;
           background: #f8fafc;
+          flex-shrink: 0;
         }
         
         .copy-code-btn, .download-code-btn {
@@ -1997,7 +2025,6 @@ const ClassDiagramMaker = ({
           font-family: inherit;
         }
         
-        /* Syntax highlighting for Java code */
         .code-display .comment {
           color: #94a3b8;
           font-style: italic;
@@ -2128,6 +2155,7 @@ const ClassDiagramMaker = ({
           display: flex;
           border-bottom: 1px solid #e2e8f0;
           background: white;
+          flex-shrink: 0;
         }
         
         .tab {
@@ -2149,6 +2177,7 @@ const ClassDiagramMaker = ({
           display: flex;
           flex: 1;
           overflow: hidden;
+          min-height: 0;
         }
         
         .diagram-sidebar {
@@ -2157,7 +2186,9 @@ const ClassDiagramMaker = ({
           border-right: 1px solid #e2e8f0;
           display: flex;
           flex-direction: column;
-          overflow: auto;
+          overflow-y: auto;
+          overflow-x: hidden;
+          flex-shrink: 0;
         }
         
         .sidebar-section {
@@ -2198,6 +2229,23 @@ const ClassDiagramMaker = ({
           outline: none;
           border-color: #EC4899;
           box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.1);
+        }
+        
+        .checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+        }
+        
+        .checkbox-label input[type="checkbox"] {
+          width: auto;
+          cursor: pointer;
+        }
+        
+        .checkbox-label span {
+          font-size: 14px;
+          color: #1e293b;
         }
         
         .add-btn {
@@ -2266,6 +2314,28 @@ const ClassDiagramMaker = ({
           font-size: 14px;
         }
         
+        .class-type-badge {
+          display: inline-block;
+          margin-left: 8px;
+          padding: 2px 6px;
+          background: #f1f5f9;
+          color: #64748b;
+          font-size: 10px;
+          border-radius: 4px;
+          font-weight: 500;
+        }
+        
+        .abstract-badge {
+          display: inline-block;
+          margin-left: 8px;
+          padding: 2px 6px;
+          background: #fef3c7;
+          color: #92400e;
+          font-size: 10px;
+          border-radius: 4px;
+          font-weight: 500;
+        }
+        
         .item-type {
           font-size: 12px;
           color: #64748b;
@@ -2291,6 +2361,7 @@ const ClassDiagramMaker = ({
           cursor: pointer;
           margin-left: 8px;
           transition: background-color 0.2s;
+          flex-shrink: 0;
         }
         
         .delete-btn:hover {
@@ -2301,6 +2372,7 @@ const ClassDiagramMaker = ({
           position: relative;
           flex: 1;
           overflow: auto;
+          min-width: 0;
         }
         
         .diagram-canvas {
@@ -2344,12 +2416,23 @@ const ClassDiagramMaker = ({
           border-radius: 6px 6px 0 0;
         }
         
+        .stereotype {
+          font-size: 11px;
+          font-weight: 400;
+          margin-bottom: 4px;
+          opacity: 0.9;
+        }
+        
         .class-name {
           font-size: 16px;
           font-weight: 700;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+        
+        .class-name.italic {
+          font-style: italic;
         }
         
         .class-content {
@@ -2394,6 +2477,10 @@ const ClassDiagramMaker = ({
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+        
+        .item-text.italic {
+          font-style: italic;
         }
         
         .item-delete-btn {
@@ -2465,12 +2552,15 @@ const ClassDiagramMaker = ({
           flex: 1;
           padding: 16px;
           background: white;
+          min-height: 0;
+          overflow: hidden;
         }
         
         .json-actions {
           display: flex;
           gap: 8px;
           margin-bottom: 12px;
+          flex-shrink: 0;
         }
         
         .import-btn {
@@ -2501,12 +2591,19 @@ const ClassDiagramMaker = ({
           resize: none;
           margin-bottom: 12px;
           line-height: 1.5;
+          overflow: auto;
         }
         
         .json-textarea:focus {
           outline: none;
           border-color: #EC4899;
           box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.1);
+        }
+        
+        .help-text {
+          font-size: 12px;
+          color: #64748b;
+          margin-top: 4px;
         }
         
         /* Modal styles */
@@ -2556,6 +2653,7 @@ const ClassDiagramMaker = ({
           align-items: center;
           justify-content: space-between;
           border-bottom: 1px solid #e2e8f0;
+          flex-shrink: 0;
         }
         
         .modal-header h3 {
@@ -2584,6 +2682,7 @@ const ClassDiagramMaker = ({
           padding: 24px;
           overflow-y: auto;
           flex: 1;
+          min-height: 0;
         }
         
         .edit-sections-container {
@@ -2601,6 +2700,7 @@ const ClassDiagramMaker = ({
           justify-content: flex-end;
           gap: 12px;
           border-top: 1px solid #e2e8f0;
+          flex-shrink: 0;
         }
         
         .modal-cancel-btn {
