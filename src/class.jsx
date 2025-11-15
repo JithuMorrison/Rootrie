@@ -1455,7 +1455,7 @@ const ClassDiagramMaker = ({
       </div>
 
       {activeTab === 'editor' ? (
-        <div className="diagram-container">
+        <div className="diagram-container" key="editor-tab">
           <div className="diagram-sidebar">
             <div className="sidebar-section">
               <h3>Classes</h3>
@@ -1686,7 +1686,7 @@ const ClassDiagramMaker = ({
           </button>
         </div>
       ) : (
-        <div className="code-editor">
+        <div className="code-editor" key="code-tab">
           <div className="code-actions">
             <button onClick={generateJavaCode} className="generate-code-btn">
               <Code size={16} /> Generate Java Code
