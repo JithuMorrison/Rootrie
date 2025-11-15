@@ -434,6 +434,31 @@ const DomainModelMaker = ({
     }
   }, [dragItem, resizingItem, isPanning, dragOffset, resizeStart, panStart, panOffset, zoom]);
 
+  const calculateCanvasBoundaries = () => {
+    if (entities.length === 0) {
+      return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
+    }
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    
+    entities.forEach(entity => {
+      minX = Math.min(minX, entity.x);
+      maxX = Math.max(maxX, entity.x + entity.width);
+      minY = Math.min(minY, entity.y);
+      maxY = Math.max(maxY, entity.y + entity.height);
+    });
+
+    const padding = 200;
+    return {
+      minX: Math.min(minX, 0) - padding,
+      maxX: Math.max(maxX, 1000) + padding,
+      minY: Math.min(minY, 0) - padding,
+      maxY: Math.max(maxY, 1000) + padding
+    };
+  };
+
+  const boundaries = calculateCanvasBoundaries();
+
   const exportToJson = () => {
     const data = { entities, relationships };
     return JSON.stringify(data, null, 2);
@@ -479,21 +504,109 @@ const DomainModelMaker = ({
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
+    // Calculate the exact bounds of all content
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    
+    // Check entities
+    entities.forEach(entity => {
+      minX = Math.min(minX, entity.x);
+      maxX = Math.max(maxX, entity.x + entity.width);
+      minY = Math.min(minY, entity.y);
+      maxY = Math.max(maxY, entity.y + entity.height);
+    });
+    
+    // Check relationship endpoints
+    relationships.forEach(relationship => {
+      const from = entities.find(e => e.id === relationship.from);
+      const to = entities.find(e => e.id === relationship.to);
+      
+      if (from && to) {
+        const fromCenter = {
+          x: from.x + from.width / 2,
+          y: from.y + from.height / 2
+        };
+        const toCenter = {
+          x: to.x + to.width / 2,
+          y: to.y + to.height / 2
+        };
+        
+        minX = Math.min(minX, fromCenter.x, toCenter.x);
+        maxX = Math.max(maxX, fromCenter.x, toCenter.x);
+        minY = Math.min(minY, fromCenter.y, toCenter.y);
+        maxY = Math.max(maxY, fromCenter.y, toCenter.y);
+      }
+    });
+    
+    // If no content exists
+    if (minX === Infinity || entities.length === 0) {
+      alert('No diagram content to export');
+      return;
+    }
+    
+    // Add some padding around the content
+    const padding = 40;
+    const contentX = Math.max(0, minX - padding);
+    const contentY = Math.max(0, minY - padding);
+    const contentWidth = (maxX - minX) + padding * 2;
+    const contentHeight = (maxY - minY) + padding * 2;
+    
+    // Store original transform for restoration
     const originalTransform = canvasRef.current.style.transform;
-    canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
+    
+    // Create a temporary container for capture
+    const tempContainer = document.createElement('div');
+    tempContainer.style.width = `${contentWidth}px`;
+    tempContainer.style.height = `${contentHeight}px`;
+    tempContainer.style.position = 'fixed';
+    tempContainer.style.top = '0';
+    tempContainer.style.left = '0';
+    tempContainer.style.background = '#f8fafc';
+    tempContainer.style.zIndex = '-9999';
+    tempContainer.style.overflow = 'hidden';
+    
+    // Clone the canvas content
+    const canvasClone = canvasRef.current.cloneNode(true);
+    
+    // Remove zoom and pan transforms for clean capture
+    const canvasContent = canvasClone.querySelector('.canvas-content');
+    if (canvasContent) {
+      canvasContent.style.transform = 'none';
+      canvasContent.style.transformOrigin = '0 0';
+    }
+    
+    canvasClone.style.position = 'absolute';
+    canvasClone.style.left = `-${contentX}px`;
+    canvasClone.style.top = `-${contentY}px`;
+    canvasClone.style.transform = 'none';
+    canvasClone.style.width = `${boundaries.maxX - boundaries.minX}px`;
+    canvasClone.style.height = `${boundaries.maxY - boundaries.minY}px`;
+    canvasClone.style.background = '#f8fafc';
+    canvasClone.style.overflow = 'visible';
+    
+    tempContainer.appendChild(canvasClone);
+    document.body.appendChild(tempContainer);
     
     import('html2canvas').then(html2canvas => {
-      html2canvas.default(canvasRef.current, {
+      html2canvas.default(tempContainer, {
         backgroundColor: '#f8fafc',
         scale: 2,
-        useCORS: true
+        useCORS: true,
+        width: contentWidth,
+        height: contentHeight,
+        scrollX: 0,
+        scrollY: 0,
+        logging: false
       }).then(canvas => {
         const link = document.createElement('a');
         link.download = `${domainModel.name || 'domain-model'}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
         
-        canvasRef.current.style.transform = originalTransform;
+        // Clean up
+        document.body.removeChild(tempContainer);
+      }).catch(error => {
+        console.error('Error capturing image:', error);
+        document.body.removeChild(tempContainer);
       });
     });
   };
@@ -817,6 +930,14 @@ const DomainModelMaker = ({
     }
   };
 
+  const handleWheel = (e) => {
+    if (activeTab === 'editor') {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setZoom(prev => Math.max(0.3, Math.min(3, prev * delta)));
+    }
+  };
+
   return (
     <div className="domain-model-maker">
       <div className="toolbar">
@@ -1071,32 +1192,42 @@ const DomainModelMaker = ({
           </div>
           
           <div 
-            className="diagram-canvas" 
-            ref={canvasRef}
-            onDoubleClick={handleCanvasDoubleClick}
-            onMouseDown={handleCanvasMouseDown}
-            onWheel={(e) => {
-              e.preventDefault();
-              const delta = e.deltaY > 0 ? 0.9 : 1.1;
-              setZoom(prevZoom => Math.max(0.3, Math.min(3, prevZoom * delta)));
-            }}
+            className="diagram-canvas-container"
             style={{
-              cursor: isPanning ? 'grabbing' : 'grab'
+              position: 'relative',
+              flex: 1,
+              overflow: 'auto',
+              background: 'linear-gradient(45deg, #f1f5f9 25%, transparent 25%), linear-gradient(-45deg, #f1f5f9 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f1f5f9 75%), linear-gradient(-45deg, transparent 75%, #f1f5f9 75%)',
+              backgroundSize: '20px 20px',
+              backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px'
             }}
           >
             <div 
-              className="canvas-content"
+              className="diagram-canvas" 
+              ref={canvasRef}
+              onDoubleClick={handleCanvasDoubleClick}
+              onMouseDown={handleCanvasMouseDown}
+              onWheel={handleWheel}
               style={{
-                transform: `scale(${zoom}) translate(${panOffset.x / zoom}px, ${panOffset.y / zoom}px)`,
-                transformOrigin: '0 0',
-                width: '4000px',
-                height: '3000px',
-                minWidth: '100%',
-                minHeight: '100%'
+                width: `${boundaries.maxX - boundaries.minX}px`,
+                height: `${boundaries.maxY - boundaries.minY}px`,
+                position: 'relative',
+                cursor: isPanning ? 'grabbing' : 'grab'
               }}
             >
-              {relationships.map(renderRelationship)}
-              {entities.map(renderEntity)}
+              <div 
+                className="canvas-content"
+                style={{
+                  transform: `scale(${zoom}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                  transformOrigin: '0 0',
+                  width: '100%',
+                  height: '100%',
+                  position: 'relative'
+                }}
+              >
+                {relationships.map(renderRelationship)}
+                {entities.map(renderEntity)}
+              </div>
             </div>
           </div>
         </div>
@@ -1545,11 +1676,20 @@ const DomainModelMaker = ({
           background: #fecaca;
         }
         
-        .diagram-canvas {
+        .diagram-canvas-container {
           flex: 1;
           background: #f8fafc;
           position: relative;
-          overflow: hidden;
+          overflow: auto;
+        }
+        
+        .diagram-canvas {
+          position: relative;
+          cursor: grab;
+        }
+        
+        .diagram-canvas:active {
+          cursor: grabbing;
         }
         
         .canvas-content {
