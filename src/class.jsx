@@ -922,21 +922,110 @@ const ClassDiagramMaker = ({
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
+    // Calculate the exact bounds of all content
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    
+    // Check classes
+    classes.forEach(cls => {
+      minX = Math.min(minX, cls.x);
+      maxX = Math.max(maxX, cls.x + cls.width);
+      minY = Math.min(minY, cls.y);
+      maxY = Math.max(maxY, cls.y + cls.height);
+    });
+    
+    // Check relationship endpoints
+    relationships.forEach(relationship => {
+      const from = classes.find(c => c.id === relationship.from);
+      const to = classes.find(c => c.id === relationship.to);
+      
+      if (from && to) {
+        const fromCenter = {
+          x: from.x + from.width / 2,
+          y: from.y + from.height / 2
+        };
+        const toCenter = {
+          x: to.x + to.width / 2,
+          y: to.y + to.height / 2
+        };
+        
+        minX = Math.min(minX, fromCenter.x, toCenter.x);
+        maxX = Math.max(maxX, fromCenter.x, toCenter.x);
+        minY = Math.min(minY, fromCenter.y, toCenter.y);
+        maxY = Math.max(maxY, fromCenter.y, toCenter.y);
+      }
+    });
+    
+    // If no content exists
+    if (minX === Infinity || classes.length === 0) {
+      alert('No diagram content to export');
+      return;
+    }
+    
+    // Add some padding around the content
+    const padding = 40;
+    const contentX = Math.max(0, minX - padding);
+    const contentY = Math.max(0, minY - padding);
+    const contentWidth = (maxX - minX) + padding * 2;
+    const contentHeight = (maxY - minY) + padding * 2;
+    
+    // Store original transform for restoration
     const originalTransform = canvasRef.current.style.transform;
-    canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
+    const originalOverflow = canvasRef.current.parentElement.style.overflow;
+    
+    // Create a temporary container for capture
+    const tempContainer = document.createElement('div');
+    tempContainer.style.width = `${contentWidth}px`;
+    tempContainer.style.height = `${contentHeight}px`;
+    tempContainer.style.position = 'fixed';
+    tempContainer.style.top = '0';
+    tempContainer.style.left = '0';
+    tempContainer.style.background = '#f8fafc';
+    tempContainer.style.zIndex = '-9999';
+    tempContainer.style.overflow = 'hidden';
+    
+    // Clone the canvas content
+    const canvasClone = canvasRef.current.cloneNode(true);
+    
+    // Remove zoom and pan transforms for clean capture
+    const diagramContent = canvasClone.querySelector('.diagram-content');
+    if (diagramContent) {
+      diagramContent.style.transform = 'none';
+      diagramContent.style.transformOrigin = '0 0';
+    }
+    
+    canvasClone.style.position = 'absolute';
+    canvasClone.style.left = `-${contentX}px`;
+    canvasClone.style.top = `-${contentY}px`;
+    canvasClone.style.transform = 'none';
+    canvasClone.style.width = `${boundaries.maxX - boundaries.minX}px`;
+    canvasClone.style.height = `${boundaries.maxY - boundaries.minY}px`;
+    canvasClone.style.background = '#f8fafc';
+    canvasClone.style.overflow = 'visible';
+    
+    tempContainer.appendChild(canvasClone);
+    document.body.appendChild(tempContainer);
     
     import('html2canvas').then(html2canvas => {
-      html2canvas.default(canvasRef.current, {
+      html2canvas.default(tempContainer, {
         backgroundColor: '#f8fafc',
         scale: 2,
-        useCORS: true
+        useCORS: true,
+        width: contentWidth,
+        height: contentHeight,
+        scrollX: 0,
+        scrollY: 0,
+        logging: false
       }).then(canvas => {
         const link = document.createElement('a');
         link.download = `${classDiagram.name || 'class-diagram'}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
         
-        canvasRef.current.style.transform = originalTransform;
+        // Clean up
+        document.body.removeChild(tempContainer);
+      }).catch(error => {
+        console.error('Error capturing image:', error);
+        document.body.removeChild(tempContainer);
       });
     });
   };
