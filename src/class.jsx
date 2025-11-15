@@ -137,7 +137,7 @@ const ClassDiagramMaker = ({
     const padding = 32; // 16px on each side
     
     // Calculate width based on class name (consider stereotype for interfaces)
-    const nameToMeasure = cls.classType === 'interface' ? `<<interface>> ${cls.name}` : cls.name;
+    const nameToMeasure = cls.classType === 'interface' ? `<<int>> ${cls.name}` : cls.name;
     const classNameWidth = calculateTextWidth(nameToMeasure, '16px', "'Inter', sans-serif") + padding;
     
     // Calculate width based on attributes
@@ -1034,11 +1034,8 @@ const ClassDiagramMaker = ({
             color: 'white'
           }}
         >
-          {isInterface && (
-            <div className="stereotype">&lt;&lt;interface&gt;&gt;</div>
-          )}
           <div className={`class-name ${isAbstract ? 'italic' : ''}`}>
-            {cls.name}
+            {isInterface? `<<int>> ${cls.name}` : cls.name}
           </div>
         </div>
         
