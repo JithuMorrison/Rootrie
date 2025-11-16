@@ -931,7 +931,7 @@ const DomainModelMaker = ({
   };
 
   const handleWheel = (e) => {
-    if (activeTab === 'editor') {
+    if (activeTab === 'editor' && e.ctrlKey) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       setZoom(prev => Math.max(0.3, Math.min(3, prev * delta)));
