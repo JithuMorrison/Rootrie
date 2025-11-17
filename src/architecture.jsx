@@ -3,7 +3,8 @@ import {
   ArrowLeft, Save, Plus, Trash2, Layers, GitMerge, 
   Download, Upload, Image as ImageIcon, Copy, 
   Server, Database, Cpu, HardDrive, Network, Cloud, 
-  Router, Smartphone, Globe, Shield, Users, Box, Minus, Maximize2, ZoomIn, ZoomOut, AppWindow, Zap
+  Router, Smartphone, Globe, Shield, Users, Box, Minus, Maximize2, ZoomIn, ZoomOut, AppWindow, Zap,
+  RefreshCcw
 } from 'lucide-react';
 
 // Predefined component types with icons and shapes
@@ -56,6 +57,7 @@ const ArchitectureDiagramMaker = ({
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [canvasSize, setCanvasSize] = useState({ width: 2000, height: 2000 });
+  const [isExporting, setIsExporting] = useState(false);
   const canvasRef = useRef(null);
   const canvasContainerRef = useRef(null);
 
@@ -547,101 +549,109 @@ const ArchitectureDiagramMaker = ({
     setZoomLevel(1);
   };
 
-  const exportToImage = () => {
+  const exportToImage = async () => {
     if (!canvasRef.current) return;
     
-    // Calculate the exact bounds of all content
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    setIsExporting(true);
     
-    // Check components
-    currentComponents.forEach(comp => {
-      minX = Math.min(minX, comp.x);
-      maxX = Math.max(maxX, comp.x + comp.width);
-      minY = Math.min(minY, comp.y);
-      maxY = Math.max(maxY, comp.y + comp.height);
-    });
-    
-    // Check groups
-    currentGroups.forEach(group => {
-      minX = Math.min(minX, group.x);
-      maxX = Math.max(maxX, group.x + group.width);
-      minY = Math.min(minY, group.y);
-      maxY = Math.max(maxY, group.y + group.height);
-    });
-    
-    // Check connection endpoints
-    currentConnections.forEach(conn => {
-      const from = currentComponents.find(c => c.id === conn.from);
-      const to = currentComponents.find(c => c.id === conn.to);
+    try {
+      // Calculate the exact bounds of all content
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       
-      if (from && to) {
-        const { fromX, fromY, toX, toY } = getConnectionPath(from, to);
-        minX = Math.min(minX, fromX, toX);
-        maxX = Math.max(maxX, fromX, toX);
-        minY = Math.min(minY, fromY, toY);
-        maxY = Math.max(maxY, fromY, toY);
+      // Check components
+      currentComponents.forEach(comp => {
+        minX = Math.min(minX, comp.x);
+        maxX = Math.max(maxX, comp.x + comp.width);
+        minY = Math.min(minY, comp.y);
+        maxY = Math.max(maxY, comp.y + comp.height);
+      });
+      
+      // Check groups
+      currentGroups.forEach(group => {
+        minX = Math.min(minX, group.x);
+        maxX = Math.max(maxX, group.x + group.width);
+        minY = Math.min(minY, group.y);
+        maxY = Math.max(maxY, group.y + group.height);
+      });
+      
+      // Check connection endpoints
+      currentConnections.forEach(conn => {
+        const from = currentComponents.find(c => c.id === conn.from);
+        const to = currentComponents.find(c => c.id === conn.to);
+        
+        if (from && to) {
+          const { fromX, fromY, toX, toY } = getConnectionPath(from, to);
+          minX = Math.min(minX, fromX, toX);
+          maxX = Math.max(maxX, fromX, toX);
+          minY = Math.min(minY, fromY, toY);
+          maxY = Math.max(maxY, fromY, toY);
+        }
+      });
+      
+      // If no content exists
+      if (minX === Infinity || currentComponents.length === 0) {
+        alert('No diagram content to export');
+        setIsExporting(false);
+        return;
       }
-    });
-    
-    // If no content exists
-    if (minX === Infinity || currentComponents.length === 0) {
-      alert('No diagram content to export');
-      return;
-    }
-    
-    // Add some padding around the content
-    const padding = 40;
-    const contentX = Math.max(0, minX - padding);
-    const contentY = Math.max(0, minY - padding);
-    const contentWidth = (maxX - minX) + padding * 2;
-    const contentHeight = (maxY - minY) + padding * 2;
-    
-    // Create a temporary container for capture
-    const tempContainer = document.createElement('div');
-    tempContainer.style.width = `${contentWidth}px`;
-    tempContainer.style.height = `${contentHeight}px`;
-    tempContainer.style.position = 'fixed';
-    tempContainer.style.top = '0';
-    tempContainer.style.left = '0';
-    tempContainer.style.background = 'white';
-    tempContainer.style.zIndex = '99999';
-    tempContainer.style.overflow = 'hidden';
-    tempContainer.style.zIndex = -1;
-    
-    // Clone the canvas content
-    const canvasClone = canvasRef.current.cloneNode(true);
-    canvasClone.style.position = 'absolute';
-    canvasClone.style.left = `-${contentX}px`;
-    canvasClone.style.top = `-${contentY}px`;
-    canvasClone.style.transform = 'none';
-    canvasClone.style.width = `${canvasSize.width}px`;
-    canvasClone.style.height = `${canvasSize.height}px`;
-    
-    tempContainer.appendChild(canvasClone);
-    document.body.appendChild(tempContainer);
-    
-    import('html2canvas').then(html2canvas => {
-      html2canvas.default(tempContainer, {
+      
+      // Add some padding around the content
+      const padding = 40;
+      const contentX = Math.max(0, minX - padding);
+      const contentY = Math.max(0, minY - padding);
+      const contentWidth = (maxX - minX) + padding * 2;
+      const contentHeight = (maxY - minY) + padding * 2;
+      
+      // Create a temporary container for capture
+      const tempContainer = document.createElement('div');
+      tempContainer.style.width = `${contentWidth}px`;
+      tempContainer.style.height = `${contentHeight}px`;
+      tempContainer.style.position = 'fixed';
+      tempContainer.style.top = '0';
+      tempContainer.style.left = '0';
+      tempContainer.style.background = 'white';
+      tempContainer.style.overflow = 'hidden';
+      tempContainer.style.zIndex = '-1'; // Hide it but keep it accessible
+      
+      // Clone the canvas content
+      const canvasClone = canvasRef.current.cloneNode(true);
+      canvasClone.style.position = 'absolute';
+      canvasClone.style.left = `-${contentX}px`;
+      canvasClone.style.top = `-${contentY}px`;
+      canvasClone.style.transform = 'none';
+      canvasClone.style.width = `${canvasSize.width}px`;
+      canvasClone.style.height = `${canvasSize.height}px`;
+      
+      tempContainer.appendChild(canvasClone);
+      document.body.appendChild(tempContainer);
+      
+      // Dynamically import html2canvas
+      const html2canvas = await import('html2canvas');
+      
+      const canvas = await html2canvas.default(tempContainer, {
         backgroundColor: '#ffffff',
-        scale: 2,//increases quality
+        scale: 2,
         useCORS: true,
         width: contentWidth,
         height: contentHeight,
         scrollX: 0,
         scrollY: 0
-      }).then(canvas => {
-        const link = document.createElement('a');
-        link.download = `${architectureDiagram.name || 'architecture-diagram'}.png`;
-        link.href = canvas.toDataURL('image/png');//increases quality - 1.0
-        link.click();
-        
-        // Clean up
-        document.body.removeChild(tempContainer);
-      }).catch(error => {
-        console.error('Error capturing image:', error);
-        document.body.removeChild(tempContainer);
       });
-    });
+      
+      const link = document.createElement('a');
+      link.download = `${architectureDiagram.name || 'architecture-diagram'}.png`;
+      link.href = canvas.toDataURL('image/png', 1.0);
+      link.click();
+      
+      // Clean up
+      document.body.removeChild(tempContainer);
+      
+    } catch (error) {
+      console.error('Error exporting image:', error);
+      alert('Error exporting image. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const getConnectionPath = (from, to) => {
@@ -1117,7 +1127,16 @@ const ArchitectureDiagramMaker = ({
               border: '1px solid #8b5cf6'
             }}
           >
-            <ImageIcon size={16} /> Export Image
+            {isExporting ? (
+              <>
+                <RefreshCcw size={16} />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <ImageIcon size={16} /> Export Image
+              </>
+            )}
           </button>
           <button 
             onClick={copyToClipboard}
