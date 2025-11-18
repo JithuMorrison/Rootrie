@@ -1402,55 +1402,109 @@ const MindMapMaker = ({
                 </tr>
               </thead>
               <tbody>
-                {getNodesForBatchEdit().map(node => (
-                  <tr key={node.id} className={batchDisplayMode === 'hierarchy' ? `hierarchy-level-${node.hierarchyLevel || 0}` : ''}>
-                    <td className="id-cell">{node.id}</td>
-                    <td>
-                      {batchDisplayMode === 'hierarchy' && (
-                        <span 
-                          className="hierarchy-indent"
-                          style={{ marginLeft: `${(node.hierarchyLevel || 0) * 20}px` }}
-                        >
-                          {node.isRoot ? '🌐' : '↳'}
-                        </span>
-                      )}
-                      <input
-                        type="text"
-                        value={batchEditNodes.find(bn => bn.id === node.id)?.text || node.text}
-                        onChange={(e) => handleBatchEditChange(node.id, 'text', e.target.value)}
-                        className="batch-input"
-                        placeholder="Main text..."
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        value={batchEditNodes.find(bn => bn.id === node.id)?.subtext || node.subtext}
-                        onChange={(e) => handleBatchEditChange(node.id, 'subtext', e.target.value)}
-                        className="batch-input"
-                        placeholder="Subtext..."
-                      />
-                    </td>
-                    <td>
-                      <textarea
-                        value={batchEditNodes.find(bn => bn.id === node.id)?.description || node.description}
-                        onChange={(e) => handleBatchEditChange(node.id, 'description', e.target.value)}
-                        className="batch-textarea"
-                        placeholder="Description..."
-                        rows="2"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="url"
-                        value={batchEditNodes.find(bn => bn.id === node.id)?.imageUrl || node.imageUrl}
-                        onChange={(e) => handleBatchEditChange(node.id, 'imageUrl', e.target.value)}
-                        className="batch-input"
-                        placeholder="Image URL..."
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {getNodesForBatchEdit().map((node, index, array) => {
+                  const prevNode = index > 0 ? array[index - 1] : null;
+                  const isSameParentAsPrev = prevNode && prevNode.parentId === node.parentId;
+                  const parentNode = Array.isArray(currentNodes) ? currentNodes.find(n => n.id === node.parentId) : null;
+                  
+                  // Find the immediate parent node in the current array
+                  const immediateParentInArray = array.find(n => n.id === node.parentId);
+                  const isParentJustBefore = prevNode && prevNode.id === node.parentId;
+                  
+                  // Calculate color group - same color if parent is just before, else change
+                  const getColorGroup = () => {
+                    if (node.isRoot) return 0; // Root always color 0
+                    
+                    if (isParentJustBefore) {
+                      // Same color as immediate parent
+                      const parentIndex = array.findIndex(n => n.id === node.parentId);
+                      return parentIndex % 5;
+                    } else {
+                      // Different color - use a combination of parentId and index
+                      return (node.parentId + index) % 5;
+                    }
+                  };
+                  
+                  const colorGroup = getColorGroup();
+
+                  return (
+                    <tr 
+                      key={node.id}
+                      data-node-id={node.id}
+                      className={`
+                        ${batchDisplayMode === 'hierarchy' ? `parent-group-${colorGroup}` : ''}
+                        ${batchDisplayMode === 'hierarchy' && !isSameParentAsPrev ? 'parent-group-start' : ''}
+                        ${isParentJustBefore ? 'parent-child-continuous' : ''}
+                      `}
+                    >
+                      <td className="id-cell">
+                        {node.id}
+                        {batchDisplayMode === 'hierarchy' && !node.isRoot && parentNode && (
+                          <div 
+                            className="parent-link"
+                            onClick={() => {
+                              const parentRow = document.querySelector(`tr[data-node-id="${parentNode.id}"]`);
+                              if (parentRow) {
+                                parentRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                parentRow.classList.add('highlight-parent');
+                                setTimeout(() => parentRow.classList.remove('highlight-parent'), 2000);
+                              }
+                            }}
+                            title={`Click to jump to parent: ${parentNode.text}`}
+                          >
+                            ← {parentNode.text.length > 12 ? parentNode.text.substring(0, 12) + '...' : parentNode.text}
+                            {isParentJustBefore && ' ✓'}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        {batchDisplayMode === 'hierarchy' && (
+                          <span 
+                            className="hierarchy-indent"
+                            style={{ marginLeft: `${(node.hierarchyLevel || 0) * 20}px` }}
+                          >
+                            {node.isRoot ? '🌐' : '↳'}
+                            {isParentJustBefore && ' 🔗'}
+                          </span>
+                        )}
+                        <input
+                          type="text"
+                          value={batchEditNodes.find(bn => bn.id === node.id)?.text || node.text}
+                          onChange={(e) => handleBatchEditChange(node.id, 'text', e.target.value)}
+                          className="batch-input"
+                          placeholder="Main text..."
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          value={batchEditNodes.find(bn => bn.id === node.id)?.subtext || node.subtext}
+                          onChange={(e) => handleBatchEditChange(node.id, 'subtext', e.target.value)}
+                          className="batch-input"
+                          placeholder="Subtext..."
+                        />
+                      </td>
+                      <td>
+                        <textarea
+                          value={batchEditNodes.find(bn => bn.id === node.id)?.description || node.description}
+                          onChange={(e) => handleBatchEditChange(node.id, 'description', e.target.value)}
+                          className="batch-textarea"
+                          placeholder="Description..."
+                          rows="2"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="url"
+                          value={batchEditNodes.find(bn => bn.id === node.id)?.imageUrl || node.imageUrl}
+                          onChange={(e) => handleBatchEditChange(node.id, 'imageUrl', e.target.value)}
+                          className="batch-input"
+                          placeholder="Image URL..."
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
