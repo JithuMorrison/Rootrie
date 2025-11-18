@@ -1416,12 +1416,9 @@ const MindMapMaker = ({
                     if (node.isRoot) return 0; // Root always color 0
                     
                     if (isParentJustBefore) {
-                      // Same color as immediate parent
-                      const parentIndex = array.findIndex(n => n.id === node.parentId);
-                      return parentIndex % 5;
+                      return 2;
                     } else {
-                      // Different color - use a combination of parentId and index
-                      return (node.parentId + index) % 5;
+                      return 1;
                     }
                   };
                   
@@ -1464,7 +1461,6 @@ const MindMapMaker = ({
                             style={{ marginLeft: `${(node.hierarchyLevel || 0) * 20}px` }}
                           >
                             {node.isRoot ? '🌐' : '↳'}
-                            {isParentJustBefore && ' 🔗'}
                           </span>
                         )}
                         <input
