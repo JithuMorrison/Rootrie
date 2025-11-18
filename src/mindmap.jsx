@@ -2384,19 +2384,156 @@ const MindMapMaker = ({
           border-bottom-color: #4b5563;
         }
 
-        .batch-edit-table tr:hover {
-          background: #f8fafc;
-        }
-
-        .dark .batch-edit-table tr:hover {
-          background: #1f2937;
-        }
-
         .id-cell {
+          position: relative;
           font-weight: 600;
           color: #3b82f6;
           font-size: 13px;
           width: 80px;
+          vertical-align: top;
+          padding-top: 16px !important;
+        }
+
+        .parent-link {
+          position: absolute;
+          top: 2px;
+          left: 4px;
+          right: 4px;
+          font-size: 10px;
+          color: #6b7280;
+          background: rgba(59, 130, 246, 0.1);
+          padding: 2px 4px;
+          border-radius: 3px;
+          cursor: pointer;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          transition: all 0.2s ease;
+          border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+
+        .dark .parent-link {
+          color: #9ca3af;
+          background: rgba(59, 130, 246, 0.2);
+          border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .parent-link:hover {
+          background: rgba(59, 130, 246, 0.2);
+          color: #1e40af;
+          transform: translateY(-1px);
+        }
+
+        .dark .parent-link:hover {
+          background: rgba(59, 130, 246, 0.3);
+          color: #93c5fd;
+        }
+
+        /* Color groups */
+        .parent-group-0 {
+          background-color: rgba(59, 130, 246, 0.08);
+        }
+
+        .dark .parent-group-0 {
+          background-color: rgba(59, 130, 246, 0.15);
+        }
+
+        .parent-group-1 {
+          background-color: rgba(16, 185, 129, 0.08);
+        }
+
+        .dark .parent-group-1 {
+          background-color: rgba(16, 185, 129, 0.15);
+        }
+
+        .parent-group-2 {
+          background-color: rgba(245, 158, 11, 0.08);
+        }
+
+        .dark .parent-group-2 {
+          background-color: rgba(245, 158, 11, 0.15);
+        }
+
+        .parent-group-3 {
+          background-color: rgba(139, 92, 246, 0.08);
+        }
+
+        .dark .parent-group-3 {
+          background-color: rgba(139, 92, 246, 0.15);
+        }
+
+        .parent-group-4 {
+          background-color: rgba(236, 72, 153, 0.08);
+        }
+
+        .dark .parent-group-4 {
+          background-color: rgba(236, 72, 153, 0.15);
+        }
+
+        /* Enhanced styling for parent-child continuity */
+        .parent-child-continuous {
+          border-left: 4px solid #10b981;
+        }
+
+        .dark .parent-child-continuous {
+          border-left-color: #34d399;
+        }
+
+        /* Visual separator between different parent groups */
+        .parent-group-start {
+          border-top: 2px solid #e5e7eb;
+        }
+
+        .dark .parent-group-start {
+          border-top-color: #4b5563;
+        }
+
+        /* Root node styling */
+        .parent-group-0:first-child {
+          background-color: rgba(239, 68, 68, 0.1);
+          font-weight: 600;
+          border-left: 4px solid #ef4444;
+        }
+
+        .dark .parent-group-0:first-child {
+          background-color: rgba(239, 68, 68, 0.2);
+          border-left-color: #f87171;
+        }
+
+        /* Highlight animation for parent navigation */
+        @keyframes highlightParent {
+          0% { background-color: rgba(245, 158, 11, 0.3); }
+          50% { background-color: rgba(245, 158, 11, 0.6); }
+          100% { background-color: inherit; }
+        }
+
+        .highlight-parent {
+          animation: highlightParent 2s ease;
+        }
+
+        .batch-edit-table tr {
+          transition: background-color 0.3s ease;
+        }
+
+        .batch-edit-table tr:hover {
+          background: #f8fafc !important;
+        }
+
+        .dark .batch-edit-table tr:hover {
+          background: #1f2937 !important;
+        }
+
+        /* Visual indicators for immediate parent-child relationships */
+        .hierarchy-indent {
+          position: relative;
+        }
+
+        .parent-child-continuous .hierarchy-indent::before {
+          content: '🔗';
+          position: absolute;
+          left: -15px;
+          top: 5px;
+          font-size: 10px;
         }
 
         .batch-input {
