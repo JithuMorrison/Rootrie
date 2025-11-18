@@ -2213,6 +2213,79 @@ const MindMapMaker = ({
           color: #9ca3af;
         }
 
+        .batch-display-options {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-top: 12px;
+          flex-wrap: wrap;
+        }
+
+        .batch-display-options label {
+          font-weight: 500;
+          color: #374151;
+          font-size: 14px;
+        }
+
+        .dark .batch-display-options label {
+          color: #e2e8f0;
+        }
+
+        .display-mode-select,
+        .node-select {
+          padding: 6px 10px;
+          border: 1px solid #d1d5db;
+          border-radius: 4px;
+          background: white;
+          color: #374151;
+          font-size: 14px;
+        }
+
+        .dark .display-mode-select,
+        .dark .node-select {
+          background: #4b5563;
+          color: #e2e8f0;
+          border-color: #6b7280;
+        }
+
+        .hierarchy-indent {
+          display: inline-block;
+          margin-right: 8px;
+          font-weight: bold;
+        }
+
+        .hierarchy-level-1 {
+          background-color: rgba(59, 130, 246, 0.05);
+        }
+
+        .dark .hierarchy-level-1 {
+          background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        .hierarchy-level-2 {
+          background-color: rgba(16, 185, 129, 0.05);
+        }
+
+        .dark .hierarchy-level-2 {
+          background-color: rgba(16, 185, 129, 0.1);
+        }
+
+        .hierarchy-level-3 {
+          background-color: rgba(245, 158, 11, 0.05);
+        }
+
+        .dark .hierarchy-level-3 {
+          background-color: rgba(245, 158, 11, 0.1);
+        }
+
+        .batch-edit-table tr:hover {
+          background: #f8fafc;
+        }
+
+        .dark .batch-edit-table tr:hover {
+          background: #1f2937;
+        }
+
         .batch-edit-table {
           flex: 1;
           overflow: auto;
@@ -2339,79 +2412,6 @@ const MindMapMaker = ({
         .batch-edit-actions .save-btn {
           flex: 0 0 auto;
           min-width: 120px;
-        }
-
-        .batch-display-options {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-top: 12px;
-          flex-wrap: wrap;
-        }
-
-        .batch-display-options label {
-          font-weight: 500;
-          color: #374151;
-          font-size: 14px;
-        }
-
-        .dark .batch-display-options label {
-          color: #e2e8f0;
-        }
-
-        .display-mode-select,
-        .node-select {
-          padding: 6px 10px;
-          border: 1px solid #d1d5db;
-          border-radius: 4px;
-          background: white;
-          color: #374151;
-          font-size: 14px;
-        }
-
-        .dark .display-mode-select,
-        .dark .node-select {
-          background: #4b5563;
-          color: #e2e8f0;
-          border-color: #6b7280;
-        }
-
-        .hierarchy-indent {
-          display: inline-block;
-          margin-right: 8px;
-          font-weight: bold;
-        }
-
-        .hierarchy-level-1 {
-          background-color: rgba(59, 130, 246, 0.05);
-        }
-
-        .dark .hierarchy-level-1 {
-          background-color: rgba(59, 130, 246, 0.1);
-        }
-
-        .hierarchy-level-2 {
-          background-color: rgba(16, 185, 129, 0.05);
-        }
-
-        .dark .hierarchy-level-2 {
-          background-color: rgba(16, 185, 129, 0.1);
-        }
-
-        .hierarchy-level-3 {
-          background-color: rgba(245, 158, 11, 0.05);
-        }
-
-        .dark .hierarchy-level-3 {
-          background-color: rgba(245, 158, 11, 0.1);
-        }
-
-        .batch-edit-table tr:hover {
-          background: #f8fafc;
-        }
-
-        .dark .batch-edit-table tr:hover {
-          background: #1f2937;
         }
       `}</style>
     </div>
