@@ -952,16 +952,16 @@ const DomainModelMaker = ({
           <button onClick={reassignAllColors} className="control-btn" title="Randomize Colors">
             <Palette size={16} />
           </button>
-          <button onClick={handleZoomIn} className="control-btn" title="Zoom In">
-            <ZoomIn size={16} />
-          </button>
           <button onClick={handleZoomOut} className="control-btn" title="Zoom Out">
             <ZoomOut size={16} />
+          </button>
+          <span className="zoom-indicator">{Math.round(zoom * 100)}%</span>
+          <button onClick={handleZoomIn} className="control-btn" title="Zoom In">
+            <ZoomIn size={16} />
           </button>
           <button onClick={resetView} className="control-btn" title="Reset View">
             <RotateCcw size={16} />
           </button>
-          <span className="zoom-indicator">{Math.round(zoom * 100)}%</span>
         </div>
         
         <div className="export-buttons">
