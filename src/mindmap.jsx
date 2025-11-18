@@ -1361,6 +1361,34 @@ const MindMapMaker = ({
           <div className="batch-edit-header">
             <h3>Batch Edit All Nodes</h3>
             <p>Edit multiple nodes at once. Changes are applied when you click "Apply Changes".</p>
+            
+            <div className="batch-display-options">
+              <label>Display Mode:</label>
+              <select 
+                value={batchDisplayMode} 
+                onChange={(e) => setBatchDisplayMode(e.target.value)}
+                className="display-mode-select"
+              >
+                <option value="normal">All Nodes (Normal)</option>
+                <option value="hierarchy">Hierarchical View</option>
+                <option value="selected">Selected Node & Parents</option>
+              </select>
+              
+              {batchDisplayMode === 'selected' && (
+                <select 
+                  value={selectedHierarchyNode || ''} 
+                  onChange={(e) => setSelectedHierarchyNode(e.target.value ? parseInt(e.target.value) : null)}
+                  className="node-select"
+                >
+                  <option value="">Select a node...</option>
+                  {currentNodes.map(node => (
+                    <option key={node.id} value={node.id}>
+                      {node.text} (ID: {node.id})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
           <div className="batch-edit-table">
             <table>
