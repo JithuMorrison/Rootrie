@@ -50,6 +50,8 @@ const MindMapMaker = ({
   const [imageUrlDialog, setImageUrlDialog] = useState(null);
   const [hoveredNode, setHoveredNode] = useState(null);
   const [batchEditNodes, setBatchEditNodes] = useState([]);
+  const [batchDisplayMode, setBatchDisplayMode] = useState('normal');
+  const [selectedHierarchyNode, setSelectedHierarchyNode] = useState(null);
 
   const MIN_VERTICAL_GAP = 20;
   const LEVEL_DISTANCE = 200;
@@ -636,6 +638,58 @@ const MindMapMaker = ({
       ...mindMap,
       nodes: updatedNodes
     });
+  };
+
+  const getNodesInHierarchicalOrder = () => {
+    const root = currentNodes.find(n => n.isRoot);
+    if (!root) return currentNodes;
+
+    const hierarchicalNodes = [];
+    
+    const addNodeAndChildren = (nodeId, level = 0) => {
+      const node = currentNodes.find(n => n.id === nodeId);
+      if (!node) return;
+      
+      hierarchicalNodes.push({ ...node, hierarchyLevel: level });
+      
+      const children = currentNodes.filter(n => n.parentId === nodeId);
+      children.forEach(child => {
+        addNodeAndChildren(child.id, level + 1);
+      });
+    };
+
+    addNodeAndChildren(root.id);
+    return hierarchicalNodes;
+  };
+
+  // Add this function to get a node with all its parents
+  const getNodeWithParents = (nodeId) => {
+    const allNodes = [];
+    let currentNode = currentNodes.find(n => n.id === nodeId);
+    
+    while (currentNode) {
+      allNodes.unshift(currentNode);
+      
+      if (currentNode.parentId) {
+        currentNode = currentNodes.find(n => n.id === currentNode.parentId);
+      } else {
+        currentNode = null;
+      }
+    }
+    
+    return allNodes;
+  };
+
+  // Update the batchEditNodes mapping to use the appropriate nodes based on display mode
+  const getNodesForBatchEdit = () => {
+    switch (batchDisplayMode) {
+      case 'hierarchy':
+        return getNodesInHierarchicalOrder();
+      case 'selected':
+        return selectedHierarchyNode ? getNodeWithParents(selectedHierarchyNode) : [];
+      default:
+        return currentNodes;
+    }
   };
 
   const renderNodeContent = (node) => {
@@ -1320,13 +1374,21 @@ const MindMapMaker = ({
                 </tr>
               </thead>
               <tbody>
-                {batchEditNodes.map(node => (
-                  <tr key={node.id}>
+                {getNodesForBatchEdit().map(node => (
+                  <tr key={node.id} className={batchDisplayMode === 'hierarchy' ? `hierarchy-level-${node.hierarchyLevel || 0}` : ''}>
                     <td className="id-cell">{node.id}</td>
                     <td>
+                      {batchDisplayMode === 'hierarchy' && (
+                        <span 
+                          className="hierarchy-indent"
+                          style={{ marginLeft: `${(node.hierarchyLevel || 0) * 20}px` }}
+                        >
+                          {node.isRoot ? '🌐' : '↳'}
+                        </span>
+                      )}
                       <input
                         type="text"
-                        value={node.text}
+                        value={batchEditNodes.find(bn => bn.id === node.id)?.text || node.text}
                         onChange={(e) => handleBatchEditChange(node.id, 'text', e.target.value)}
                         className="batch-input"
                         placeholder="Main text..."
@@ -1335,7 +1397,7 @@ const MindMapMaker = ({
                     <td>
                       <input
                         type="text"
-                        value={node.subtext}
+                        value={batchEditNodes.find(bn => bn.id === node.id)?.subtext || node.subtext}
                         onChange={(e) => handleBatchEditChange(node.id, 'subtext', e.target.value)}
                         className="batch-input"
                         placeholder="Subtext..."
@@ -1343,7 +1405,7 @@ const MindMapMaker = ({
                     </td>
                     <td>
                       <textarea
-                        value={node.description}
+                        value={batchEditNodes.find(bn => bn.id === node.id)?.description || node.description}
                         onChange={(e) => handleBatchEditChange(node.id, 'description', e.target.value)}
                         className="batch-textarea"
                         placeholder="Description..."
@@ -1353,7 +1415,7 @@ const MindMapMaker = ({
                     <td>
                       <input
                         type="url"
-                        value={node.imageUrl}
+                        value={batchEditNodes.find(bn => bn.id === node.id)?.imageUrl || node.imageUrl}
                         onChange={(e) => handleBatchEditChange(node.id, 'imageUrl', e.target.value)}
                         className="batch-input"
                         placeholder="Image URL..."
@@ -2249,6 +2311,79 @@ const MindMapMaker = ({
         .batch-edit-actions .save-btn {
           flex: 0 0 auto;
           min-width: 120px;
+        }
+
+        .batch-display-options {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-top: 12px;
+          flex-wrap: wrap;
+        }
+
+        .batch-display-options label {
+          font-weight: 500;
+          color: #374151;
+          font-size: 14px;
+        }
+
+        .dark .batch-display-options label {
+          color: #e2e8f0;
+        }
+
+        .display-mode-select,
+        .node-select {
+          padding: 6px 10px;
+          border: 1px solid #d1d5db;
+          border-radius: 4px;
+          background: white;
+          color: #374151;
+          font-size: 14px;
+        }
+
+        .dark .display-mode-select,
+        .dark .node-select {
+          background: #4b5563;
+          color: #e2e8f0;
+          border-color: #6b7280;
+        }
+
+        .hierarchy-indent {
+          display: inline-block;
+          margin-right: 8px;
+          font-weight: bold;
+        }
+
+        .hierarchy-level-1 {
+          background-color: rgba(59, 130, 246, 0.05);
+        }
+
+        .dark .hierarchy-level-1 {
+          background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        .hierarchy-level-2 {
+          background-color: rgba(16, 185, 129, 0.05);
+        }
+
+        .dark .hierarchy-level-2 {
+          background-color: rgba(16, 185, 129, 0.1);
+        }
+
+        .hierarchy-level-3 {
+          background-color: rgba(245, 158, 11, 0.05);
+        }
+
+        .dark .hierarchy-level-3 {
+          background-color: rgba(245, 158, 11, 0.1);
+        }
+
+        .batch-edit-table tr:hover {
+          background: #f8fafc;
+        }
+
+        .dark .batch-edit-table tr:hover {
+          background: #1f2937;
         }
       `}</style>
     </div>
