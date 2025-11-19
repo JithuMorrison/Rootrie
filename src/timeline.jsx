@@ -769,7 +769,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                   width: `${NODE_WIDTH}px`,
                   height: `${NODE_HEIGHT}px`,
                   fontSize: `13px`,
-                  transform: `scale(${zoom})`, // Scale the entire node instead of individual dimensions
+                  transform: zoom <= 1 ? `scale(${zoom})` : '', // Scale the entire node instead of individual dimensions
                   transformOrigin: 'top left' // Ensure scaling starts from top-left corner
                 }}
                 onMouseDown={(e) => handleMouseDown(e, node)}
