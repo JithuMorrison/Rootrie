@@ -2392,9 +2392,9 @@ const MindMapMaker = ({
 
         .parent-link {
           position: absolute;
-          top: 2px;
-          left: 4px;
-          right: 4px;
+          top: 40px;
+          left: 12px;
+          right: 12px;
           font-size: 10px;
           color: #6b7280;
           background: rgba(59, 130, 246, 0.1);
@@ -2425,15 +2425,6 @@ const MindMapMaker = ({
           color: #93c5fd;
         }
 
-        /* Color groups */
-        .parent-group-0 {
-          background-color: rgba(59, 130, 246, 0.08);
-        }
-
-        .dark .parent-group-0 {
-          background-color: rgba(59, 130, 246, 0.15);
-        }
-
         .parent-group-1 {
           background-color: rgba(16, 185, 129, 0.08);
         }
@@ -2443,27 +2434,11 @@ const MindMapMaker = ({
         }
 
         .parent-group-2 {
-          background-color: rgba(245, 158, 11, 0.08);
-        }
-
-        .dark .parent-group-2 {
-          background-color: rgba(245, 158, 11, 0.15);
-        }
-
-        .parent-group-3 {
           background-color: rgba(139, 92, 246, 0.08);
         }
 
-        .dark .parent-group-3 {
+        .dark .parent-group-2 {
           background-color: rgba(139, 92, 246, 0.15);
-        }
-
-        .parent-group-4 {
-          background-color: rgba(236, 72, 153, 0.08);
-        }
-
-        .dark .parent-group-4 {
-          background-color: rgba(236, 72, 153, 0.15);
         }
 
         /* Enhanced styling for parent-child continuity */
@@ -2498,13 +2473,9 @@ const MindMapMaker = ({
 
         /* Highlight animation for parent navigation */
         @keyframes highlightParent {
-          0% { background-color: rgba(245, 158, 11, 0.3); }
-          50% { background-color: rgba(245, 158, 11, 0.6); }
+          0% { background-color: rgba(207, 249, 235, 0.3); }
+          50% { background-color: rgba(151, 237, 204, 0.6); }
           100% { background-color: inherit; }
-        }
-
-        .highlight-parent {
-          animation: highlightParent 2s ease;
         }
 
         .batch-edit-table tr {
@@ -2512,11 +2483,15 @@ const MindMapMaker = ({
         }
 
         .batch-edit-table tr:hover {
-          background: #f8fafc !important;
+          background: #f8fafc;
         }
 
         .dark .batch-edit-table tr:hover {
-          background: #1f2937 !important;
+          background: #1f2937;
+        }
+
+        .highlight-parent {
+          animation: highlightParent 2s ease;
         }
 
         /* Visual indicators for immediate parent-child relationships */
