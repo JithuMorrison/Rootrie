@@ -616,7 +616,23 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
             <button onClick={() => handleZoom(0.2)} className="zoom-btn">
               <ZoomIn size={16} />
             </button>
-            <span className="zoom-level">{Math.round(zoom * 100)}%</span>
+            
+            <div className="zoom-input-container">
+              <input
+                type="number"
+                min="10"
+                max="10000"
+                step="10"
+                value={Math.round(zoom * 100)}
+                onChange={(e) => {
+                  const newZoom = Math.max(0.1, Math.min(100, parseInt(e.target.value) / 100));
+                  setZoom(newZoom);
+                }}
+                className="zoom-input"
+              />
+              <span className="zoom-percent">%</span>
+            </div>
+            
             <button onClick={() => handleZoom(-0.2)} className="zoom-btn">
               <ZoomOut size={16} />
             </button>
@@ -749,9 +765,12 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                 style={{
                   left: `${getTimelinePosition(node.timeline) * zoom}px`,
                   top: `${node.y * zoom + TIMELINE_HEIGHT}px`,
-                  width: `${NODE_WIDTH * zoom}px`,
-                  height: `${NODE_HEIGHT * zoom}px`,
-                  fontSize: `${13 * zoom}px`
+                  // Keep node size constant regardless of zoom
+                  width: `${NODE_WIDTH}px`,
+                  height: `${NODE_HEIGHT}px`,
+                  fontSize: `13px`,
+                  transform: `scale(${zoom})`, // Scale the entire node instead of individual dimensions
+                  transformOrigin: 'top left' // Ensure scaling starts from top-left corner
                 }}
                 onMouseDown={(e) => handleMouseDown(e, node)}
                 onClick={(e) => handleNodeClick(e, node)}
@@ -763,8 +782,8 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                     alt={node.title} 
                     className="node-image"
                     style={{
-                      width: `${32 * zoom}px`,
-                      height: `${32 * zoom}px`
+                      width: `32px`,
+                      height: `32px`
                     }}
                   />
                 )}
@@ -784,13 +803,14 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
                     }}
                     className="delete-btn"
                     style={{
-                      width: `${24 * zoom}px`,
-                      height: `${24 * zoom}px`,
-                      top: `${-8 * zoom}px`,
-                      right: `${-8 * zoom}px`
+                      // Keep delete button size constant
+                      width: `24px`,
+                      height: `24px`,
+                      top: `-8px`,
+                      right: `-8px`
                     }}
                   >
-                    <Trash2 size={14 * zoom} />
+                    <Trash2 size={14} />
                   </button>
                 )}
               </div>
@@ -1063,16 +1083,47 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           background: #475569;
         }
         
-        .zoom-level {
+        .zoom-input-container {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .zoom-input {
+          width: 60px;
+          padding: 6px 8px;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
           font-size: 13px;
           font-weight: 600;
-          color: #475569;
-          min-width: 45px;
           text-align: center;
+          background: white;
+          color: #475569;
         }
-        
-        .dark .zoom-level {
-          color: #cbd5e1;
+
+        .dark .zoom-input {
+          background: #334155;
+          border: 1px solid #475569;
+          color: #f8fafc;
+        }
+
+        .zoom-input:focus {
+          outline: none;
+          border-color: #667eea;
+          box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+
+        .zoom-percent {
+          position: absolute;
+          right: 8px;
+          font-size: 11px;
+          font-weight: 600;
+          color: #64748b;
+          pointer-events: none;
+        }
+
+        .dark .zoom-percent {
+          color: #94a3b8;
         }
         
         .timeline {
