@@ -500,7 +500,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   };
 
   const handleZoom = (delta) => {
-    setZoom(prev => Math.max(0.1, Math.min(5, prev + delta)));
+    setZoom(prev => Math.max(0.1, Math.min(100, prev + delta)));
   };
 
   const handleWheel = (e) => {
@@ -512,7 +512,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
       const mouseY = e.clientY - rect.top;
       
       const delta = -e.deltaY * 0.001;
-      const newZoom = Math.max(0.1, Math.min(5, zoom + delta));
+      const newZoom = Math.max(0.1, Math.min(100, zoom + delta));
       
       setZoom(newZoom);
     }
