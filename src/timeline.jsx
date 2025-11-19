@@ -652,7 +652,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           className="canvas"
           style={{ 
             cursor: connectionMode ? 'crosshair' : 'default',
-            width: `${3000 * zoom}px`,
+            width: `${3300 * zoom}px`,
             height: `${2000 * zoom}px`,
             minHeight: '100%'
           }}
