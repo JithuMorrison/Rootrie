@@ -338,35 +338,41 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   };
 
   const getNodeEdgePoint = (node, targetNode) => {
+    // Calculate node position with zoom
     const nodeX = getTimelinePosition(node.timeline) * zoom;
     const nodeY = node.y * zoom + TIMELINE_HEIGHT;
-    const nodeCenterX = nodeX + (NODE_WIDTH * zoom / 2);
-    const nodeCenterY = nodeY + (NODE_HEIGHT * zoom / 2);
+    
+    // Calculate effective dimensions considering scaling
+    const effectiveWidth = zoom <= 1 ? NODE_WIDTH * zoom : NODE_WIDTH;
+    const effectiveHeight = zoom <= 1 ? NODE_HEIGHT * zoom : NODE_HEIGHT;
+    
+    const nodeCenterX = nodeX + (effectiveWidth / 2);
+    const nodeCenterY = nodeY + (effectiveHeight / 2);
     
     const targetX = getTimelinePosition(targetNode.timeline) * zoom;
     const targetY = targetNode.y * zoom + TIMELINE_HEIGHT;
-    const targetCenterX = targetX + (NODE_WIDTH * zoom / 2);
-    const targetCenterY = targetY + (NODE_HEIGHT * zoom / 2);
+    const targetCenterX = targetX + (effectiveWidth / 2);
+    const targetCenterY = targetY + (effectiveHeight / 2);
     
     const dx = targetCenterX - nodeCenterX;
     const dy = targetCenterY - nodeCenterY;
     const angle = Math.atan2(dy, dx);
     
     let edgeX, edgeY;
-    const rectAngle = Math.atan2(NODE_HEIGHT * zoom / 2, NODE_WIDTH * zoom / 2);
+    const rectAngle = Math.atan2(effectiveHeight / 2, effectiveWidth / 2);
     
     if (Math.abs(angle) <= rectAngle) {
-      edgeX = nodeX + NODE_WIDTH * zoom;
-      edgeY = nodeCenterY + Math.tan(angle) * (NODE_WIDTH * zoom / 2);
+      edgeX = nodeX + effectiveWidth;
+      edgeY = nodeCenterY + Math.tan(angle) * (effectiveWidth / 2);
     } else if (Math.abs(angle) >= Math.PI - rectAngle) {
       edgeX = nodeX;
-      edgeY = nodeCenterY - Math.tan(angle) * (NODE_WIDTH * zoom / 2);
+      edgeY = nodeCenterY - Math.tan(angle) * (effectiveWidth / 2);
     } else if (angle > 0) {
-      edgeY = nodeY + NODE_HEIGHT * zoom;
-      edgeX = nodeCenterX + (NODE_HEIGHT * zoom / 2) / Math.tan(angle);
+      edgeY = nodeY + effectiveHeight;
+      edgeX = nodeCenterX + (effectiveHeight / 2) / Math.tan(angle);
     } else {
       edgeY = nodeY;
-      edgeX = nodeCenterX - (NODE_HEIGHT * zoom / 2) / Math.tan(angle);
+      edgeX = nodeCenterX - (effectiveHeight / 2) / Math.tan(angle);
     }
     
     return { x: edgeX, y: edgeY };
