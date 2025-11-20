@@ -619,8 +619,8 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
           </button>
           
           <div className="zoom-controls">
-            <button onClick={() => handleZoom(0.2)} className="zoom-btn">
-              <ZoomIn size={16} />
+            <button onClick={() => handleZoom(-0.2)} className="zoom-btn">
+              <ZoomOut size={16} />
             </button>
             
             <div className="zoom-input-container">
@@ -638,10 +638,11 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
               />
               <span className="zoom-percent">%</span>
             </div>
-            
-            <button onClick={() => handleZoom(-0.2)} className="zoom-btn">
-              <ZoomOut size={16} />
+
+            <button onClick={() => handleZoom(0.2)} className="zoom-btn">
+              <ZoomIn size={16} />
             </button>
+
           </div>
         </div>
       </div>
