@@ -331,26 +331,26 @@ const UseCaseDiagramMaker = ({
 
     setPrev({'actors':actors,'useCases':useCases,'systemBoundary':systemBoundary});
 
-    const systemBoundary = systemBoundary || { x: 300, y: 50, width: 600, height: 400 };
+    const currSystemBoundary = systemBoundary || { x: 300, y: 50, width: 600, height: 400 };
 
     // Dynamically calculate how many use cases per row can fit
     const itemsPerRow = Math.max(
       1,
-      Math.floor(systemBoundary.width / useCaseSpacingX) + 1
+      Math.floor(currSystemBoundary.width / useCaseSpacingX) + 1
     );
 
     // Arrange actors vertically on the left
     const updatedActors = actors.map((actor, index) => ({
       ...actor,
-      x: systemBoundary.x - 150, // position left of boundary
-      y: systemBoundary.y + margin + index * actorSpacing
+      x: currSystemBoundary.x - 150, // position left of boundary
+      y: currSystemBoundary.y + margin + index * actorSpacing
     }));
 
     // Arrange use cases inside the boundary dynamically
     const updatedUseCases = useCases.map((useCase, index) => ({
       ...useCase,
-      x: systemBoundary.x + margin + (index % itemsPerRow) * useCaseSpacingX,
-      y: systemBoundary.y + margin + Math.floor(index / itemsPerRow) * useCaseSpacingY
+      x: currSystemBoundary.x + margin + (index % itemsPerRow) * useCaseSpacingX,
+      y: currSystemBoundary.y + margin + Math.floor(index / itemsPerRow) * useCaseSpacingY
     }));
 
     onUpdateUseCaseDiagram({
