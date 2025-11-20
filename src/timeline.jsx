@@ -506,7 +506,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
   };
 
   const handleZoom = (delta) => {
-    setZoom(prev => Math.max(0.1, Math.min(100, prev + delta)));
+    setZoom(prev => Math.max(0.4, Math.min(100, prev + delta)));
   };
 
   const handleWheel = (e) => {
@@ -518,7 +518,7 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
       const mouseY = e.clientY - rect.top;
       
       const delta = -e.deltaY * 0.001;
-      const newZoom = Math.max(0.1, Math.min(100, zoom + delta));
+      const newZoom = Math.max(0.4, Math.min(100, zoom + delta));
       
       setZoom(newZoom);
     }
@@ -626,12 +626,12 @@ const EvolutionChartMaker = ({ project, nodes, connections, onUpdateProject, onB
             <div className="zoom-input-container">
               <input
                 type="number"
-                min="10"
+                min="40"
                 max="10000"
                 step="10"
                 value={Math.round(zoom * 100)}
                 onChange={(e) => {
-                  const newZoom = Math.max(0.1, Math.min(100, parseInt(e.target.value) / 100));
+                  const newZoom = Math.max(0.4, Math.min(100, parseInt(e.target.value) / 100));
                   setZoom(newZoom);
                 }}
                 className="zoom-input"
