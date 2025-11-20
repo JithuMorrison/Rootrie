@@ -24,6 +24,7 @@ const UseCaseDiagramMaker = ({
   const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
   const [lastCanvasMousePos, setLastCanvasMousePos] = useState({ x: 0, y: 0 });
+  const [prev, setPrev] = useState(null);
   const [systemBoundary, setSystemBoundary] = useState(useCaseDiagram.systemBoundary || {
     x: 200,
     y: 100,
@@ -328,6 +329,8 @@ const UseCaseDiagramMaker = ({
     const useCaseSpacingX = 200;
     const useCaseSpacingY = 80;
 
+    setPrev({'actors':actors,'useCases':useCases,'systemBoundary':systemBoundary});
+
     const systemBoundary = systemBoundary || { x: 300, y: 50, width: 600, height: 400 };
 
     // Dynamically calculate how many use cases per row can fit
@@ -355,6 +358,17 @@ const UseCaseDiagramMaker = ({
       actors: updatedActors,
       useCases: updatedUseCases
     });
+  };
+
+  const undoAutoLayout = () => {
+    if (prev) {
+      onUpdateUseCaseDiagram({
+        ...useCaseDiagram,
+        actors: prev.actors,
+        useCases: prev.useCases,
+        systemBoundary: prev.systemBoundary
+      });
+    }
   };
 
   useEffect(() => {
@@ -1039,6 +1053,9 @@ const UseCaseDiagramMaker = ({
           </button>
           <button onClick={autoLayout} className="tool-btn">
             Auto
+          </button>
+          <button onClick={undoAutoLayout} className="tool-btn">
+            Undo
           </button>
         </div>
         <div className="export-buttons">
