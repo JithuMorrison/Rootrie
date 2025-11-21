@@ -1307,6 +1307,8 @@ const UseCaseDiagramMaker = ({
                   // Auto-position use cases inside boundary
                   const itemsPerRow = Math.max(1, Math.floor((systemBoundary.width / 200)));
 
+                  setPrev({'actors':actors,'useCases':useCases,'systemBoundary':systemBoundary});
+
                   const updatedUseCases = useCases.map((useCase, index) => ({
                     ...useCase,
                     x: systemBoundary.x + 25 + (index % itemsPerRow) * 200,
