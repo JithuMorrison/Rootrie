@@ -813,10 +813,16 @@ const UseCaseDiagramMaker = ({
     onUpdateUseCaseDiagram({
       ...useCaseDiagram,
       actors: updatedActors,
-      useCases: updatedUseCases
+      useCases: updatedUseCases,
+      systemBoundary: {
+        ...systemBoundary,
+        x: constrainedBoundary.x,
+        y: constrainedBoundary.y
+      }
     });
-    
-    updateSystemBoundary({
+
+    setSystemBoundary({
+      ...systemBoundary,
       x: constrainedBoundary.x,
       y: constrainedBoundary.y
     });
