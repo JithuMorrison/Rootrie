@@ -368,6 +368,7 @@ const UseCaseDiagramMaker = ({
         useCases: prev.useCases,
         systemBoundary: prev.systemBoundary
       });
+      setSystemBoundary(prev.systemBoundary);
     }
   };
 
@@ -738,6 +739,8 @@ const UseCaseDiagramMaker = ({
   const centerAllElements = () => {
     // Calculate bounds of all elements
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+    setPrev({'actors':actors,'useCases':useCases,'systemBoundary':systemBoundary});
     
     // Check actors
     actors.forEach(actor => {
