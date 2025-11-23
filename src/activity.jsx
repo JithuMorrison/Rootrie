@@ -375,24 +375,36 @@ const ActivityDiagramMaker = ({
     reader.readAsText(file);
   };
 
-  const getConnectionPath = (sourceNode, targetNode) => {
-    const getNodeCenter = (node) => ({
-      x: node.x + node.width / 2,
-      y: node.y + node.height / 2
-    });
+  // Get connection points - exit from bottom of source, enter at top of target
+  const getConnectionPoints = (sourceNode, targetNode) => {
+    // Source point is at the bottom center of the source node
+    const sourceX = sourceNode.x + sourceNode.width / 2;
+    const sourceY = sourceNode.y + sourceNode.height;
+    
+    // Target point is at the top center of the target node
+    const targetX = targetNode.x + targetNode.width / 2;
+    const targetY = targetNode.y;
+    
+    return {
+      source: { x: sourceX, y: sourceY },
+      target: { x: targetX, y: targetY }
+    };
+  };
 
-    const source = getNodeCenter(sourceNode);
-    const target = getNodeCenter(targetNode);
+  const getConnectionPath = (sourceNode, targetNode) => {
+    const { source, target } = getConnectionPoints(sourceNode, targetNode);
     
     const dx = target.x - source.x;
     const dy = target.y - source.y;
     
-    if (Math.abs(dx) > Math.abs(dy)) {
-      const midY = source.y;
-      return `M ${source.x} ${source.y} L ${target.x} ${midY} L ${target.x} ${target.y}`;
+    // Create path - always go down first, then horizontal, then down to target
+    if (Math.abs(dx) < 5) {
+      // Nodes are vertically aligned - straight line down
+      return `M ${source.x} ${source.y} L ${target.x} ${target.y}`;
     } else {
-      const midX = source.x;
-      return `M ${source.x} ${source.y} L ${midX} ${target.y} L ${target.x} ${target.y}`;
+      // Need to move horizontally - create stepped path
+      const midY = source.y + Math.abs(dy) / 2;
+      return `M ${source.x} ${source.y} L ${source.x} ${midY} L ${target.x} ${midY} L ${target.x} ${target.y}`;
     }
   };
 
@@ -547,6 +559,7 @@ const ActivityDiagramMaker = ({
     if (!sourceNode || !targetNode) return null;
 
     const path = getConnectionPath(sourceNode, targetNode);
+    const { source, target } = getConnectionPoints(sourceNode, targetNode);
 
     return (
       <g key={edge.id} className="edge-group">
@@ -567,8 +580,8 @@ const ActivityDiagramMaker = ({
         
         {edge.label && (
           <text
-            x={(sourceNode.x + targetNode.x) / 2}
-            y={(sourceNode.y + targetNode.y) / 2 - 10}
+            x={(source.x + target.x) / 2}
+            y={(source.y + target.y) / 2 - 10}
             fill="#374151"
             fontSize="11"
             fontWeight="500"
