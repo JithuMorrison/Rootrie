@@ -1795,7 +1795,6 @@ const UseCaseDiagramMaker = ({
           z-index: 10;
           user-select: none;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-          transition: all 0.2s;
           text-align: center;
           line-height: 1.2;
           color: #1e293b;
