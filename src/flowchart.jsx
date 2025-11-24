@@ -1211,7 +1211,6 @@ const FlowchartMaker = ({ flowchart, nodes, edges, jsonInput, onJsonInputChange,
       boxSizing: 'border-box',
       border: isSelected ? `2px solid ${colors.nodeStroke}` : isConnecting ? `2px solid #f59e0b` : `1px solid rgba(255,255,255,0.2)`,
       userSelect: 'none',
-      transition: 'all 0.2s ease',
       zIndex: isSelected ? 1000 : 1
     };
 
