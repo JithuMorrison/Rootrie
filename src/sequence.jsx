@@ -17,10 +17,9 @@ const SequenceDiagramMaker = ({
   const [activeTab, setActiveTab] = useState('editor');
   const [jsonInput, setJsonInput] = useState('');
   const [zoom, setZoom] = useState(1);
-  const [spacing, setSpacing] = useState(150); // Adjustable spacing between lifelines
+  const [spacing, setSpacing] = useState(150);
   const canvasRef = useRef(null);
 
-  // Initialize JSON input with current diagram data
   useEffect(() => {
     setJsonInput(JSON.stringify({ participants, messages }, null, 2));
   }, [participants, messages]);
@@ -62,7 +61,7 @@ const SequenceDiagramMaker = ({
         to: to.id,
         type: messageType,
         order: messages.length + 1,
-        activationStart: messageType === 'sync' || messageType === 'create',
+        activationStart: messageType === 'sync' || messageType === 'create' || messageType === 'self',
         activationEnd: false
       }
     ];
@@ -185,14 +184,12 @@ const SequenceDiagramMaker = ({
   const exportToImage = () => {
     if (!canvasRef.current) return;
     
-    // Temporarily reset zoom for export
     const originalTransform = canvasRef.current.style.transform;
     canvasRef.current.style.transform = 'scale(1) translate(0px, 0px)';
     
-    // Create a temporary canvas for export
     const tempCanvas = document.createElement('canvas');
     const rect = canvasRef.current.getBoundingClientRect();
-    tempCanvas.width = rect.width * 2; // Higher resolution
+    tempCanvas.width = rect.width * 2;
     tempCanvas.height = rect.height * 2;
     
     import('html2canvas').then(html2canvas => {
@@ -217,7 +214,7 @@ const SequenceDiagramMaker = ({
   };
 
   const calculateParticipantX = (index) => {
-    return 60 + index * spacing; // Reduced left margin from 100 to 60
+    return 60 + index * spacing;
   };
 
   const renderParticipantHeader = (participant, index) => {
@@ -230,7 +227,7 @@ const SequenceDiagramMaker = ({
         className="participant-header"
         style={{
           left: `${x - 60}px`,
-          top: '40px', // Increased top margin from 20px to 40px
+          top: '40px',
           width: '120px',
           height: `${headerHeight}px`
         }}
@@ -253,8 +250,8 @@ const SequenceDiagramMaker = ({
 
   const renderLifeline = (participant, index) => {
     const x = calculateParticipantX(index);
-    const startY = 110; // Adjusted for new top margin
-    const endY = Math.max(220 + messages.length * 50, 420); // Adjusted for new top margin
+    const startY = 110;
+    const endY = Math.max(220 + messages.length * 50, 420);
     
     return (
       <div
@@ -278,11 +275,11 @@ const SequenceDiagramMaker = ({
     messages
       .sort((a, b) => a.order - b.order)
       .forEach((message, index) => {
-        const y = 150 + index * 50; // Adjusted for new top margin
+        const y = 150 + index * 50;
         
         // Start activation when receiving a sync/create message or making a self call
         if ((message.to === participantId && (message.type === 'sync' || message.type === 'create')) ||
-            (message.from === participantId && message.type === 'self')) {
+            (message.from === participantId && message.to === participantId && message.type === 'self')) {
           activationStack.push({ start: y, messageId: message.id });
         }
         
@@ -301,7 +298,7 @@ const SequenceDiagramMaker = ({
     
     // Handle any remaining activations (extend to end)
     if (activationStack.length > 0) {
-      const lastY = 150 + messages.length * 50; // Adjusted for new top margin
+      const lastY = 150 + messages.length * 50;
       activationStack.forEach(activation => {
         boxes.push({
           ...activation,
@@ -331,7 +328,7 @@ const SequenceDiagramMaker = ({
     
     if (fromIndex === -1 || toIndex === -1) return null;
     
-    const y = 150 + index * 50; // Adjusted for new top margin
+    const y = 150 + index * 50;
     const fromX = calculateParticipantX(fromIndex);
     const toX = calculateParticipantX(toIndex);
     const isSelfCall = message.from === message.to;
@@ -380,7 +377,7 @@ const SequenceDiagramMaker = ({
     const style = getMessageStyle(message.type);
     
     if (isSelfCall) {
-      const selfCallWidth = Math.max(40, spacing * 0.3); // Make self-call width responsive to spacing
+      const selfCallWidth = Math.max(40, spacing * 0.3);
       return (
         <div key={message.id} className="message-container">
           <svg className="message-svg" style={{ overflow: 'visible' }}>
@@ -395,9 +392,19 @@ const SequenceDiagramMaker = ({
               points={`${fromX - 8},${y + 10} ${fromX},${y + 20} ${fromX - 8},${y + 30}`}
               fill={style.stroke}
             />
+            <rect
+              x={fromX + selfCallWidth + 5}
+              y={y - 8}
+              width={message.text.length * 6 + 10}
+              height="16"
+              fill="white"
+              stroke="#e2e8f0"
+              strokeWidth="1"
+              rx="3"
+            />
             <text
               x={fromX + selfCallWidth + 10}
-              y={y + 15}
+              y={y + 5}
               fontSize="12"
               fill={style.stroke}
               className="message-text"
@@ -412,6 +419,7 @@ const SequenceDiagramMaker = ({
     const direction = fromX < toX ? 1 : -1;
     const arrowX = direction > 0 ? toX - 8 : toX + 8;
     const midX = (fromX + toX) / 2;
+    const textWidth = message.text.length * 6 + 10;
     
     return (
       <div key={message.id} className="message-container">
@@ -445,6 +453,18 @@ const SequenceDiagramMaker = ({
               strokeWidth="2"
             />
           )}
+          
+          {/* Background for message text */}
+          <rect
+            x={midX - textWidth / 2}
+            y={y - 20}
+            width={textWidth}
+            height="16"
+            fill="white"
+            stroke="#e2e8f0"
+            strokeWidth="1"
+            rx="3"
+          />
           
           <text
             x={midX}
@@ -481,7 +501,6 @@ const SequenceDiagramMaker = ({
         <h2>{sequenceDiagram.name}</h2>
         <div className="spacer"></div>
         
-        {/* Spacing Control */}
         <div className="spacing-controls">
           <label>Spacing:</label>
           <button 
@@ -501,7 +520,6 @@ const SequenceDiagramMaker = ({
           </button>
         </div>
         
-        {/* Zoom Controls */}
         <div className="zoom-controls">
           <button 
             onClick={() => setZoom(Math.max(0.5, zoom - 0.1))}
@@ -724,16 +742,9 @@ const SequenceDiagramMaker = ({
                 transformOrigin: 'top left'
               }}
             >
-              {/* Participant Headers */}
               {participants.map((participant, index) => renderParticipantHeader(participant, index))}
-              
-              {/* Lifelines */}
               {participants.map((participant, index) => renderLifeline(participant, index))}
-              
-              {/* Activation Boxes */}
               {participants.map((participant, index) => getActivationBoxes(participant.id, index))}
-              
-              {/* Messages */}
               {messages
                 .sort((a, b) => a.order - b.order)
                 .map((message, index) => renderMessage(message, index))}
@@ -1160,21 +1171,16 @@ const SequenceDiagramMaker = ({
         
         .lifeline {
           position: absolute;
-          background: #94a3b8;
-          background-image: repeating-linear-gradient(
-            to bottom,
-            transparent,
-            transparent 8px,
-            #94a3b8 8px,
-            #94a3b8 12px
-          );
+          background: transparent;
+          border-left: 2px dotted #94a3b8;
         }
         
         .activation-box {
           position: absolute;
-          background: #fbbf24;
-          border: 1px solid #f59e0b;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+          background: rgba(59, 130, 246, 0.2);
+          border: 1px solid rgba(59, 130, 246, 0.5);
+          border-radius: 2px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
         
         .message-container {
