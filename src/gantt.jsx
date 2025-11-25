@@ -693,6 +693,7 @@ const GanttChartMaker = ({ ganttChart, tasks, onUpdateGanttChart, onBack }) => {
           font-size: 14px;
           font-weight: 500;
           margin-bottom: 4px;
+          color: #1e293b;
         }
         
         .task-dates {
