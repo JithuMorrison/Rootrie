@@ -660,6 +660,7 @@ const ClassDiagramMaker = ({
       code += " {\n\n";
 
       // 🎯 Attributes
+      const privateAttributes = [];
       if (cls.attributes?.length > 0) {
         cls.attributes.forEach(attr => {
           const javaType = javaTypeMapping[attr.type] || attr.type;
@@ -669,6 +670,15 @@ const ClassDiagramMaker = ({
             : getDefaultValue(javaType);
 
           code += `    ${vis} ${javaType} ${attr.name}${attr.defaultValue ? ` = ${defaultVal}` : ""};\n`;
+          
+          // Track private attributes for getter/setter generation
+          if (vis === "private") {
+            privateAttributes.push({
+              name: attr.name,
+              type: javaType,
+              defaultValue: defaultVal
+            });
+          }
         });
         code += "\n";
       }
@@ -695,6 +705,23 @@ const ClassDiagramMaker = ({
           code += `        this.${attr.name} = ${attr.name};\n`;
         });
         code += "    }\n\n";
+      }
+
+      // 🎯 Getters and Setters for private attributes
+      if (privateAttributes.length > 0) {
+        privateAttributes.forEach(attr => {
+          const capitalizedName = attr.name.charAt(0).toUpperCase() + attr.name.slice(1);
+          
+          // Getter
+          code += `    public ${attr.type} get${capitalizedName}() {\n`;
+          code += `        return this.${attr.name};\n`;
+          code += `    }\n\n`;
+          
+          // Setter
+          code += `    public void set${capitalizedName}(${attr.type} ${attr.name}) {\n`;
+          code += `        this.${attr.name} = ${attr.name};\n`;
+          code += `    }\n\n`;
+        });
       }
 
       // 🎯 Methods
