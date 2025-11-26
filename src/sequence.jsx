@@ -1172,7 +1172,7 @@ const SequenceDiagramMaker = ({
         .lifeline {
           position: absolute;
           background: transparent;
-          border-left: 2px dotted #94a3b8;
+          border-left: 2px dashed #94a3b8;
         }
         
         .activation-box {
