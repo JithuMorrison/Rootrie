@@ -278,9 +278,19 @@ const SequenceDiagramMaker = ({
         const y = 150 + index * 50;
         
         // Start activation when receiving a sync/create message or making a self call
-        if (((message.to === participantId || message.from === participantId) && (message.type === 'sync' || message.type === 'create')) ||
-            (message.from === participantId && message.type === 'self')) {
+        if (((message.to === participantId || message.from === participantId) && (message.type === 'sync' || message.type === 'create'))) {
           activationStack.push({ start: y, messageId: message.id });
+        }
+
+        if (message.from === participantId && message.type === 'self') {
+          const startY = y;
+          const endY = y + 40;
+          boxes.push({
+            start: startY,
+            end: endY,
+            height: endY - startY,
+            messageId: message.id
+          });
         }
         
         // End activation on return message from this participant
