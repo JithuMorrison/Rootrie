@@ -399,7 +399,7 @@ const SequenceDiagramMaker = ({
     const style = getMessageStyle(message.type);
     
     if (isSelfCall) {
-      const selfCallWidth = Math.max(40, spacing * 0.3);
+      const selfCallWidth = Math.max(20, spacing * 0.2);
       return (
         <div key={message.id} className="message-container">
           <svg className="message-svg" style={{ overflow: 'visible' }}>
@@ -411,12 +411,12 @@ const SequenceDiagramMaker = ({
               strokeDasharray={style.strokeDasharray}
             />
             <polygon
-              points={`${fromX - 8},${y + 10} ${fromX},${y + 20} ${fromX - 8},${y + 30}`}
+              points={`${fromX + 10},${y + 13} ${fromX},${y + 20} ${fromX + 10},${y + 27}`}
               fill={style.stroke}
             />
             <rect
               x={fromX + selfCallWidth + 5}
-              y={y - 8}
+              y={y + 2}
               width={message.text.length * 6 + 10}
               height="16"
               fill="white"
@@ -426,7 +426,7 @@ const SequenceDiagramMaker = ({
             />
             <text
               x={fromX + selfCallWidth + 10}
-              y={y + 5}
+              y={y + 14}
               fontSize="12"
               fill={style.stroke}
               className="message-text"
