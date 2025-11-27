@@ -400,20 +400,49 @@ const SequenceDiagramMaker = ({
     
     if (isSelfCall) {
       const selfCallWidth = Math.max(20, spacing * 0.2);
+
+      const normalStyle = style;
+      const returnStyle = getMessageStyle("return");
+
+      const isSplit = message.type === "sync" || message.type === "create";
+
       return (
         <div key={message.id} className="message-container">
           <svg className="message-svg" style={{ overflow: 'visible' }}>
             <path
-              d={`M ${fromX} ${y} L ${fromX + selfCallWidth} ${y} L ${fromX + selfCallWidth} ${y + 20} L ${fromX} ${y + 20}`}
+              d={`M ${fromX} ${y} L ${fromX + selfCallWidth} ${y}`}
               fill="none"
-              stroke={style.stroke}
+              stroke={normalStyle.stroke}
               strokeWidth="2"
-              strokeDasharray={style.strokeDasharray}
+              strokeDasharray={normalStyle.strokeDasharray}
             />
-            <polygon
-              points={`${fromX + 10},${y + 13} ${fromX},${y + 20} ${fromX + 10},${y + 27}`}
-              fill={style.stroke}
+            <path
+              d={`M ${fromX + selfCallWidth} ${y} L ${fromX + selfCallWidth} ${y + 20}`}
+              fill="none"
+              stroke={normalStyle.stroke}
+              strokeWidth="2"
+              strokeDasharray={normalStyle.strokeDasharray}
             />
+            <path
+              d={`M ${fromX + selfCallWidth} ${y + 20} L ${fromX} ${y + 20}`}
+              fill="none"
+              stroke={isSplit ? returnStyle.stroke : normalStyle.stroke}
+              strokeWidth="2"
+              strokeDasharray={isSplit ? returnStyle.strokeDasharray : normalStyle.strokeDasharray}
+            />
+            {isSplit || message.type === 'return' ? (
+              <path
+                d={`M ${fromX + 8},${y + 14} L ${fromX},${y + 20} L ${fromX + 8},${y + 26}`}
+                fill="none"
+                stroke={returnStyle.stroke}
+                strokeWidth="2"
+              />
+            ) : (
+              <polygon
+                points={`${fromX + 8},${y + 14} ${fromX},${y + 20} ${fromX + 8},${y + 26}`}
+                fill={normalStyle.stroke}
+              />
+            )}
             <rect
               x={fromX + selfCallWidth + 5}
               y={y + 2}
@@ -428,7 +457,7 @@ const SequenceDiagramMaker = ({
               x={fromX + selfCallWidth + 10}
               y={y + 14}
               fontSize="12"
-              fill={style.stroke}
+              fill={normalStyle.stroke}
               className="message-text"
             >
               {message.text}
