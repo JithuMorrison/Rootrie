@@ -324,7 +324,7 @@ const UseCaseDiagramMaker = ({
   };
 
   const autoLayout = () => {
-    const margin = 50;
+    const margin = 35;
     const actorSpacing = 120;
     const useCaseSpacingX = 200;
     const useCaseSpacingY = 80;
@@ -333,24 +333,21 @@ const UseCaseDiagramMaker = ({
 
     const currSystemBoundary = systemBoundary || { x: 300, y: 50, width: 600, height: 400 };
 
-    // Dynamically calculate how many use cases per row can fit
-    const itemsPerRow = Math.max(
+    const itemsPerCol = Math.max(
       1,
-      Math.floor(currSystemBoundary.width / useCaseSpacingX) + 1
+      Math.floor(currSystemBoundary.height / useCaseSpacingY)
     );
 
-    // Arrange actors vertically on the left
     const updatedActors = actors.map((actor, index) => ({
       ...actor,
-      x: currSystemBoundary.x - 150, // position left of boundary
-      y: currSystemBoundary.y + margin + index * actorSpacing
+      x: currSystemBoundary.x - 100,
+      y: currSystemBoundary.y + 10 + index * actorSpacing
     }));
 
-    // Arrange use cases inside the boundary dynamically
     const updatedUseCases = useCases.map((useCase, index) => ({
       ...useCase,
-      x: currSystemBoundary.x + margin + (index % itemsPerRow) * useCaseSpacingX,
-      y: currSystemBoundary.y + margin + Math.floor(index / itemsPerRow) * useCaseSpacingY
+      x: currSystemBoundary.x + margin + Math.floor(index / itemsPerCol) * useCaseSpacingX, 
+      y: currSystemBoundary.y + margin + (index % itemsPerCol) * useCaseSpacingY
     }));
 
     onUpdateUseCaseDiagram({
