@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, use } from 'react';
 import { ArrowLeft, Save, Plus, Trash2, Users, GitMerge, Download, Upload, Image, Copy, Move, Grid, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 const UseCaseDiagramMaker = ({ 
@@ -337,6 +337,11 @@ const UseCaseDiagramMaker = ({
       1,
       Math.floor(currSystemBoundary.height / useCaseSpacingY)
     );
+
+    if (margin + useCaseSpacingX * Math.ceil(useCases.length / itemsPerCol) > currSystemBoundary.width) {
+      alert("Usecases exceeds align limit! Can't align"); 
+      return;
+    }
 
     const updatedActors = actors.map((actor, index) => ({
       ...actor,
