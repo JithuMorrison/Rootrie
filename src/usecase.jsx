@@ -339,8 +339,8 @@ const UseCaseDiagramMaker = ({
     );
 
     if (margin + useCaseSpacingX * Math.ceil(useCases.length / itemsPerCol) > currSystemBoundary.width) {
-      alert("Usecases exceeds align limit! Can't align"); 
-      return;
+      const ok = confirm("Usecases exceeds align limit! Still need to align?\nSelect OK to align, Cancel to cancel."); 
+      if (!ok) return;
     }
 
     const updatedActors = actors.map((actor, index) => ({
