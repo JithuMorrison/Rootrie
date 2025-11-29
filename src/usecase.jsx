@@ -1326,6 +1326,13 @@ const UseCaseDiagramMaker = ({
 
                   setPrev({'actors':actors,'useCases':useCases,'systemBoundary':systemBoundary});
 
+                  alert(25 + 80 * Math.ceil(useCases.length / itemsPerRow) > systemBoundary.height);
+
+                  if ( 25 + 80 * Math.ceil(useCases.length / itemsPerRow) > systemBoundary.height) {
+                    alert("Not enough space in system boundary for auto arrangement of use cases.");
+                    return;
+                  }
+
                   const updatedUseCases = useCases.map((useCase, index) => ({
                     ...useCase,
                     x: systemBoundary.x + 25 + (index % itemsPerRow) * 200,
