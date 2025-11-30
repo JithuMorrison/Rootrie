@@ -1326,11 +1326,9 @@ const UseCaseDiagramMaker = ({
 
                   setPrev({'actors':actors,'useCases':useCases,'systemBoundary':systemBoundary});
 
-                  alert(25 + 80 * Math.ceil(useCases.length / itemsPerRow) > systemBoundary.height);
-
                   if ( 25 + 80 * Math.ceil(useCases.length / itemsPerRow) > systemBoundary.height) {
-                    alert("Not enough space in system boundary for auto arrangement of use cases.");
-                    return;
+                    const ok = confirm("Usecases exceeds align limit! Still align?\nSelect OK to align, Cancel to cancel."); 
+                    if (!ok) return;
                   }
 
                   const updatedUseCases = useCases.map((useCase, index) => ({
