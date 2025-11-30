@@ -1331,9 +1331,11 @@ const UseCaseDiagramMaker = ({
                     if (!ok) return;
                   }
 
+                  const updVal = (systemBoundary.width + 25)/itemsPerRow;
+
                   const updatedUseCases = useCases.map((useCase, index) => ({
                     ...useCase,
-                    x: systemBoundary.x + 25 + (index % itemsPerRow) * 200,
+                    x: systemBoundary.x + 25 + (index % itemsPerRow) * Math.round(updVal),
                     y: systemBoundary.y + 25 + Math.floor(index / itemsPerRow) * 80
                   }));
                   
