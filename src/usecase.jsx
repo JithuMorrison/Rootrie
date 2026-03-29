@@ -338,6 +338,8 @@ const UseCaseDiagramMaker = ({
       Math.floor(currSystemBoundary.height / useCaseSpacingY)
     );
 
+    const updVal = (systemBoundary.height - 35)/itemsPerCol;
+
     if (margin + useCaseSpacingX * Math.ceil(useCases.length / itemsPerCol) > currSystemBoundary.width) {
       const ok = confirm("Usecases exceeds align limit! Still need to align?\nSelect OK to align, Cancel to cancel."); 
       if (!ok) return;
@@ -352,7 +354,7 @@ const UseCaseDiagramMaker = ({
     const updatedUseCases = useCases.map((useCase, index) => ({
       ...useCase,
       x: currSystemBoundary.x + margin + Math.floor(index / itemsPerCol) * useCaseSpacingX, 
-      y: currSystemBoundary.y + margin + (index % itemsPerCol) * useCaseSpacingY
+      y: currSystemBoundary.y + margin + (index % itemsPerCol) * Math.round(updVal)
     }));
 
     onUpdateUseCaseDiagram({
