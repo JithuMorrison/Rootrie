@@ -10,7 +10,7 @@ const EvolutionChartMain = ({ projects, onCreateProject, onLoadProject, onDelete
         <div className="welcome-icon">🌿</div>
         <h2>Evolution Chart Maker</h2>
         <p>Visualize evolutionary relationships and timelines</p>
-        
+
         <button
           onClick={() => setShowCreateDialog(true)}
           className="primary-btn"
@@ -22,8 +22,8 @@ const EvolutionChartMain = ({ projects, onCreateProject, onLoadProject, onDelete
           <div className="project-list">
             <h3>Your Projects</h3>
             {projects.map(project => (
-              <div 
-                key={project.id} 
+              <div
+                key={project.id}
                 className="project-card"
                 onClick={() => onLoadProject(project)}
               >
@@ -144,6 +144,7 @@ const EvolutionChartMain = ({ projects, onCreateProject, onLoadProject, onDelete
           width: 100%;
           min-height: 100vh;
           background: linear-gradient(135deg, #059669 0%, #047857 100%);
+          border-radius: 20px;
           font-family: 'Inter', system-ui, -apple-system, sans-serif;
           overflow: hidden;
           user-select: none;

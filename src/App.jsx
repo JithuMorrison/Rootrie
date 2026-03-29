@@ -98,7 +98,7 @@ const App = () => {
 
     // Create update object that preserves all existing data
     const updateData = { ...currentData };
-    
+
     // Clear all current selections
     updateData.currentProject = null;
     updateData.currentFlowchart = null;
@@ -238,61 +238,61 @@ const App = () => {
 
     switch (type) {
       case DIAGRAM_TYPES.PROJECT:
-        updateData.projects = currentData.projects.map(p => 
+        updateData.projects = currentData.projects.map(p =>
           p.id === updatedDiagram.id ? updatedDiagram : p
         );
         updateData.currentProject = updatedDiagram;
         break;
       case DIAGRAM_TYPES.FLOWCHART:
-        updateData.flowcharts = currentData.flowcharts.map(f => 
+        updateData.flowcharts = currentData.flowcharts.map(f =>
           f.id === updatedDiagram.id ? updatedDiagram : f
         );
         updateData.currentFlowchart = updatedDiagram;
         break;
       case DIAGRAM_TYPES.GANTT:
-        updateData.ganttCharts = currentData.ganttCharts.map(g => 
+        updateData.ganttCharts = currentData.ganttCharts.map(g =>
           g.id === updatedDiagram.id ? updatedDiagram : g
         );
         updateData.currentGanttChart = updatedDiagram;
         break;
       case DIAGRAM_TYPES.USE_CASE:
-        updateData.useCaseDiagrams = currentData.useCaseDiagrams.map(d => 
+        updateData.useCaseDiagrams = currentData.useCaseDiagrams.map(d =>
           d.id === updatedDiagram.id ? updatedDiagram : d
         );
         updateData.currentUseCaseDiagram = updatedDiagram;
         break;
       case DIAGRAM_TYPES.SEQUENCE:
-        updateData.sequenceDiagrams = currentData.sequenceDiagrams.map(d => 
+        updateData.sequenceDiagrams = currentData.sequenceDiagrams.map(d =>
           d.id === updatedDiagram.id ? updatedDiagram : d
         );
         updateData.currentSequenceDiagram = updatedDiagram;
         break;
       case DIAGRAM_TYPES.ARCHITECTURE:
-        updateData.architectureDiagrams = currentData.architectureDiagrams.map(d => 
+        updateData.architectureDiagrams = currentData.architectureDiagrams.map(d =>
           d.id === updatedDiagram.id ? updatedDiagram : d
         );
         updateData.currentArchitectureDiagram = updatedDiagram;
         break;
       case DIAGRAM_TYPES.CLASS:
-        updateData.classDiagrams = currentData.classDiagrams.map(d => 
+        updateData.classDiagrams = currentData.classDiagrams.map(d =>
           d.id === updatedDiagram.id ? updatedDiagram : d
         );
         updateData.currentClassDiagram = updatedDiagram;
         break;
       case DIAGRAM_TYPES.DOMAIN_MODEL:
-        updateData.domainModels = currentData.domainModels.map(d => 
+        updateData.domainModels = currentData.domainModels.map(d =>
           d.id === updatedDiagram.id ? updatedDiagram : d
         );
         updateData.currentDomainModel = updatedDiagram;
         break;
       case DIAGRAM_TYPES.MIND_MAP: // Add this case
-        updateData.mindMaps = currentData.mindMaps.map(m => 
+        updateData.mindMaps = currentData.mindMaps.map(m =>
           m.id === updatedDiagram.id ? updatedDiagram : m
         );
         updateData.currentMindMap = updatedDiagram;
         break;
       case DIAGRAM_TYPES.ACTIVITY:
-        updateData.activityDiagrams = currentData.activityDiagrams.map(d => 
+        updateData.activityDiagrams = currentData.activityDiagrams.map(d =>
           d.id === updatedDiagram.id ? updatedDiagram : d
         );
         updateData.currentActivityDiagram = updatedDiagram;
@@ -471,7 +471,7 @@ const App = () => {
       currentMindMap: null,
       currentActivityDiagram: null
     };
-    
+
     saveToStorage(updateData);
     forceUpdate();
   };
@@ -534,81 +534,92 @@ const App = () => {
   const styles = {
     appContainer: {
       minHeight: '100vh',
-      width: '97.3%',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      padding: '20px',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+      width: '100%',
+      background: 'linear-gradient(135deg, #e9eef1ff 0%, #dee4ebff 100%)',
+      padding: '30px',
+      fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+      boxSizing: 'border-box'
     },
     mainCard: {
       maxWidth: '1400px',
       margin: '0 auto',
-      background: 'rgba(255, 255, 255, 0.98)',
-      backdropFilter: 'blur(20px)',
-      borderRadius: '24px',
-      boxShadow: '0 25px 50px rgba(0, 0, 0, 0.15)',
+      background: '#ffffff',
+      borderRadius: '20px',
+      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15)',
       overflow: 'hidden',
-      minHeight: '85vh'
+      minHeight: '88vh',
+      display: 'flex',
+      flexDirection: 'column',
+      border: '1px solid rgba(255, 255, 255, 0.5)'
     },
     header: {
-      background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #ec4899 100%)',
-      color: 'white',
+      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+      color: '#ffffff',
       padding: '40px 30px',
-      textAlign: 'center',
-      position: 'relative'
+      textAlign: 'center'
     },
     headerTitle: {
-      fontSize: '36px',
+      fontSize: '32px',
       fontWeight: '800',
-      margin: '0 0 12px 0',
-      textShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
-      letterSpacing: '-0.5px'
+      margin: '0 0 10px 0',
+      letterSpacing: '-0.5px',
+      background: 'linear-gradient(to right, #f8fafc, #94a3b8)',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent'
     },
     headerSubtitle: {
-      fontSize: '18px',
-      opacity: '0.95',
+      fontSize: '16px',
+      color: '#94a3b8',
       margin: '0',
       fontWeight: '400'
     },
     modeSelector: {
       display: 'flex',
       justifyContent: 'center',
-      padding: '30px 30px 0 30px',
-      gap: '16px',
-      marginBottom: '25px',
-      flexWrap: 'wrap'
+      padding: '24px 30px',
+      gap: '12px',
+      background: '#ffffff',
+      flexWrap: 'wrap',
+      borderBottom: '1px solid #f1f5f9'
     },
     tabButton: {
-      padding: '16px 32px',
-      border: '2px solid transparent',
-      borderRadius: '50px',
-      background: 'rgba(0, 0, 0, 0.05)',
+      padding: '12px 24px',
+      border: '1px solid #e2e8f0',
+      borderRadius: '12px',
+      background: '#ffffff',
       color: '#64748b',
-      fontSize: '16px',
+      fontSize: '15px',
       fontWeight: '600',
       cursor: 'pointer',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       outline: 'none',
       position: 'relative',
-      backdropFilter: 'blur(10px)',
-      marginBottom: '10px'
+      whiteSpace: 'nowrap'
     },
     tabButtonActive: (color) => ({
-      background: `linear-gradient(135deg, ${color} 0%, ${color} 100%)`,
-      color: 'white',
-      borderColor: 'rgba(255, 255, 255, 0.2)',
-      boxShadow: `0 8px 25px rgba(${hexToRgb(color)}, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)`,
+      background: color,
+      color: '#ffffff',
+      borderColor: color,
+      boxShadow: `0 8px 16px -4px rgba(${hexToRgb(color)}, 0.4)`,
       transform: 'translateY(-2px)'
     }),
     tabButtonHover: (color) => ({
-      background: `rgba(${hexToRgb(color)}, 0.1)`,
-      color: color
+      borderColor: color,
+      color: color,
+      background: `rgba(${hexToRgb(color)}, 0.04)`,
+      transform: 'translateY(-1px)'
     })
   };
 
   const hexToRgb = (hex) => {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
+    let finalHex = hex;
+    // Handle short hex formats
+    if (hex.length === 4) {
+      finalHex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+    }
+    const r = parseInt(finalHex.slice(1, 3), 16);
+    const g = parseInt(finalHex.slice(3, 5), 16);
+    const b = parseInt(finalHex.slice(5, 7), 16);
     return `${r}, ${g}, ${b}`;
   };
 
@@ -616,7 +627,7 @@ const App = () => {
     {
       type: DIAGRAM_TYPES.PROJECT,
       label: '📊 Evolution Charts',
-      color: '#4f46e5',
+      color: '#21b075ff',
       component: (
         <EvolutionChartMain
           projects={getCurrentData().projects}
@@ -658,7 +669,7 @@ const App = () => {
       label: '👥 Use Case',
       color: '#10b981',
       component: (
-        <UseCaseDiagramMain 
+        <UseCaseDiagramMain
           useCaseDiagrams={getCurrentData().useCaseDiagrams}
           onCreateUseCaseDiagram={createUseCaseDiagram}
           onLoadUseCaseDiagram={(diagram) => loadDiagram(DIAGRAM_TYPES.USE_CASE, diagram)}
@@ -671,7 +682,7 @@ const App = () => {
       label: '↔️ Sequence',
       color: '#06b6d4',
       component: (
-        <SequenceDiagramMain 
+        <SequenceDiagramMain
           sequenceDiagrams={getCurrentData().sequenceDiagrams}
           onCreateSequenceDiagram={createSequenceDiagram}
           onLoadSequenceDiagram={(diagram) => loadDiagram(DIAGRAM_TYPES.SEQUENCE, diagram)}
@@ -684,7 +695,7 @@ const App = () => {
       label: '🏛️ Architecture',
       color: '#8b5cf6',
       component: (
-        <ArchitectureDiagramMain 
+        <ArchitectureDiagramMain
           architectureDiagrams={getCurrentData().architectureDiagrams}
           onCreateArchitectureDiagram={createArchitectureDiagram}
           onLoadArchitectureDiagram={(diagram) => loadDiagram(DIAGRAM_TYPES.ARCHITECTURE, diagram)}
@@ -697,7 +708,7 @@ const App = () => {
       label: '📐 Class Diagram',
       color: '#ec4899',
       component: (
-        <ClassDiagramMain 
+        <ClassDiagramMain
           classDiagrams={getCurrentData().classDiagrams}
           onCreateClassDiagram={createClassDiagram}
           onLoadClassDiagram={(diagram) => loadDiagram(DIAGRAM_TYPES.CLASS, diagram)}
@@ -710,7 +721,7 @@ const App = () => {
       label: '🏢 Domain Model',
       color: '#06b6d4',
       component: (
-        <DomainModelMain 
+        <DomainModelMain
           domainModels={getCurrentData().domainModels}
           onCreateDomainModel={createDomainModel}
           onLoadDomainModel={(diagram) => loadDiagram(DIAGRAM_TYPES.DOMAIN_MODEL, diagram)}
@@ -836,12 +847,12 @@ const App = () => {
             onBack={handleBack}
           />
         ) : (
-          <>
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flex: 1 }}>
             <div style={styles.header}>
               <h1 style={styles.headerTitle}>Visual Designer Suite</h1>
               <p style={styles.headerSubtitle}>Create stunning diagrams and charts</p>
             </div>
-            
+
             <div style={styles.modeSelector}>
               {getTabConfig().map((tab) => (
                 <button
@@ -853,14 +864,15 @@ const App = () => {
                   }}
                   onMouseEnter={(e) => {
                     if (activeTab !== tab.type) {
-                      e.target.style.background = styles.tabButtonHover(tab.color).background;
-                      e.target.style.color = styles.tabButtonHover(tab.color).color;
+                      Object.assign(e.target.style, styles.tabButtonHover(tab.color));
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (activeTab !== tab.type) {
                       e.target.style.background = styles.tabButton.background;
                       e.target.style.color = styles.tabButton.color;
+                      e.target.style.borderColor = '#e2e8f0';
+                      e.target.style.transform = 'none';
                     }
                   }}
                 >
@@ -869,8 +881,10 @@ const App = () => {
               ))}
             </div>
 
-            {getTabConfig().find(tab => tab.type === activeTab)?.component}
-          </>
+            <div style={{ flex: 1, padding: '24px', backgroundColor: '#ffffff', overflowY: 'auto' }}>
+              {getTabConfig().find(tab => tab.type === activeTab)?.component}
+            </div>
+          </div>
         )}
       </div>
     </div>
